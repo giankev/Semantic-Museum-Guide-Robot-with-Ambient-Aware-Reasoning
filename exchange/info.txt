@@ -1,0 +1,63 @@
+# TIAGo Simulation - Comandi
+
+## 1. Avvia container Docker
+./start_tiago.sh
+
+## 2. Avvia Gazebo (con GPU NVIDIA)
+ros2 launch tiago_gazebo tiago_gazebo.launch.py is_public_sim:=True
+
+## 3. Relay QoS (scan_raw RELIABLE -> scan BEST_EFFORT)
+python3 /root/shared_ws/scan_relay.py
+
+## 4. Avvia SLAM
+ros2 run slam_toolbox async_slam_toolbox_node \
+  --ros-args \
+  --params-file /root/tiago_public_ws/src/pmb2_navigation/pmb2_2dnav/config/nav_public_sim.yaml
+
+## 5. Teleop
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+## 6. Salva mappa
+ros2 run nav2_map_server map_saver_cli -f /root/shared_ws/maps/my_map
+
+## Note
+# - scan_relay.py si trova in /root/shared_ws/scan_relay.py (montato da host)
+# - Il laser usa gpu_lidar: serve NVIDIA GPU
+# - slam_toolbox config: /root/tiago_public_ws/src/pmb2_navigation/pmb2_2dnav/config/nav_public_sim.yaml
+#   - scan_topic: /scan
+#   - transform_timeout: 1.0
+#   - base_frame: base_footprint
+#   - odom_frame: odom
+
+
+FROM ros:humble
+
+ENV DEBIAN_FRONTEND=noninteractive
+SHELL ["/bin/bash", "-lc"]
+
+# Base tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl ca-certificates \
+    python3-vcstool python3-rosdep python3-colcon-common-extensions \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-navigation2 ros-humble-nav2-bringup ros-humble-slam-toolbox \
+    ros-humble-xacro ros-humble-robot-state-publisher ros-humble-joint-state-publisher-gui \
+    ros-humble-rmw-cyclonedds-cpp
+
+RUN rosdep update
+
+ENV WS=/root/tiago_public_ws
+RUN mkdir -p ${WS}/src
+WORKDIR ${WS}
+
+# Import PAL public repos set
+RUN vcs import --input https://raw.githubusercontent.com/pal-robotics/tiago_tutorials/humble-devel/tiago_public.repos src
+
+# Install deps and build
+RUN rosdep install --from-paths src -y --ignore-src
+RUN source /opt/ros/humble/setup.bash && colcon build --symlink-install
+
+# Convenience: always source env + use CycloneDDS
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
+    echo "source ${WS}/install/setup.bash" >> /root/.bashrc && \
+    echo "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp" >> /root/.bashrc
