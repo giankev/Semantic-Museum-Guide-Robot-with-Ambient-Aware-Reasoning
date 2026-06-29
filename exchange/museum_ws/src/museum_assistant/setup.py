@@ -23,6 +23,8 @@ setup(
         "console_scripts": [
             "semantic_graph_node = museum_assistant.semantic_graph_node:main",
             "ambient_sensor_simulator = museum_assistant.ambient_sensor_simulator_node:main",
+            "reasoning_node = museum_assistant.reasoning_node:main",
+            "user_request_simulator = museum_assistant.user_request_simulator_node:main",
             "museum_query = museum_assistant.semantic_query_cli:main",
         ],
     },
