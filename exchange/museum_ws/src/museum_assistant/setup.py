@@ -30,6 +30,8 @@ setup(
             "ambient_sensor_simulator = museum_assistant.ambient_sensor_simulator_node:main",
             "reasoning_node = museum_assistant.reasoning_node:main",
             "user_request_simulator = museum_assistant.user_request_simulator_node:main",
+            "send_nav_goal = museum_assistant.send_nav_goal:main",
+            "capture_nav_pose = museum_assistant.capture_nav_pose:main",
             "museum_query = museum_assistant.semantic_query_cli:main",
         ],
     },

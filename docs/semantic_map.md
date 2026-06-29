@@ -17,3 +17,13 @@ ros2 launch museum_assistant semantic_graph.launch.py
 ```
 
 This milestone does not include Nav2, LLM planning, vision, or live ambient sensor updates yet. The graph is loaded from YAML and queried deterministically.
+
+## Navigation Pose Calibration
+
+Room and artwork `nav_pose` values should be calibrated from `/amcl_pose` on the saved museum map, not guessed from the Gazebo layout. After TIAGo is localized with Nav2 active, drive it to a safe stopping point and run:
+
+```bash
+ros2 run museum_assistant capture_nav_pose --name <room_or_artwork_id>
+```
+
+Review the printed YAML snippet before copying its `x`, `y`, and `yaw` values into the matching `nav_pose` entry in `config/semantic_map.yaml`, or before storing it in a future navigation-goals file.
