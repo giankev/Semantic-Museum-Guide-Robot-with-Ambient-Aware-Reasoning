@@ -1,41 +1,49 @@
-from pathlib import Path
-
 import rclpy
-import yaml
 from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
+
+from museum_assistant.semantic_graph import SemanticMapError, load_semantic_graph
 
 
 class SemanticGraphNode(Node):
     def __init__(self):
         super().__init__("semantic_graph_node")
-        self.declare_parameter("semantic_map", "")
-        semantic_map = self.get_parameter("semantic_map").get_parameter_value().string_value
+        self.declare_parameter("semantic_map_path", "")
+        semantic_map_path = self.get_parameter("semantic_map_path").value
 
-        if semantic_map:
-            map_path = Path(semantic_map)
-        else:
-            share_dir = Path(get_package_share_directory("museum_assistant"))
-            map_path = share_dir / "config" / "semantic_map.yaml"
+        if not semantic_map_path:
+            share_dir = get_package_share_directory("museum_assistant")
+            semantic_map_path = f"{share_dir}/config/semantic_map.yaml"
 
-        self.semantic_map = self._load_semantic_map(map_path)
-        self._log_summary(map_path)
+        try:
+            self.semantic_graph = load_semantic_graph(semantic_map_path)
+        except (OSError, SemanticMapError, KeyError) as exc:
+            self.get_logger().error(f"Failed to load semantic map: {exc}")
+            raise
 
-    def _load_semantic_map(self, map_path: Path) -> dict:
-        with map_path.open("r", encoding="utf-8") as stream:
-            return yaml.safe_load(stream) or {}
+        self._log_summary(semantic_map_path)
+        self._log_demo_queries()
 
-    def _log_summary(self, map_path: Path) -> None:
-        rooms = self.semantic_map.get("rooms", [])
-        artworks = self.semantic_map.get("artworks", [])
-
+    def _log_summary(self, map_path: str) -> None:
         self.get_logger().info(f"Loaded semantic map: {map_path}")
+        self.get_logger().info(f"Rooms: {len(self.semantic_graph.room_ids())}")
+        self.get_logger().info(f"Artworks: {len(self.semantic_graph.artwork_ids())}")
+        self.get_logger().info(f"Graph nodes: {self.semantic_graph.graph.number_of_nodes()}")
+        self.get_logger().info(f"Graph edges: {self.semantic_graph.graph.number_of_edges()}")
+
+    def _log_demo_queries(self) -> None:
+        impressionism = self.semantic_graph.recommend_room(
+            style="impressionism",
+            avoid_crowd=True,
+        )
+        child_friendly = self.semantic_graph.recommend_room(child_friendly=True)
         self.get_logger().info(
-            "Rooms: " + ", ".join(room.get("name", room.get("id", "unknown")) for room in rooms)
+            "Demo recommendation, impressionism avoiding crowd: "
+            f"{impressionism['reason']}"
         )
         self.get_logger().info(
-            "Artworks: "
-            + ", ".join(artwork.get("title", artwork.get("id", "unknown")) for artwork in artworks)
+            "Demo recommendation, child-friendly room: "
+            f"{child_friendly['reason']}"
         )
 
 
