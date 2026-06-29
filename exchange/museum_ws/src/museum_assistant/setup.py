@@ -12,6 +12,10 @@ setup(
         (f"share/{package_name}", ["package.xml"]),
         (f"share/{package_name}/config", glob("config/*.yaml")),
         (f"share/{package_name}/launch", glob("launch/*.launch.py")),
+        (
+            f"share/{package_name}/maps",
+            ["maps/.gitkeep"] + glob("maps/*.yaml") + glob("maps/*.pgm") + glob("maps/*.png"),
+        ),
         (f"share/{package_name}/worlds", glob("worlds/*.world")),
     ],
     install_requires=["setuptools"],
