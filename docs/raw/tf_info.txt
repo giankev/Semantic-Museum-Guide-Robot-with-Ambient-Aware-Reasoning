@@ -1,0 +1,3 @@
+Type: tf2_msgs/msg/TFMessage
+Publisher count: 2
+Subscription count: 2

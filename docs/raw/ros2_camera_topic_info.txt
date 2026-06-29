@@ -1,0 +1,35 @@
+==============================
+/head_front_camera/rgb/image_raw
+Type: sensor_msgs/msg/Image
+Publisher count: 1
+Subscription count: 0
+==============================
+/head_front_camera/rgb/camera_info
+Type: sensor_msgs/msg/CameraInfo
+Publisher count: 1
+Subscription count: 0
+==============================
+/head_front_camera/depth/image_raw
+Type: sensor_msgs/msg/Image
+Publisher count: 1
+Subscription count: 0
+==============================
+/head_front_camera/depth/camera_info
+Type: sensor_msgs/msg/CameraInfo
+Publisher count: 1
+Subscription count: 0
+==============================
+/head_front_camera/depth/rgb/points
+Type: sensor_msgs/msg/PointCloud2
+Publisher count: 1
+Subscription count: 0
+==============================
+/filtered_cloud
+Type: sensor_msgs/msg/PointCloud2
+Publisher count: 1
+Subscription count: 0
+==============================
+/throttle_filtering_points/filtered_points
+Type: sensor_msgs/msg/PointCloud2
+Publisher count: 0
+Subscription count: 1

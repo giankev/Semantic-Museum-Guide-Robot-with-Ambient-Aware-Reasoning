@@ -1,0 +1,3 @@
+Type: sensor_msgs/msg/Range
+Publisher count: 3
+Subscription count: 0

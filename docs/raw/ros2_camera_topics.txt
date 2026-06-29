@@ -1,0 +1,7 @@
+/filtered_cloud
+/head_front_camera/depth/camera_info
+/head_front_camera/depth/image_raw
+/head_front_camera/depth/rgb/points
+/head_front_camera/rgb/camera_info
+/head_front_camera/rgb/image_raw
+/throttle_filtering_points/filtered_points

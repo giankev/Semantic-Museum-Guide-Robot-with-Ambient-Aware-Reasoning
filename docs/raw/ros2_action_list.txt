@@ -1,0 +1,14 @@
+/arm_controller/follow_joint_trajectory
+/execute_trajectory
+/gripper_controller/follow_joint_trajectory
+/head_controller/follow_joint_trajectory
+/joy_priority_action
+/joy_turbo_angular_decrease
+/joy_turbo_angular_increase
+/joy_turbo_decrease
+/joy_turbo_increase
+/joy_turbo_reset
+/move_action
+/play_motion2
+/play_motion2/raw
+/torso_controller/follow_joint_trajectory
