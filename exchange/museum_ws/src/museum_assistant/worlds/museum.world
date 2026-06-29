@@ -1,0 +1,245 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <world name="semantic_museum_world">
+    <gravity>0 0 -9.8</gravity>
+    <magnetic_field>6e-06 2.3e-05 -4.2e-05</magnetic_field>
+    <atmosphere type="adiabatic"/>
+
+    <scene>
+      <ambient>0.55 0.55 0.55 1</ambient>
+      <background>0.78 0.82 0.86 1</background>
+      <shadows>false</shadows>
+    </scene>
+
+    <light name="museum_overhead_light" type="directional">
+      <pose>0 0 8 0 0 0</pose>
+      <diffuse>0.9 0.9 0.82 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.4 0.2 -1</direction>
+    </light>
+
+    <model name="museum_floor">
+      <static>true</static>
+      <pose>3.5 -1.0 -0.025 0 0 0</pose>
+      <link name="floor_link">
+        <collision name="collision">
+          <geometry><box><size>13.5 9.5 0.05</size></box></geometry>
+        </collision>
+        <visual name="visual">
+          <geometry><box><size>13.5 9.5 0.05</size></box></geometry>
+          <material>
+            <ambient>0.82 0.82 0.78 1</ambient>
+            <diffuse>0.82 0.82 0.78 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="outer_walls">
+      <static>true</static>
+      <link name="walls">
+        <collision name="north_wall_collision">
+          <pose>3.5 3.75 0.6 0 0 0</pose>
+          <geometry><box><size>13.6 0.12 1.2</size></box></geometry>
+        </collision>
+        <visual name="north_wall_visual">
+          <pose>3.5 3.75 0.6 0 0 0</pose>
+          <geometry><box><size>13.6 0.12 1.2</size></box></geometry>
+          <material><ambient>0.72 0.72 0.72 1</ambient><diffuse>0.72 0.72 0.72 1</diffuse></material>
+        </visual>
+        <collision name="south_wall_collision">
+          <pose>3.5 -5.75 0.6 0 0 0</pose>
+          <geometry><box><size>13.6 0.12 1.2</size></box></geometry>
+        </collision>
+        <visual name="south_wall_visual">
+          <pose>3.5 -5.75 0.6 0 0 0</pose>
+          <geometry><box><size>13.6 0.12 1.2</size></box></geometry>
+          <material><ambient>0.72 0.72 0.72 1</ambient><diffuse>0.72 0.72 0.72 1</diffuse></material>
+        </visual>
+        <collision name="west_wall_collision">
+          <pose>-3.25 -1.0 0.6 0 0 0</pose>
+          <geometry><box><size>0.12 9.6 1.2</size></box></geometry>
+        </collision>
+        <visual name="west_wall_visual">
+          <pose>-3.25 -1.0 0.6 0 0 0</pose>
+          <geometry><box><size>0.12 9.6 1.2</size></box></geometry>
+          <material><ambient>0.72 0.72 0.72 1</ambient><diffuse>0.72 0.72 0.72 1</diffuse></material>
+        </visual>
+        <collision name="east_wall_collision">
+          <pose>10.25 -1.0 0.6 0 0 0</pose>
+          <geometry><box><size>0.12 9.6 1.2</size></box></geometry>
+        </collision>
+        <visual name="east_wall_visual">
+          <pose>10.25 -1.0 0.6 0 0 0</pose>
+          <geometry><box><size>0.12 9.6 1.2</size></box></geometry>
+          <material><ambient>0.72 0.72 0.72 1</ambient><diffuse>0.72 0.72 0.72 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="semantic_room_zones">
+      <static>true</static>
+      <link name="room_floor_colors">
+        <visual name="entrance_zone">
+          <pose>0 0 0.01 0 0 0</pose>
+          <geometry><box><size>1.8 1.4 0.02</size></box></geometry>
+          <material><ambient>0.35 0.65 0.95 1</ambient><diffuse>0.35 0.65 0.95 1</diffuse></material>
+        </visual>
+        <visual name="main_corridor_zone">
+          <pose>2 0 0.012 0 0 0</pose>
+          <geometry><box><size>3.8 1.1 0.02</size></box></geometry>
+          <material><ambient>0.75 0.75 0.75 1</ambient><diffuse>0.75 0.75 0.75 1</diffuse></material>
+        </visual>
+        <visual name="impressionism_hall_zone">
+          <pose>5 1.5 0.014 0 0 0</pose>
+          <geometry><box><size>2.3 2.0 0.02</size></box></geometry>
+          <material><ambient>0.45 0.72 0.45 1</ambient><diffuse>0.45 0.72 0.45 1</diffuse></material>
+        </visual>
+        <visual name="ancient_art_hall_zone">
+          <pose>5 -1.5 0.016 0 0 0</pose>
+          <geometry><box><size>2.3 2.0 0.02</size></box></geometry>
+          <material><ambient>0.82 0.65 0.42 1</ambient><diffuse>0.82 0.65 0.42 1</diffuse></material>
+        </visual>
+        <visual name="kids_hall_zone">
+          <pose>3 -4 0.018 0 0 0</pose>
+          <geometry><box><size>2.4 2.0 0.02</size></box></geometry>
+          <material><ambient>0.95 0.76 0.28 1</ambient><diffuse>0.95 0.76 0.28 1</diffuse></material>
+        </visual>
+        <visual name="temporary_exhibition_zone">
+          <pose>8 0 0.02 0 0 0</pose>
+          <geometry><box><size>2.2 1.8 0.02</size></box></geometry>
+          <material><ambient>0.58 0.45 0.82 1</ambient><diffuse>0.58 0.45 0.82 1</diffuse></material>
+        </visual>
+        <visual name="exit_zone">
+          <pose>-1 2.5 0.022 0 0 0</pose>
+          <geometry><box><size>1.7 1.2 0.02</size></box></geometry>
+          <material><ambient>0.95 0.45 0.38 1</ambient><diffuse>0.95 0.45 0.38 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="lightweight_room_partitions">
+      <static>true</static>
+      <link name="partitions">
+        <visual name="impressionism_partition">
+          <pose>5 0.55 0.45 0 0 0</pose>
+          <geometry><box><size>2.4 0.08 0.9</size></box></geometry>
+          <material><ambient>0.86 0.86 0.82 1</ambient><diffuse>0.86 0.86 0.82 1</diffuse></material>
+        </visual>
+        <collision name="impressionism_partition_collision">
+          <pose>5 0.55 0.45 0 0 0</pose>
+          <geometry><box><size>2.4 0.08 0.9</size></box></geometry>
+        </collision>
+        <visual name="ancient_partition">
+          <pose>5 -0.55 0.45 0 0 0</pose>
+          <geometry><box><size>2.4 0.08 0.9</size></box></geometry>
+          <material><ambient>0.86 0.86 0.82 1</ambient><diffuse>0.86 0.86 0.82 1</diffuse></material>
+        </visual>
+        <collision name="ancient_partition_collision">
+          <pose>5 -0.55 0.45 0 0 0</pose>
+          <geometry><box><size>2.4 0.08 0.9</size></box></geometry>
+        </collision>
+        <visual name="kids_partition">
+          <pose>2.2 -3.0 0.45 0 0 1.5708</pose>
+          <geometry><box><size>2.0 0.08 0.9</size></box></geometry>
+          <material><ambient>0.86 0.86 0.82 1</ambient><diffuse>0.86 0.86 0.82 1</diffuse></material>
+        </visual>
+        <collision name="kids_partition_collision">
+          <pose>2.2 -3.0 0.45 0 0 1.5708</pose>
+          <geometry><box><size>2.0 0.08 0.9</size></box></geometry>
+        </collision>
+        <visual name="temporary_partition">
+          <pose>7.0 0 0.45 0 0 1.5708</pose>
+          <geometry><box><size>1.8 0.08 0.9</size></box></geometry>
+          <material><ambient>0.86 0.86 0.82 1</ambient><diffuse>0.86 0.86 0.82 1</diffuse></material>
+        </visual>
+        <collision name="temporary_partition_collision">
+          <pose>7.0 0 0.45 0 0 1.5708</pose>
+          <geometry><box><size>1.8 0.08 0.9</size></box></geometry>
+        </collision>
+      </link>
+    </model>
+
+    <model name="museum_artwork_markers">
+      <static>true</static>
+      <link name="artworks">
+        <visual name="monet_water_lilies_plaque">
+          <pose>4.45 2.35 0.65 0 0 0</pose>
+          <geometry><box><size>0.65 0.08 0.45</size></box></geometry>
+          <material><ambient>0.18 0.55 0.88 1</ambient><diffuse>0.18 0.55 0.88 1</diffuse></material>
+        </visual>
+        <visual name="van_gogh_starry_night_plaque">
+          <pose>5.55 2.35 0.65 0 0 0</pose>
+          <geometry><box><size>0.65 0.08 0.45</size></box></geometry>
+          <material><ambient>0.08 0.14 0.48 1</ambient><diffuse>0.08 0.14 0.48 1</diffuse></material>
+        </visual>
+        <visual name="roman_statue_marker">
+          <pose>4.55 -1.5 0.5 0 0 0</pose>
+          <geometry><cylinder><radius>0.18</radius><length>0.9</length></cylinder></geometry>
+          <material><ambient>0.9 0.88 0.82 1</ambient><diffuse>0.9 0.88 0.82 1</diffuse></material>
+        </visual>
+        <visual name="egyptian_vase_marker">
+          <pose>5.55 -1.5 0.35 0 0 0</pose>
+          <geometry><cylinder><radius>0.22</radius><length>0.55</length></cylinder></geometry>
+          <material><ambient>0.74 0.42 0.22 1</ambient><diffuse>0.74 0.42 0.22 1</diffuse></material>
+        </visual>
+        <visual name="interactive_light_installation_column">
+          <pose>3 -4 0.65 0 0 0</pose>
+          <geometry><cylinder><radius>0.16</radius><length>1.2</length></cylinder></geometry>
+          <material><ambient>0.95 0.15 0.75 1</ambient><diffuse>0.95 0.15 0.75 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="visitor_marker">
+      <static>true</static>
+      <pose>0.25 -0.45 0 0 0 0</pose>
+      <link name="visitor_body">
+        <visual name="body">
+          <pose>0 0 0.45 0 0 0</pose>
+          <geometry><cylinder><radius>0.16</radius><length>0.75</length></cylinder></geometry>
+          <material><ambient>0.2 0.45 0.95 1</ambient><diffuse>0.2 0.45 0.95 1</diffuse></material>
+        </visual>
+        <visual name="head">
+          <pose>0 0 0.9 0 0 0</pose>
+          <geometry><sphere><radius>0.18</radius></sphere></geometry>
+          <material><ambient>0.95 0.78 0.62 1</ambient><diffuse>0.95 0.78 0.62 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="guide_marker">
+      <static>true</static>
+      <pose>2.2 -0.35 0 0 0 0</pose>
+      <link name="guide_body">
+        <visual name="body">
+          <pose>0 0 0.45 0 0 0</pose>
+          <geometry><cylinder><radius>0.16</radius><length>0.75</length></cylinder></geometry>
+          <material><ambient>0.1 0.65 0.25 1</ambient><diffuse>0.1 0.65 0.25 1</diffuse></material>
+        </visual>
+        <visual name="badge">
+          <pose>0.0 -0.17 0.62 0 0 0</pose>
+          <geometry><box><size>0.12 0.03 0.16</size></box></geometry>
+          <material><ambient>1.0 1.0 0.15 1</ambient><diffuse>1.0 1.0 0.15 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="staff_marker">
+      <static>true</static>
+      <pose>8.2 0.45 0 0 0 0</pose>
+      <link name="staff_body">
+        <visual name="body">
+          <pose>0 0 0.45 0 0 0</pose>
+          <geometry><cylinder><radius>0.16</radius><length>0.75</length></cylinder></geometry>
+          <material><ambient>0.15 0.15 0.15 1</ambient><diffuse>0.15 0.15 0.15 1</diffuse></material>
+        </visual>
+        <visual name="badge">
+          <pose>0.0 -0.17 0.62 0 0 0</pose>
+          <geometry><box><size>0.12 0.03 0.16</size></box></geometry>
+          <material><ambient>1.0 0.9 0.1 1</ambient><diffuse>1.0 0.9 0.1 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
