@@ -1,183 +1,98 @@
-# Semantic Museum Guide Robot
+# Semantic Museum Guide Robot with Ambient-Aware Reasoning
 
-## Project concept
+This repository contains a focused ROS2 Humble project for a semantic-aware museum guide robot. The target platform is a simulated PAL Robotics TIAGo robot in Gazebo, using Nav2 on a known museum map, a semantic graph of rooms and artworks, simulated ambient sensors, LLM-based reasoning, and later a lightweight vision node.
 
-This project implements a semantic-aware museum guide robot in simulation. The robot acts as an intelligent assistant for museum visitors: it receives natural language requests, reasons over a semantic representation of the museum, uses dynamic information from simulated environmental sensors, and navigates to the most suitable location using ROS2 navigation.
+The project is intentionally scoped to TIAGo, Gazebo, Nav2, and ROS2 Humble. Booster T1, Circus, SimBridge, Webots, MuJoCo, Pixi, Booster SDK, and Booster-specific runtime assets have been removed so the repository stays aligned with the museum guide demo.
 
-The goal is to avoid a purely geometric navigation demo. The robot should not only move to predefined coordinates, but infer suitable destinations from user needs, museum knowledge, room status, crowd levels, accessibility constraints, and the role of the person interacting with it.
+## Why TIAGo/Gazebo/Nav2 Only
 
-## Scenario
+TIAGo is a service robot that matches the museum guide scenario: indoor navigation, human-facing interaction, camera-based perception, and ROS2 integration. Gazebo and Nav2 provide the shortest path to a reproducible navigation stack with a known map and simulated sensors. Keeping one simulator and one robot avoids mixing unrelated locomotion, bridge, and supervisor systems.
 
-The simulated museum contains an entrance hall, multiple exhibition rooms, a main corridor, a temporary exhibition area, a kids/interactive room, an exit area, and a museum shop.
+## Current Structure
 
-Example user requests:
-
-* “I would like to see something impressionist, but not in a crowded area.”
-* “I only have ten minutes. Show me something important near the exit.”
-* “I am visiting with a child. What do you recommend?”
-* “Take me to the temporary exhibition.”
-* “Why did you choose this room?”
-
-## Robot and simulation
-
-The target robot is TIAGo simulated in Gazebo. The robot uses a known map of the museum, generated during development with SLAM and later loaded for navigation. Navigation is performed using ROS2 Nav2.
-
-The project code will be developed inside the `exchange/` folder, which is shared with the Docker container provided by the course.
-
-## Semantic map
-
-The museum is represented through a semantic graph. Nodes represent rooms, artworks, visitors, museum staff, sensors, and abstract concepts such as artistic styles or accessibility. Edges represent relations such as `located_in`, `has_style`, `near`, `accessible_from`, `observed_by`, and `has_role`.
-
-The semantic graph connects high-level concepts to navigation poses. For example, the request “show me something impressionist” can be resolved into an artwork, then into its room, and finally into a Nav2 goal pose.
-
-## AI reasoning
-
-A language model is used as a controlled parser and high-level planner. It converts natural language requests into structured JSON containing intent, constraints, preferences, and possible clarification needs. The actual robot actions are selected and validated by deterministic code.
-
-## Vision use-case
-
-The project includes a role-aware vision module. The robot uses its camera to detect whether the person in front of it is likely a museum guide or staff member, based on visible cues such as a badge, lanyard, uniform color, or marker. The robot does not identify the person; it only estimates the role.
-
-This role affects reasoning. A museum guide can update the status of a room, while a normal visitor cannot directly modify the museum state.
-
-## Simulated environmental sensors
-
-The museum includes simulated sensors implemented as ROS2 nodes. These nodes publish dynamic information such as room crowd level, room noise level, corridor blockage, temporary exhibition status, or visitor flow.
-
-The robot subscribes to these topics and updates the semantic graph at runtime. This allows the robot to adapt its recommendations and navigation behavior to a changing environment.
-
-## Main components
-
-* `museum_semantic_graph`: maintains the semantic graph and dynamic state.
-* `museum_sensor_simulator`: publishes simulated environmental sensor data.
-* `museum_vision_node`: detects people, guide/staff badges, signs, or crowd cues.
-* `llm_planner_node`: parses user requests into structured plans.
-* `reasoning_node`: combines LLM output, semantic graph, sensor state, and vision detections.
-* `nav_executor_node`: sends navigation goals to Nav2.
-* `explanation_node`: generates concise explanations for the user.
-
-## Planned demo
-
-The final demo will show three interactions:
-
-1. A visitor asks for an artwork matching semantic preferences. The robot chooses a suitable room and navigates there.
-2. A museum guide is visually recognized through a badge and updates the status of a room.
-3. A visitor asks for the now-closed room. The robot refuses that destination, explains why, and proposes an alternative.
-
-## Technologies
-
-* Ubuntu 22.04
-* Docker
-* ROS2 Humble
-* Gazebo
-* TIAGo simulation
-* Nav2
-* RViz2
-* Python ROS2 nodes
-* NetworkX semantic graph
-* JSON/YAML configuration
-* LLM for controlled task parsing and reasoning
-* YOLO / YOLO-World / Grounding DINO as possible vision models
-
-
-
-
-# TIAGo + Booster T1 Simulation Stack
-
-Integrated simulation environment for heterogeneous robots: **TIAGo** (Gazebo/ROS2) and **Booster T1** (Webots), orchestrated by **Circus** (MuJoCo) via **SimBridge** (ROS2 bridge).
-
-## Clone the Repository
-
-This repository uses Git submodules for `circus` and `simbridge`. Clone with:
-
-```bash
-https://github.com/Lab-RoCoCo-Sapienza/hrai-25-26-course-project-HRAI-Container
-cd hrai_container
+```text
+dockerfiles/
+  Dockerfile.tiago_museum        # ROS2 Humble + TIAGo public simulation workspace
+docs/
+  setup_tiago_museum.md          # Detailed setup and first-test instructions
+exchange/
+  museum_ws/
+    src/
+      museum_assistant/          # Minimal ROS2 Python package for semantic/ambient nodes
+start_museum_tiago.sh            # Docker run helper for X11 Gazebo/RViz sessions
+README.md
 ```
 
-If you've already cloned without submodules, initialize them:
+## Removed
+
+The old mixed simulation stack was removed, including `circus/`, `simbridge/`, Booster T1 assets, `booster_robotics_sdk`, `booster_robotics_sdk_ros2`, `LocoApiPackage`, Booster supervisor/config files, old Booster entrypoints, Webots assets, Pixi files, and the previous combined Dockerfile.
+
+## Build The Docker Image
+
+Build all ROS2, Gazebo, Nav2, SLAM Toolbox, Python utility, and TIAGo public workspace dependencies inside the image:
 
 ```bash
-git submodule update --init --recursive
+docker build -f dockerfiles/Dockerfile.tiago_museum -t museum-tiago:humble .
 ```
 
-## Requirements
+## Run The Container
 
-### For Docker (TIAGo/Booster Webots)
-- Docker with NVIDIA GPU support (`nvidia-container-toolkit`)
-- X11 display
-
-### For Circus + SimBridge
-- **pixi** — [install from pixi.sh](https://pixi.sh)
-
-## Pixi Installation
-
-Pixi is a cross-platform package manager (conda-based). Install the version pixi 0.59.0 from 
+Use the helper script from the repository root:
 
 ```bash
-https://pixi.prefix.dev/latest/installation/#download-from-github-releases
+chmod +x start_museum_tiago.sh
+./start_museum_tiago.sh
 ```
 
-## Installation instructions
-**Build the Docker image:**
+The script runs `museum-tiago:humble` with host networking, X11 display access for Gazebo/RViz, optional NVIDIA GPU support when `nvidia-smi` is available, and mounts this repository at `/root/exchange`.
+
+Equivalent manual command:
+
 ```bash
-cd dockerfiles
-docker build -t spqr:booster .
+docker run --rm -it --net=host \
+  -e DISPLAY="$DISPLAY" \
+  -e QT_X11_NO_MITSHM=1 \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+  -v "$PWD:/root/exchange" \
+  -w /root/exchange \
+  museum-tiago:humble \
+  bash
 ```
 
-**Run TIAGo:**
+## Build The Museum ROS2 Workspace
+
+Inside the container:
+
 ```bash
-bash start_tiago.sh
+cd /root/exchange/exchange/museum_ws
+colcon build --symlink-install
+source install/setup.bash
 ```
 
-Inside the container, launch Gazebo:
+Run the minimal museum assistant nodes:
+
+```bash
+ros2 launch museum_assistant museum_assistant.launch.py
+```
+
+The semantic graph node loads `semantic_map.yaml`, the ambient simulator publishes JSON status messages on `/museum/ambient_status`, and the CLI node prints the current placeholder instructions.
+
+## First TIAGo Gazebo Test
+
+Inside the container, the ROS2 and TIAGo public workspaces are sourced automatically from `/root/.bashrc`. Start a basic TIAGo public simulation with:
+
 ```bash
 ros2 launch tiago_gazebo tiago_gazebo.launch.py is_public_sim:=True
 ```
-Check if Tiago spawn in gazebo to see if it works.
 
+Use this first to confirm Gazebo opens and TIAGo spawns correctly before adding museum maps, Nav2 goals, or reasoning logic.
 
-## Circus + SimBridge (Robot Booster T1 Integration)
+## Roadmap
 
-Circus is the main simulator that manages Docker containers and physics (MuJoCo). SimBridge bridges ROS2 to Circus for sensor/actuator communication.
-
-### Install and run Circus
-
-```bash
-cd circus
-pixi install
-```
-
-The simulator will start and wait for robot containers to connect via Docker API
-
-### Install SimBridge
-
-SimBridge runs automatically inside robot containers created by Circus. To install standalone dependencies:
-
-```bash
-cd simbridge
-pixi install
-```
-
-when all the repos are built you can run. Modify first the yaml file in circus/resources/config/path_constants.yaml with the absolute path of circus, simbridge and booster_sdk
-that you can find in the repo. circus and simbdrige are in the root directory booster_sdk is into the dockerfiles directory
-
-```bash
-pixi run circus resources/scene/1vs1.yaml
-```
-It will spawn one container for each robot, inside each container you can see all the topics related to that robot.
-
-### Control the robot inside the container
-
-```bash
-loco
-```
-
-#### Commands
-
-| Key | Action |
-|-----|--------|
-| `mw` | Mode: Walking (stand up) |
-| `w` | Walk forward |
-
-**Startup sequence:** `mw` → wait → `w` to walk.
+1. Add a museum Gazebo world and known map for Nav2 localization.
+2. Expand `semantic_map.yaml` into a graph of rooms, artworks, styles, constraints, and Nav2 poses.
+3. Connect ambient sensor topics to graph updates for crowd, noise, closures, and route status.
+4. Add deterministic reasoning over semantic graph constraints and Nav2 goal selection.
+5. Add controlled LLM parsing from visitor requests to structured intent JSON.
+6. Add a lightweight vision node for role/status cues, such as staff badge or guide marker detection.
+7. Build demo scenarios where TIAGo recommends, explains, and navigates to suitable exhibits.

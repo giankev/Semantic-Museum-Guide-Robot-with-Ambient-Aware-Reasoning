@@ -1,0 +1,53 @@
+FROM ros:humble
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ENV TIAGO_WS=/root/tiago_public_ws
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    build-essential \
+    python3-pip \
+    python3-vcstool \
+    python3-rosdep \
+    python3-colcon-common-extensions \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-slam-toolbox \
+    ros-humble-xacro \
+    ros-humble-robot-state-publisher \
+    ros-humble-joint-state-publisher-gui \
+    ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-image-view \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir \
+    networkx \
+    pyyaml \
+    numpy
+
+RUN rosdep update
+
+RUN mkdir -p ${TIAGO_WS}/src
+WORKDIR ${TIAGO_WS}
+
+RUN vcs import --input https://raw.githubusercontent.com/pal-robotics/tiago_tutorials/humble-devel/tiago_public.repos src
+
+RUN apt-get update \
+    && rosdep install --from-paths src --ignore-src --rosdistro humble -r -y \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN . /opt/ros/humble/setup.bash \
+    && colcon build --symlink-install
+
+RUN printf '%s\n' \
+    'source /opt/ros/humble/setup.bash' \
+    'source /root/tiago_public_ws/install/setup.bash' \
+    'export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp' \
+    >> /root/.bashrc
+
+WORKDIR /root/exchange
+CMD ["bash"]

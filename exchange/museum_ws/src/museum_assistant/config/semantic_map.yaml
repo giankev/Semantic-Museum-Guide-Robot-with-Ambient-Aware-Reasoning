@@ -1,0 +1,71 @@
+museum:
+  name: Semantic Museum Demo
+  map_frame: map
+
+rooms:
+  - id: entrance_hall
+    name: Entrance Hall
+    pose:
+      x: 0.0
+      y: 0.0
+      yaw: 0.0
+    tags: [welcome, services, accessible]
+  - id: impressionist_gallery
+    name: Impressionist Gallery
+    pose:
+      x: 5.0
+      y: 1.5
+      yaw: 1.57
+    tags: [paintings, quiet_route]
+  - id: temporary_exhibition
+    name: Temporary Exhibition
+    pose:
+      x: 8.0
+      y: -2.0
+      yaw: 0.0
+    tags: [featured, limited_time]
+  - id: kids_lab
+    name: Kids Interactive Lab
+    pose:
+      x: 3.0
+      y: -4.0
+      yaw: -1.57
+    tags: [family, interactive]
+  - id: exit_shop
+    name: Exit and Museum Shop
+    pose:
+      x: -2.0
+      y: 3.0
+      yaw: 3.14
+    tags: [exit, shop]
+
+artworks:
+  - id: water_lilies_study
+    title: Water Lilies Study
+    style: impressionism
+    room: impressionist_gallery
+    importance: high
+  - id: city_light_installation
+    title: City Light Installation
+    style: contemporary
+    room: temporary_exhibition
+    importance: medium
+  - id: texture_table
+    title: Texture Discovery Table
+    style: educational
+    room: kids_lab
+    importance: medium
+
+relations:
+  - source: entrance_hall
+    relation: connected_to
+    target: impressionist_gallery
+  - source: entrance_hall
+    relation: connected_to
+    target: kids_lab
+  - source: impressionist_gallery
+    relation: near
+    target: temporary_exhibition
+  - source: temporary_exhibition
+    relation: near
+    target: exit_shop
