@@ -22,6 +22,7 @@ setup(
     entry_points={
         "console_scripts": [
             "semantic_graph_node = museum_assistant.semantic_graph_node:main",
+            "ambient_sensor_simulator = museum_assistant.ambient_sensor_simulator_node:main",
             "museum_query = museum_assistant.semantic_query_cli:main",
         ],
     },

@@ -105,6 +105,39 @@ class MuseumSemanticGraph:
             raise KeyError(f"Unknown room id: {room_id}")
         return deepcopy(self.rooms[room_id])
 
+    def get_room_state(self, room_id: str) -> dict[str, str]:
+        self._validate_room_id(room_id)
+        room = self.rooms[room_id]
+        return {
+            "room_id": room_id,
+            "status": room["status"],
+            "crowd_level": room["crowd_level"],
+            "noise_level": room["noise_level"],
+        }
+
+    def update_room_state(
+        self,
+        room_id: str,
+        status: str | None = None,
+        crowd_level: str | None = None,
+        noise_level: str | None = None,
+    ) -> dict[str, str]:
+        self._validate_room_id(room_id)
+        updates = {
+            "status": status,
+            "crowd_level": crowd_level,
+            "noise_level": noise_level,
+        }
+        self._validate_room_state_values(room_id, updates)
+
+        room = self.rooms[room_id]
+        for field, value in updates.items():
+            if value is not None:
+                room[field] = value
+                self.graph.nodes[room_id][field] = value
+
+        return self.get_room_state(room_id)
+
     def get_artwork(self, artwork_id: str) -> dict[str, Any]:
         if artwork_id not in self.artworks:
             raise KeyError(f"Unknown artwork id: {artwork_id}")
@@ -273,6 +306,32 @@ class MuseumSemanticGraph:
         if wheelchair_accessible is True:
             parts.append("is wheelchair-accessible")
         return "; ".join(parts) + "."
+
+    def _validate_room_id(self, room_id: str) -> None:
+        if room_id not in self.rooms:
+            raise ValueError(f"Unknown room id: {room_id}")
+
+    def _validate_room_state_values(
+        self, room_id: str, updates: dict[str, str | None]
+    ) -> None:
+        status = updates["status"]
+        crowd_level = updates["crowd_level"]
+        noise_level = updates["noise_level"]
+        if status is not None and status not in VALID_STATUS:
+            raise ValueError(
+                f"Invalid status for room {room_id}: {status}. "
+                f"Expected one of {sorted(VALID_STATUS)}."
+            )
+        if crowd_level is not None and crowd_level not in VALID_LEVELS:
+            raise ValueError(
+                f"Invalid crowd_level for room {room_id}: {crowd_level}. "
+                f"Expected one of {sorted(VALID_LEVELS)}."
+            )
+        if noise_level is not None and noise_level not in VALID_LEVELS:
+            raise ValueError(
+                f"Invalid noise_level for room {room_id}: {noise_level}. "
+                f"Expected one of {sorted(VALID_LEVELS)}."
+            )
 
 
 def load_semantic_graph(path: str | Path) -> MuseumSemanticGraph:
