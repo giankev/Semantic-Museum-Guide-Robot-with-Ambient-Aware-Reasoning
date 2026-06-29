@@ -11,7 +11,7 @@ if command -v nvidia-smi >/dev/null 2>&1; then
 fi
 
 docker run --rm -it \
-  --name museum-tiago \
+  --name museum_tiago \
   --net=host \
   "${GPU_ARGS[@]}" \
   -e DISPLAY="${DISPLAY:-:0}" \

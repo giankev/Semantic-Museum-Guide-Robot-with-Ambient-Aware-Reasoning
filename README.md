@@ -1,98 +1,135 @@
 # Semantic Museum Guide Robot with Ambient-Aware Reasoning
 
-This repository contains a focused ROS2 Humble project for a semantic-aware museum guide robot. The target platform is a simulated PAL Robotics TIAGo robot in Gazebo, using Nav2 on a known museum map, a semantic graph of rooms and artworks, simulated ambient sensors, LLM-based reasoning, and later a lightweight vision node.
+## Project Overview
 
-The project is intentionally scoped to TIAGo, Gazebo, Nav2, and ROS2 Humble. Booster T1, Circus, SimBridge, Webots, MuJoCo, Pixi, Booster SDK, and Booster-specific runtime assets have been removed so the repository stays aligned with the museum guide demo.
+This project implements a TIAGo-based museum guide robot in simulation. The target system is a mobile service robot that can navigate through an indoor museum environment and support visitors through semantic, context-aware guidance.
 
-## Why TIAGo/Gazebo/Nav2 Only
+The intended final system uses a known map, ROS2 Humble, Gazebo simulation, Nav2 navigation, a semantic graph of the museum, simulated ambient sensors, LLM-based reasoning, and later a lightweight vision module for role-aware interaction. The semantic layer will connect visitor requests to rooms, artworks, constraints, and navigation goals. Ambient sensing will provide dynamic context such as crowd level, room status, and environmental conditions. The vision module is planned for lightweight recognition of guide or staff cues, such as a badge or marker, without identifying individual people.
 
-TIAGo is a service robot that matches the museum guide scenario: indoor navigation, human-facing interaction, camera-based perception, and ROS2 integration. Gazebo and Nav2 provide the shortest path to a reproducible navigation stack with a known map and simulated sensors. Keeping one simulator and one robot avoids mixing unrelated locomotion, bridge, and supervisor systems.
+At the current stage, the repository provides the focused Docker environment, TIAGo Gazebo launch path, and a minimal ROS2 Python workspace for the future museum assistant nodes.
 
-## Current Structure
+## Why TIAGo/Gazebo/Nav2
+
+The original course stack contained multiple robots, simulators, and integration layers. This repository has been refactored to focus on the TIAGo/Gazebo/Nav2 track because it is the most suitable track for an indoor museum-guide scenario.
+
+TIAGo is a service robot platform designed for human-centered indoor environments. Gazebo provides a practical simulation environment for testing robot behavior before introducing a custom museum world. Nav2 provides the ROS2 navigation infrastructure needed for localization, planning, and goal execution on a known map. This focused stack avoids maintaining unrelated robot models, bridge code, and simulator-specific tooling that are not required for the museum guide objective.
+
+## Current Repository Structure
 
 ```text
 dockerfiles/
-  Dockerfile.tiago_museum        # ROS2 Humble + TIAGo public simulation workspace
-docs/
-  setup_tiago_museum.md          # Detailed setup and first-test instructions
+  Dockerfile.tiago_museum        # ROS2 Humble image with TIAGo public simulation dependencies
+
+start_museum_tiago.sh            # Helper script to start the Docker container with X11 support
+
 exchange/
-  museum_ws/
+  museum_ws/                     # ROS2 workspace for museum-specific packages
     src/
-      museum_assistant/          # Minimal ROS2 Python package for semantic/ambient nodes
-start_museum_tiago.sh            # Docker run helper for X11 Gazebo/RViz sessions
-README.md
+      museum_assistant/          # Minimal Python package for semantic and ambient nodes
+
+docs/                            # Setup notes and project documentation
 ```
 
-## Removed
+Booster, Circus, SimBridge, Webots, and Pixi are not used in this project. The repository is now scoped to the TIAGo/Gazebo/Nav2 museum-guide track.
 
-The old mixed simulation stack was removed, including `circus/`, `simbridge/`, Booster T1 assets, `booster_robotics_sdk`, `booster_robotics_sdk_ros2`, `LocoApiPackage`, Booster supervisor/config files, old Booster entrypoints, Webots assets, Pixi files, and the previous combined Dockerfile.
+## Requirements On The Host
 
-## Build The Docker Image
+The host machine should provide:
 
-Build all ROS2, Gazebo, Nav2, SLAM Toolbox, Python utility, and TIAGo public workspace dependencies inside the image:
+- Ubuntu 22.04
+- Git
+- Docker Engine
+- NVIDIA driver, if GPU acceleration is available
+- NVIDIA Container Toolkit, if GPU acceleration is available
+- X11 display access for Gazebo and RViz windows
+
+ROS2, Gazebo, Nav2, SLAM Toolbox, and the TIAGo public simulation workspace are installed inside the Docker image. They do not need to be installed on the host.
+
+## Build Docker Image
+
+Build the Docker image from the repository root:
 
 ```bash
-docker build -f dockerfiles/Dockerfile.tiago_museum -t museum-tiago:humble .
+docker build -t museum-tiago:humble -f dockerfiles/Dockerfile.tiago_museum dockerfiles
 ```
 
-## Run The Container
+The image is tagged as `museum-tiago:humble`.
 
-Use the helper script from the repository root:
+## Start The Container
+
+From the repository root:
 
 ```bash
 chmod +x start_museum_tiago.sh
 ./start_museum_tiago.sh
 ```
 
-The script runs `museum-tiago:humble` with host networking, X11 display access for Gazebo/RViz, optional NVIDIA GPU support when `nvidia-smi` is available, and mounts this repository at `/root/exchange`.
+The script starts the `museum-tiago:humble` image with host networking, X11 display access for Gazebo/RViz, optional GPU support when available, and the repository mounted at `/root/exchange`.
 
-Equivalent manual command:
-
-```bash
-docker run --rm -it --net=host \
-  -e DISPLAY="$DISPLAY" \
-  -e QT_X11_NO_MITSHM=1 \
-  -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
-  -v "$PWD:/root/exchange" \
-  -w /root/exchange \
-  museum-tiago:humble \
-  bash
-```
-
-## Build The Museum ROS2 Workspace
+## Launch TIAGo In Gazebo
 
 Inside the container:
-
-```bash
-cd /root/exchange/exchange/museum_ws
-colcon build --symlink-install
-source install/setup.bash
-```
-
-Run the minimal museum assistant nodes:
-
-```bash
-ros2 launch museum_assistant museum_assistant.launch.py
-```
-
-The semantic graph node loads `semantic_map.yaml`, the ambient simulator publishes JSON status messages on `/museum/ambient_status`, and the CLI node prints the current placeholder instructions.
-
-## First TIAGo Gazebo Test
-
-Inside the container, the ROS2 and TIAGo public workspaces are sourced automatically from `/root/.bashrc`. Start a basic TIAGo public simulation with:
 
 ```bash
 ros2 launch tiago_gazebo tiago_gazebo.launch.py is_public_sim:=True
 ```
 
-Use this first to confirm Gazebo opens and TIAGo spawns correctly before adding museum maps, Nav2 goals, or reasoning logic.
+This launches the public TIAGo simulation in Gazebo. At the current stage, this is used to validate the container, ROS2 environment, Gazebo integration, and TIAGo model before adding the museum world and navigation configuration.
+
+## Control TIAGo Manually
+
+Open a second terminal on the host and enter the running container:
+
+```bash
+docker exec -it museum_tiago bash
+```
+
+List relevant velocity and base-control topics:
+
+```bash
+ros2 topic list | grep -E "cmd|vel|base"
+```
+
+Publish a short forward velocity command on `/mobile_base_controller/cmd_vel_unstamped`:
+
+```bash
+ros2 topic pub --once /mobile_base_controller/cmd_vel_unstamped geometry_msgs/msg/Twist \
+  "{linear: {x: 0.2, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
+```
+
+Stop the robot:
+
+```bash
+ros2 topic pub --once /mobile_base_controller/cmd_vel_unstamped geometry_msgs/msg/Twist \
+  "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
+```
+
+Manual base movement is the next validation step before configuring Nav2 behavior in a museum map.
+
+## Current Status
+
+Working now:
+
+- The Docker image builds successfully.
+- The container starts from `start_museum_tiago.sh`.
+- Gazebo opens.
+- TIAGo is visible in the PAL office world.
+
+Next validation:
+
+- Verify manual base movement through the velocity command topic.
+
+Planned features such as museum-world navigation, semantic reasoning, ambient-aware planning, LLM-based request parsing, and vision-based guide/staff recognition are not yet complete.
 
 ## Roadmap
 
-1. Add a museum Gazebo world and known map for Nav2 localization.
-2. Expand `semantic_map.yaml` into a graph of rooms, artworks, styles, constraints, and Nav2 poses.
-3. Connect ambient sensor topics to graph updates for crowd, noise, closures, and route status.
-4. Add deterministic reasoning over semantic graph constraints and Nav2 goal selection.
-5. Add controlled LLM parsing from visitor requests to structured intent JSON.
-6. Add a lightweight vision node for role/status cues, such as staff badge or guide marker detection.
-7. Build demo scenarios where TIAGo recommends, explains, and navigates to suitable exhibits.
+1. Verify manual base movement.
+2. Add `teleop_twist_keyboard` to the Dockerfile.
+3. Inspect TIAGo sensors and ROS2 topics.
+4. Create a museum Gazebo world.
+5. Create a known map using SLAM.
+6. Configure Nav2 for the museum map.
+7. Implement the semantic graph.
+8. Implement simulated ambient sensors.
+9. Implement the LLM planner.
+10. Implement lightweight vision for guide/staff badge recognition.

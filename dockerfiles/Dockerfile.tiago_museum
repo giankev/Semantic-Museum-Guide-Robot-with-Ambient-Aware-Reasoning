@@ -1,5 +1,7 @@
 FROM ros:humble
 
+SHELL ["/bin/bash", "-c"]
+
 ENV DEBIAN_FRONTEND=noninteractive
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ENV TIAGO_WS=/root/tiago_public_ws
@@ -40,7 +42,7 @@ RUN apt-get update \
     && rosdep install --from-paths src --ignore-src --rosdistro humble -r -y \
     && rm -rf /var/lib/apt/lists/*
 
-RUN . /opt/ros/humble/setup.bash \
+RUN source /opt/ros/humble/setup.bash \
     && colcon build --symlink-install
 
 RUN printf '%s\n' \
