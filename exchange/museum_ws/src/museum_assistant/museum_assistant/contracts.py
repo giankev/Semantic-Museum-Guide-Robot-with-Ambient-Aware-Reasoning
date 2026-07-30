@@ -58,6 +58,13 @@ class SessionState:
                 f"Unknown session state: {self.state!r}."
             ) from exc
 
+    def to_dict(self) -> dict[str, str]:
+        return {
+            "session_id": self.session_id,
+            "track_id": self.track_id,
+            "state": self.state.value,
+        }
+
 
 @dataclass
 class StructuredRequest:

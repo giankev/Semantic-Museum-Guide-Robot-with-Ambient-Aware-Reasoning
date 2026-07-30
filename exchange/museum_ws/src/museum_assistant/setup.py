@@ -40,6 +40,10 @@ setup(
             ),
             "reasoning_node = museum_assistant.reasoning_node:main",
             (
+                "visitor_session_node = "
+                "museum_assistant.visitor_session_node:main"
+            ),
+            (
                 "user_request_simulator = "
                 "museum_assistant.user_request_simulator_node:main"
             ),

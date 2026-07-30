@@ -5,6 +5,7 @@ import pytest
 from museum_assistant.contracts import (
     ContractValidationError,
     PersonTrack,
+    ReasoningDecision,
     SessionLifecycle,
     SessionState,
     StructuredRequest,
@@ -59,6 +60,23 @@ def test_request_with_optional_session_id():
 
     assert request.session_id == "session_1"
     assert request.to_dict() == data
+
+
+def test_session_id_passes_through_reasoning_decision():
+    request = StructuredRequest.from_dict(
+        {
+            "request_id": "req_session",
+            "session_id": "session_1",
+            "intent": "recommend",
+            "constraints": {"style": "impressionism"},
+        }
+    )
+
+    decision = make_reasoner().decide(request)
+
+    assert isinstance(decision, ReasoningDecision)
+    assert decision.session_id == "session_1"
+    assert decision.to_dict()["session_id"] == "session_1"
 
 
 def test_request_rejects_invalid_intent():

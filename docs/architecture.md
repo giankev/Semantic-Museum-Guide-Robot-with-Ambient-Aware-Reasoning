@@ -12,18 +12,23 @@ Status labels used below:
 
 ## Current Architecture
 
-The current repository contains a semantic/reasoning path and a navigation path, but no runtime component connects them.
+The current repository correlates one simulated visitor session with the
+structured reasoning path. Navigation remains separate.
 
 ```text
-semantic_map.yaml --------------------+
-                                      |
-/museum/ambient_state ----------> reasoning_node <---------- /museum/user_request
-  scripted JSON                 in-memory graph                 scripted/manual JSON
+visitor_marker -> Gazebo model states -> visitor_session_node
+                                      -> /museum/session_state
+                                      -> user_request_simulator
+                                                  |
+semantic_map.yaml --------------------+           |
+                                      |           v
+/museum/ambient_state ----------> reasoning_node <- /museum/user_request
+  scripted JSON                 in-memory graph      structured JSON
                                       |
                                       v
                            /museum/assistant_response
-                           selected_room + skill +
-                           nav_pose + explanation
+                           session_id + selected_room +
+                           skill + nav_pose + explanation
                                       |
                                 no consumer
 
@@ -42,10 +47,13 @@ Important current properties:
 - `/museum/assistant_response` has no implemented interaction, behavior, escort, or navigation consumer.
 - `send_nav_goal` accepts raw coordinates from a developer CLI. It is a test helper, not a semantic navigation executor.
 - Nav2 uses the standard DWB local planner. There is no people layer or human-aware controller.
-- The visual visitor, guide, and staff models in `museum.world` are static markers, not tracked people or sessions.
-- Minimal Phase 1 request, decision, person-track, and session data models exist
-  independently of ROS. Future runtime managers and adapters have not been
-  implemented.
+- The visual visitor, guide, and staff models in `museum.world` remain static.
+  Only `visitor_marker` is used as simulation ground truth for one session; it
+  is not real person perception or tracking.
+- `visitor_session_node` keeps the Gazebo model name internal and publishes
+  only `session_id`, `track_id`, and state on `/museum/session_state`.
+- The Phase 2 session is minimal and in memory. It has no preferences, history,
+  task state, persistence, or disappearance/re-identification behavior.
 
 ## Target Architecture
 
@@ -95,8 +103,8 @@ The arrows show the main control flow, not a requirement that every module be a 
 
 | Layer | Responsibility | Current status | Current artifact or future boundary |
 | --- | --- | --- | --- |
-| Perception | Detect/track an engaged person and publish transient robot-centric observations. | Minimal data model implemented; runtime planned | `PersonTrack` contains an ordinary `track_id` string. A future simulation adapter may read Gazebo actor/model state, but only emits track IDs downstream. |
-| Session | Map a transient track to a visitor interaction session and own session lifecycle. | Minimal data model implemented; runtime planned | `SessionState` contains `session_id`, `track_id`, and a lifecycle value; no Session Manager or transition policy exists. |
+| Perception | Detect/track an engaged person and publish transient robot-centric observations. | Simulation-ground-truth prototype | `visitor_session_node` observes static `visitor_marker` through Gazebo model states and maps it internally to `visitor_1`; no real perception exists. |
+| Session | Map a transient track to a visitor interaction session and own session lifecycle. | Minimal runtime implemented | One in-memory active `SessionState` named `session_1` is created and reused for `visitor_1`. |
 | Language | Convert speech/text into a validated structured request. | Contract and structured-topic prototype implemented | `StructuredRequest` validates `/museum/user_request`; no text parser, LLM, or STT exists. |
 | Semantic World Model | Represent persistent museum knowledge and dynamic contextual facts. | Implemented for museum and ambient facts; planned for people/session/task facts | `semantic_map.yaml`, `semantic_graph.py`, in-memory room updates. |
 | Reasoning | Select a destination/alternative from validated constraints and explain the choice. | Implemented deterministic baseline and typed boundary | `reasoning.py` consumes `StructuredRequest` and produces `ReasoningDecision`. |
@@ -129,7 +137,8 @@ Most of this is already represented in `config/semantic_map.yaml`. The graph cur
 - escort status and relevant interaction facts;
 - navigation/task outcomes.
 
-Only ambient room state is currently implemented, and it is process-local and non-persistent. Visitor, session, task, and escort facts are planned.
+Ambient room state and one minimal in-memory visitor session are implemented.
+Preferences, task state, persistence, and escort facts remain planned.
 
 ## Identity Abstraction
 
@@ -146,9 +155,32 @@ A future real deployment substitutes its detector/tracker on the left:
 detector/tracker -> PersonTrack ID -> Session ID
 ```
 
-Reasoning and future downstream modules must not depend on Gazebo names or
-detector-specific IDs. A `PersonTrack` may be short-lived; the future Session
-Manager will associate it with a session identifier.
+In Phase 2, `visitor_session_node` is this boundary: it observes
+`visitor_marker`, maps it to `visitor_1`, and publishes the in-memory
+`session_1`. The Gazebo name is not present in `/museum/session_state`,
+structured requests, or reasoning responses. A future perception system can
+replace the simulation-ground-truth input without changing those public IDs.
+
+## Phase 2 Simulated Visitor Session
+
+The museum world loads the standard Gazebo ROS state plugin at 1 Hz.
+`visitor_session_node` subscribes to `/gazebo/model_states` and checks only for
+the existing static `visitor_marker`. Its mapping is intentionally fixed and
+small:
+
+```text
+visitor_marker (node-internal) -> visitor_1 -> session_1 (active)
+```
+
+The session is stored only in process memory and reused on every observation.
+`/museum/session_state` is periodically republished as JSON so a newly started
+demo terminal can observe it. The request simulator caches the active
+`session_id` and adds it to subsequent structured requests; the unchanged
+reasoner copies it into `/museum/assistant_response`.
+
+The static marker is not a moving person, actor, tracker, engagement signal, or
+identity-perception system. Session closure on disappearance is deferred until
+the project introduces a reliable lifecycle requirement.
 
 ## Phase 1 Contract Boundaries
 
@@ -205,12 +237,12 @@ It belongs in or beside the Nav2 local-planning layer. DWB remains the baseline 
 
 ## Phase Boundaries
 
-The development sequence is intentionally incremental. Phase 1 is complete;
-Phase 2 is next:
+The development sequence is intentionally incremental. Phases 1 and 2 are
+complete; Phase 3 is next:
 
 1. **Complete:** define interfaces and state ownership.
-2. **Next:** add sessions and simulated identity abstraction.
-3. Connect reasoner, interaction, behavior, and Nav2.
+2. **Complete:** add one in-memory session using simulated identity ground truth.
+3. **Next:** connect reasoner, interaction, behavior, and Nav2.
 4. Add escort supervision with simulation ground truth.
 5. Generalize people tracking.
 6. Add human-aware local navigation.

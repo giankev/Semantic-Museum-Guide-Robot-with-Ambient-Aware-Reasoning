@@ -19,6 +19,8 @@ The repository currently contains a working simulation and reasoning baseline. I
 - Reasoning responses containing a selected room, explanation, abstract skill, and `nav_pose`.
 - Minimal ROS-independent Phase 1 data models for person tracks, session state,
   structured requests, reasoning decisions, and the reasoner's current skills.
+- Minimal Phase 2 simulation identity and in-memory visitor session published
+  on `/museum/session_state`.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
@@ -31,25 +33,20 @@ The validated runtime baseline is documented in [the user manual](docs/user_manu
 - **Semantic-to-navigation bridge:** reasoning produces `selected_room`, `skill`, and `nav_pose`, but no interaction manager or behavior executive consumes the response and sends a Nav2 goal.
 - **Ambient world state:** updates are scripted and in memory. There is no shared persistent world-model service or task-time re-reasoning policy.
 - **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
-- **Roles and people:** roles are represented semantically and the world contains static visual markers, but there is no person tracking, engagement perception, runtime session identity, or role perception.
-- **Sessions and downstream modules:** Phase 1 provides only the small session
-  data model needed by the next milestone. There is no Session Manager, and
-  interaction, behavior, escort, and semantic navigation contracts remain
-  future work.
+- **Roles and people:** roles are represented semantically. The static
+  `visitor_marker` is detected through Gazebo ground truth for the Phase 2
+  demo, but there is no real person tracking, engagement perception, or role
+  perception.
+- **Sessions and downstream modules:** one minimal in-memory session is created
+  for the static simulated visitor. There are no preferences, history, tasks,
+  persistence, Interaction Manager, Behavior Executive, Escort Supervisor, or
+  semantic Nav2 executor.
 
 ### Next Milestone
 
-Phase 2 is to implement the Visitor Session Manager and the simulation-side
-identity adapter:
-
-- convert Gazebo actor/model identity into a transient `PersonTrack`;
-- create and transition `SessionState` records;
-- expose only ordinary stable `track_id` and `session_id` strings downstream;
-- test session creation, reuse, ending, and closure without adding reasoning,
-  interaction, escort, or navigation behavior.
-
-The minimal Phase 1 models are implemented in
-`museum_assistant/contracts.py`. Phase 2 runtime behavior has not started.
+Phase 3 is to connect deterministic reasoning to future interaction, behavior,
+and semantic Nav2 execution. Those runtime modules and their contracts have not
+been implemented.
 
 ### Future Work
 
@@ -68,14 +65,16 @@ See [Architecture](docs/architecture.md) for module boundaries and [Repository A
 
 ## Current Runtime Shape
 
-The implemented components form two adjacent but not yet connected paths:
+The simulated session is correlated with structured reasoning requests, but
+reasoning and navigation remain separate:
 
 ```text
-Scripted/manual JSON request       Scripted ambient update
-              \                         /
-               -> deterministic reasoning
-                  -> /museum/assistant_response
-                     (no runtime consumer yet)
+visitor_marker -> /gazebo/model_states -> visitor_session_node
+                                      -> /museum/session_state
+                                      -> scripted structured request
+                                      -> deterministic reasoning
+                                      -> /museum/assistant_response
+                                         (same session_id; no consumer)
 
 Manual coordinate or RViz goal
               -> Nav2 + AMCL + saved map
@@ -102,7 +101,9 @@ exchange/museum_ws/src/museum_assistant/
   maps/                   # Saved occupancy map
   museum_assistant/       # Python nodes and deterministic logic
     contracts.py          # Minimal ROS-independent Phase 1 data models
-  test/                   # Contract and deterministic-reasoning tests
+    visitor_session.py    # Minimal in-memory Phase 2 session logic
+    visitor_session_node.py
+  test/                   # Contract, session, and reasoning tests
   worlds/                 # Lightweight Gazebo museum world
   package.xml
   setup.py
@@ -154,6 +155,61 @@ Launch the deterministic reasoning demo in another sourced terminal:
 ros2 launch museum_assistant reasoning_demo.launch.py
 ros2 topic echo /museum/assistant_response
 ```
+
+## Phase 2 Visitor Session Demo
+
+Build the package once, then use separate sourced container terminals.
+
+Terminal 1 — launch TIAGo and the museum world:
+
+```bash
+cd /root/exchange/exchange/museum_ws
+source install/setup.bash
+ros2 launch museum_assistant tiago_museum_world.launch.py
+```
+
+Terminal 2 — launch the one-node session adapter:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 launch museum_assistant visitor_session.launch.py
+```
+
+Terminal 3 — observe the periodically published active session:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 topic echo /museum/session_state
+```
+
+The public JSON contains `session_1`, `visitor_1`, and `active`; it does not
+contain the Gazebo model name.
+
+Terminal 4 — start the deterministic reasoner:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 run museum_assistant reasoning_node
+```
+
+Terminal 5 — observe assistant responses:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 topic echo /museum/assistant_response
+```
+
+Terminal 6 — send a correlated structured request:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 topic pub --once /museum/user_request std_msgs/msg/String \
+  "{data: '{\"request_id\":\"session_demo_001\",\"session_id\":\"session_1\",\"intent\":\"recommend\",\"constraints\":{\"style\":\"impressionism\",\"avoid_crowd\":true}}'}"
+```
+
+The response contains the same `"session_id": "session_1"`. Alternatively,
+`reasoning_demo.launch.py` starts the existing request simulator, which now
+uses the active session ID received from `/museum/session_state`.
 
 Launch known-map Nav2 separately:
 
