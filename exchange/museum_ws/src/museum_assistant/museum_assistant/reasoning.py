@@ -4,17 +4,15 @@ from typing import Any
 
 from museum_assistant.contracts import (
     ContractValidationError,
-    DecisionStatus,
     ReasoningDecision,
-    RequestIntent,
-    SessionId,
     Skill,
     StructuredRequest,
     SUPPORTED_CONSTRAINTS as CONTRACT_SUPPORTED_CONSTRAINTS,
+    SUPPORTED_INTENTS as CONTRACT_SUPPORTED_INTENTS,
 )
 
 
-SUPPORTED_INTENTS = {intent.value for intent in RequestIntent}
+SUPPORTED_INTENTS = CONTRACT_SUPPORTED_INTENTS
 SUPPORTED_CONSTRAINTS = CONTRACT_SUPPORTED_CONSTRAINTS
 
 
@@ -48,31 +46,31 @@ class DeterministicReasoner:
             return ReasoningDecision(
                 request_id=request.request_id,
                 session_id=request.session_id,
-                status=DecisionStatus.NO_MATCH,
-                intent=request.intent.value,
-                semantic_target=None,
-                semantic_target_display_name=None,
+                status="no_match",
+                intent=request.intent,
+                selected_room=None,
+                selected_room_display_name=None,
                 skill=Skill.ASK_CLARIFICATION,
                 nav_pose=None,
                 reason=recommendation["reason"],
-                rejected_rooms=tuple(recommendation["rejected_rooms"]),
+                rejected_rooms=recommendation["rejected_rooms"],
             )
 
         return ReasoningDecision(
             request_id=request.request_id,
             session_id=request.session_id,
-            status=DecisionStatus.SUCCESS,
-            intent=request.intent.value,
-            semantic_target=selected_room["id"],
-            semantic_target_display_name=selected_room["display_name"],
+            status="success",
+            intent=request.intent,
+            selected_room=selected_room["id"],
+            selected_room_display_name=selected_room["display_name"],
             skill=Skill.NAVIGATE_TO,
             nav_pose=selected_room["nav_pose"],
             reason=recommendation["reason"],
-            matching_artworks=tuple(
+            matching_artworks=[
                 artwork["id"]
                 for artwork in recommendation["matching_artworks"]
-            ),
-            rejected_rooms=tuple(recommendation["rejected_rooms"]),
+            ],
+            rejected_rooms=recommendation["rejected_rooms"],
         )
 
     def _validate_request(self, request: Any) -> str | None:
@@ -104,11 +102,8 @@ def _invalid_response(
             request_id = request["request_id"]
         if isinstance(request.get("intent"), str):
             intent = request["intent"]
-        try:
-            if request.get("session_id") is not None:
-                session_id = SessionId(request["session_id"])
-        except ContractValidationError:
-            session_id = None
+        if isinstance(request.get("session_id"), str):
+            session_id = request["session_id"]
 
     return ReasoningDecision.invalid(
         request_id=request_id,

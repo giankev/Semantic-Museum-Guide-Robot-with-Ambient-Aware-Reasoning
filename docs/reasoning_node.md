@@ -23,7 +23,7 @@ response schema.
 }
 ```
 
-During the Phase 1 migration, a request may also carry an optional session:
+A request may also carry an optional session:
 
 ```json
 {
@@ -66,8 +66,9 @@ ros2 topic echo /museum/assistant_response
 This interface can later receive output from a deterministic natural-language parser or controlled LLM fallback. It returns an abstract `navigate_to` skill and semantic-map `nav_pose`, but `/museum/assistant_response` has no Interaction Manager, Behavior Executive, escort, or navigation consumer. The current request simulator is not natural-language interaction.
 
 The semantic room ID is the authoritative decision target. `nav_pose` remains
-in the response only for compatibility and debugging; raw coordinates are not
-allowed in the future language-to-behavior command contract.
+in the response only for compatibility and debugging. A future downstream
+interface should use semantic targets rather than accept raw coordinates; that
+interface has not been implemented.
 
 ## Phase 1 Tests
 

@@ -17,10 +17,8 @@ The repository currently contains a working simulation and reasoning baseline. I
 - Scripted ambient room-state updates for crowd, noise, and open/closed status.
 - Structured JSON request validation and deterministic reasoning.
 - Reasoning responses containing a selected room, explanation, abstract skill, and `nav_pose`.
-- ROS-independent Phase 1 contracts for perception identities, sessions,
-  requests, decisions, interaction/behavior commands, escort states, and
-  navigation results.
-- Strict semantic behavior-command validation with a fixed skill whitelist.
+- Minimal ROS-independent Phase 1 data models for person tracks, session state,
+  structured requests, reasoning decisions, and the reasoner's current skills.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
@@ -34,23 +32,24 @@ The validated runtime baseline is documented in [the user manual](docs/user_manu
 - **Ambient world state:** updates are scripted and in memory. There is no shared persistent world-model service or task-time re-reasoning policy.
 - **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
 - **Roles and people:** roles are represented semantically and the world contains static visual markers, but there is no person tracking, engagement perception, runtime session identity, or role perception.
-- **Sessions and downstream modules:** Phase 1 defines their contracts, but
-  there is no Session Manager, Interaction Manager, Behavior Executive,
-  Escort Supervisor, or semantic Nav2 executor.
+- **Sessions and downstream modules:** Phase 1 provides only the small session
+  data model needed by the next milestone. There is no Session Manager, and
+  interaction, behavior, escort, and semantic navigation contracts remain
+  future work.
 
 ### Next Milestone
 
 Phase 2 is to implement the Visitor Session Manager and the simulation-side
 identity adapter:
 
-- convert Gazebo actor/model identity into a transient `PersonTrackId`;
+- convert Gazebo actor/model identity into a transient `PersonTrack`;
 - create and transition `SessionState` records;
-- publish or expose only `PersonTrackId` and `SessionId` downstream;
+- expose only ordinary stable `track_id` and `session_id` strings downstream;
 - test session creation, reuse, ending, and closure without adding reasoning,
   interaction, escort, or navigation behavior.
 
-Phase 1 contracts are implemented in `museum_assistant/contracts.py`. Phase 2
-runtime behavior has not started.
+The minimal Phase 1 models are implemented in
+`museum_assistant/contracts.py`. Phase 2 runtime behavior has not started.
 
 ### Future Work
 
@@ -102,7 +101,7 @@ exchange/museum_ws/src/museum_assistant/
   launch/                 # Museum, reasoning, SLAM, and Nav2 launches
   maps/                   # Saved occupancy map
   museum_assistant/       # Python nodes and deterministic logic
-    contracts.py          # ROS-independent Phase 1 contracts
+    contracts.py          # Minimal ROS-independent Phase 1 data models
   test/                   # Contract and deterministic-reasoning tests
   worlds/                 # Lightweight Gazebo museum world
   package.xml
