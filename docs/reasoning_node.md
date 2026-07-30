@@ -1,6 +1,6 @@
-# Deterministic Reasoning Node
+# Deterministic Structured-Request Reasoning
 
-Milestone 5 adds structured request reasoning without LLMs, Nav2, or robot control.
+This page records the deterministic structured-request milestone. The current repository also has a separate Nav2 baseline, but reasoning is still not connected to robot control.
 
 `/museum/user_request` carries JSON strings that simulate the future output of an LLM parser. A request contains a `request_id`, an `intent`, and optional semantic constraints:
 
@@ -42,4 +42,4 @@ Inspect responses:
 ros2 topic echo /museum/assistant_response
 ```
 
-This prepares for later LLM integration by defining the structured JSON interface the parser must produce. It prepares for Nav2 by returning an abstract `navigate_to` skill and semantic-map `nav_pose`, but it does not execute navigation yet.
+This interface can later receive output from a deterministic natural-language parser or controlled LLM fallback. It returns an abstract `navigate_to` skill and semantic-map `nav_pose`, but `/museum/assistant_response` has no Interaction Manager, Behavior Executive, escort, or navigation consumer. The current request simulator is not natural-language interaction.

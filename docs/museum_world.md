@@ -1,6 +1,6 @@
-# Museum Gazebo World
+# Museum Gazebo World Baseline
 
-Milestone 6 adds a lightweight Gazebo Classic world for the visual museum demo scene.
+This page records the historical world-only milestone that added a lightweight Gazebo Classic museum scene. The current repository also includes `tiago_museum_world.launch.py`, a saved map, and separate SLAM/Nav2 launch files.
 
 The world is installed as:
 
@@ -31,9 +31,10 @@ ros2 launch museum_assistant museum_world.launch.py
 
 For the final video, this world can show the project environment while the semantic graph, ambient sensor updates, and reasoning responses are demonstrated in ROS2 terminals.
 
-Limitations:
+Limitations of `museum_world.launch.py` and the world asset:
 
-- Nav2 is not integrated yet.
-- TIAGo is not automatically spawned into this custom world yet.
-- There is no automatic navigation or map localization in this milestone.
+- This world-only launch does not spawn TIAGo or start Nav2.
+- TIAGo is spawned by `tiago_museum_world.launch.py`.
+- Nav2 localization is started separately by `museum_navigation.launch.py`.
+- The world contains static person-shaped visual markers, not actors, tracked people, or engagement/session data.
 - The world is intentionally simple and functional, not a polished museum model.

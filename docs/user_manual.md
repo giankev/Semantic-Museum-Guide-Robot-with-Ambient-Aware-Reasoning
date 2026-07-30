@@ -2,7 +2,7 @@
 
 ## Short Project Overview
 
-This project integrates a TIAGo robot in Gazebo with a custom museum world, semantic map and reasoning code, simulated ambient sensors, SLAM mapping, and Nav2 known-map navigation. The current system supports deterministic semantic and ambient-aware demos, map creation, and manual Nav2 goal testing. Future milestones will connect semantic recommendations directly to navigation execution and add controlled LLM parsing plus lightweight role-aware perception.
+This project integrates a TIAGo robot in Gazebo with a custom museum world, semantic map and deterministic reasoning, simulated ambient sensors, SLAM mapping, and Nav2 known-map navigation. The current system supports semantic and ambient-aware demos, map creation, and manual Nav2 goal testing. It does not yet connect a visitor session and interaction task to autonomous navigation. See [Architecture](architecture.md) for the complete boundary between implemented and planned modules.
 
 ## Prerequisites
 
@@ -249,9 +249,9 @@ docker exec -it museum_tiago bash -lc "source /opt/ros/humble/setup.bash && sour
 
 The command reads `/amcl_pose` and prints a YAML snippet. Review the output, then copy the `x`, `y`, and `yaw` values into the matching semantic or navigation-goal configuration.
 
-## Generate Semantic Nav Goals
+## Semantic Goal Execution
 
-The current package does not include a `generate_nav_goals` executable. This is a future helper for generating or proposing safe navigation goals from the saved map and semantic targets. Until then, use `capture_nav_pose` and manually review poses before adding them to configuration.
+The current package has no named-goal resolver or semantic navigation executor. Until the Phase 3 Behavior/Navigation adapter exists, use `capture_nav_pose` and manually review poses before adding them to configuration. The future adapter should accept a semantic location ID, resolve it to a verified configured pose, and then call Nav2; it should not accept coordinates from natural-language or LLM output.
 
 ## Useful Debug Commands
 
@@ -323,9 +323,9 @@ killall gzserver gzclient gazebo 2>/dev/null || true
 
 - Nav2 known-map navigation works but may still need tuning.
 - Not all arbitrary map coordinates are valid navigation goals.
-- Semantic reasoning is not yet fully connected to Nav2 unless a navigation executor milestone is implemented.
+- Semantic reasoning is not connected to Nav2; `/museum/assistant_response` currently has no behavior or navigation consumer.
 - The LLM parser is future work.
-- Vision and HRI role-awareness extensions are future work.
+- Person tracking, visitor sessions, interaction management, escort, social navigation, speech, and role-aware perception are future work.
 
 ## Final Demo Sequence
 
@@ -335,6 +335,6 @@ Suggested order:
 2. Show a semantic query with `museum_query`.
 3. Show ambient reasoning with `ambient_reasoning.launch.py`.
 4. Launch Nav2 with `museum_navigation.launch.py`.
-5. Send a calibrated coordinate goal with `send_nav_goal`, or a semantic/named goal after that milestone is implemented.
+5. Send a calibrated coordinate goal with `send_nav_goal`; semantic/named execution remains a Phase 3 feature.
 6. Show TIAGo moving in Gazebo.
-7. Explain current limitations and the planned semantic-to-navigation connection.
+7. Explain current limitations and the planned session-aware interaction/behavior connection to Nav2.

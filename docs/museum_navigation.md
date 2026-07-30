@@ -1,6 +1,6 @@
 # Known-Map Navigation With Nav2
 
-Milestone 9 adds known-map Nav2 navigation in the custom museum world. It uses the saved SLAM map:
+This page records the geometric-navigation baseline originally completed as the known-map Nav2 milestone. It uses the saved SLAM map:
 
 ```text
 exchange/museum_ws/src/museum_assistant/maps/museum_map.yaml
@@ -201,6 +201,14 @@ The helper prints whether the goal was accepted, succeeded, aborted, or canceled
 - No LLM, vision, or autonomous semantic navigation is included.
 - Navigation is functional but still unstable for some goals and map regions.
 
-## Next Step
+## Architectural Next Steps
 
-Once a repeatable free-space goal is identified, connect deterministic reasoning output (`skill: navigate_to`, `nav_pose`) to a Nav2 executor node that validates and sends `NavigateToPose` goals.
+Do not connect `/museum/assistant_response` directly to Nav2 as an isolated shortcut. The revised sequence is:
+
+1. define session, request, decision, behavior, and navigation-result contracts;
+2. add transient person-to-session identity handling;
+3. connect deterministic reasoning through an Interaction Manager and whitelist-enforcing Behavior Executive;
+4. resolve the selected semantic location to a calibrated pose at the navigation boundary;
+5. add escort supervision above Nav2 in a later phase.
+
+See [Architecture](architecture.md) and [Repository Audit](repository_audit.md).

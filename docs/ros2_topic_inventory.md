@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This document summarizes the useful ROS2 topics, nodes, and actions exposed by the current TIAGo Gazebo baseline. It connects the real ROS2/Gazebo/TIAGo interfaces to the architecture of the **Semantic Museum Guide Robot with Ambient-Aware Reasoning** project.
+This document summarizes the useful ROS 2 topics, nodes, and actions captured from the original TIAGo Gazebo baseline. It connects those real robot interfaces to the architecture of the **Semantic Museum Guide Robot with Ambient-Aware Reasoning** project.
 
-The goal is not to list every topic. Instead, this is an engineering inventory of the interfaces that matter for teleoperation, sensing, mapping, later Nav2 navigation, semantic reasoning, role-aware perception, and evaluation.
+The goal is not to list every topic. Instead, this is an engineering inventory of the interfaces that matter for teleoperation, sensing, mapping, Nav2 navigation, semantic reasoning, future perception, and evaluation.
 
-The inventory is based on the raw captures in `docs/raw/`.
+The inventory is based on the raw captures in `docs/raw/`. Those captures predate the museum semantic nodes and Nav2 launch; statements about what was “not visible” describe that capture, not the current repository.
 
 ## Course/Theory Alignment
 
@@ -14,14 +14,14 @@ The project separates the robot system into layers:
 
 - **Geometric/sensor layer:** odometry, laser scans, RGB/depth cameras, point clouds, IMU, sonar, joint states, and TF frames describe where the robot is and what the simulated world looks like geometrically.
 - **Semantic layer:** rooms, artworks, crowd level, room status, accessibility, visitor preferences, and speaker roles describe the museum as meaningful entities and relations.
-- **Reasoning layer:** the semantic graph and later LLM parser will transform visitor requests into validated robot intentions, constraints, explanations, and destination choices.
-- **Action layer:** manual teleoperation is used now for baseline validation; Nav2 will later execute navigation goals on the known museum map.
+- **Reasoning layer:** the semantic graph and deterministic reasoner transform validated structured requests into intentions, constraints, explanations, and destination choices. Natural-language parsing remains future work.
+- **Action layer:** manual teleoperation and manual Nav2 goals are implemented baselines. A future Behavior Executive will connect semantic decisions to navigation.
 
 This supports the project idea of connecting geometric robot data to semantic reasoning. The robot should not rely only on a geometric map or raw coordinates; it should use semantic context to decide where to go and why.
 
 ## Key Topics
 
-| Topic | ROS2 message type | Role in the project | Current usage | Notes |
+| Topic | ROS2 message type | Role in the project | Captured baseline usage | Notes |
 | --- | --- | --- | --- | --- |
 | `/mobile_base_controller/cmd_vel_unstamped` | `geometry_msgs/msg/Twist` | Direct base velocity command for manual movement tests. | Yes | Primary validated command topic for moving TIAGo in the current baseline. Raw info shows 1 publisher and 2 subscribers. |
 | `/cmd_vel` | `geometry_msgs/msg/Twist` | Generic velocity command input, likely routed through the velocity/mux stack. | Later | Present with a subscriber but no publisher in the capture. Useful to inspect when adding teleop or Nav2 command routing. |
@@ -81,27 +81,40 @@ Visible actions include:
 - `/play_motion2/raw`
 - joystick priority/turbo actions such as `/joy_priority_action`
 
-Nav2 actions such as `navigate_to_pose` are not visible in the current baseline because Nav2 is not launched yet. They should be inspected later during the navigation milestone after the museum map and Nav2 launch configuration are introduced.
+Nav2 actions such as `/navigate_to_pose` are absent from this raw capture because Nav2 was not running when it was recorded. The current repository includes a known-map Nav2 launch and a helper client for that action.
+
+## Museum Package Interfaces Added Later
+
+| Interface | Type | Current role |
+| --- | --- | --- |
+| `/museum/ambient_state` | `std_msgs/msg/String` containing validated JSON fields | Scripted room crowd/noise/status updates consumed into process-local semantic state. |
+| `/museum/user_request` | `std_msgs/msg/String` containing structured JSON | Manual or scripted input to the deterministic reasoner; not natural language. |
+| `/museum/assistant_response` | `std_msgs/msg/String` containing structured JSON | Reasoning result with selected room, skill, explanation, and pose; no runtime consumer yet. |
+| `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM output or saved-map server output. |
+| `/amcl_pose` | `geometry_msgs/msg/PoseWithCovarianceStamped` | Known-map localization and semantic pose capture. |
+| `/navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | Manual/RViz/helper goal execution; not yet driven by semantic decisions. |
 
 ## Mapping to Project Architecture
 
 | Project module | ROS2 interfaces | Use in the project |
 | --- | --- | --- |
-| Motion primitive / teleop | `/mobile_base_controller/cmd_vel_unstamped`, `/cmd_vel`, `/key_vel`, `/mobile_base_controller/cmd_vel_out` | Validate that TIAGo can move and establish the command path before autonomous navigation. |
-| Geometric map | `/scan_raw`, `/mobile_base_controller/odom`, `/tf`, `/tf_static` | Build and later localize against a known museum map. |
+| Motion primitive / teleop | `/mobile_base_controller/cmd_vel_unstamped`, `/cmd_vel`, `/key_vel`, `/mobile_base_controller/cmd_vel_out` | Validate TIAGo movement and debug the command path. |
+| Geometric map | `/scan_raw`, `/mobile_base_controller/odom`, `/tf`, `/tf_static`, `/map`, `/amcl_pose` | Build and localize against the saved museum map. |
 | Semantic map | No direct TIAGo topic; stored in project configuration and semantic graph nodes. | Represents rooms, artworks, navigation poses, styles, constraints, and relations. |
-| Ambient sensors | Future `/museum/...` topics from simulated museum nodes. | Provide dynamic semantic state such as crowd level, noise, closures, and room status. |
+| Ambient sensors | `/museum/ambient_state` | Provides scripted dynamic semantic state such as crowd level, noise, and closures. |
+| Structured reasoning | `/museum/user_request`, `/museum/assistant_response` | Produces deterministic recommendations and abstract skills without robot execution. |
 | Role-aware vision | `/head_front_camera/rgb/image_raw`, `/head_front_camera/depth/image_raw`, camera info topics, point clouds | Future lightweight detection of guide/staff badge or marker cues. |
-| Nav2 executor | Future Nav2 action topics plus `/cmd_vel` or controller command routing. | Convert semantic destinations into validated navigation goals once Nav2 is configured. |
+| Nav2 baseline | `/navigate_to_pose` plus controller command routing | Executes manual test goals; the semantic Behavior/Navigation adapter is planned. |
 | Evaluation/debug | `/ground_truth_odom`, `/performance_metrics`, `/diagnostics`, `/joint_states`, `/tf` | Compare estimated behavior to simulation truth and debug controller/simulation health. |
 
-## Notes for Next Milestones
+## Current Engineering Notes
 
-- **SLAM:** `slam_toolbox` should be configured around `/scan_raw`, because `/scan` is not present in this baseline. Odometry should come from `/mobile_base_controller/odom`, with transforms from `/tf` and `/tf_static`.
-- **Known map:** After manual movement is stable, drive TIAGo through the intended environment and save a map. The map should later become the geometric layer used by Nav2.
-- **Navigation:** Nav2 should be added after the map exists. During integration, inspect whether Nav2 commands route through `/cmd_vel`, `/mobile_base_controller/cmd_vel_unstamped`, or the existing `twist_mux` path.
+- **SLAM:** `museum_slam.launch.py` remaps the SLAM node's `scan` input to `/scan_raw`. Odometry and transforms remain central diagnostics.
+- **Known map:** `maps/museum_map.yaml` and `.pgm` exist and are used by `museum_navigation.launch.py`.
+- **Navigation:** Nav2/AMCL/DWB form the current baseline. Semantic reasoning is not connected to `/navigate_to_pose`.
 - **Localization:** `/mobile_base_controller/odom` and TF are central to localization and navigation diagnostics. The absence of plain `/odom` should be reflected in launch/config remappings.
-- **Semantic reasoning:** The semantic graph should map museum concepts such as rooms and artworks to navigation poses from the known map. It should not command raw coordinates from user language.
-- **Ambient-aware behavior:** Simulated ambient topics should update semantic graph state, for example room crowd level or closure status, and influence destination selection.
+- **Semantic reasoning:** Museum concepts map to poses in YAML, but poses need calibration. Raw coordinates must never come from user language or an LLM.
+- **Ambient-aware behavior:** Scripted ambient updates influence subsequent recommendations. Active-task adaptation is not implemented.
+- **Identity:** A future simulation adapter must translate Gazebo identity to `PersonTrack` before session, reasoning, or escort layers see it.
 - **Role-aware vision:** The head RGB and depth topics provide the future input path for lightweight guide/staff badge recognition. This should remain role/context recognition, not personal identity recognition.
 - **Evaluation/debug:** `/ground_truth_odom` can support simulation-only evaluation by comparing planned or estimated robot movement with Gazebo truth. It should not be used as a normal navigation dependency.

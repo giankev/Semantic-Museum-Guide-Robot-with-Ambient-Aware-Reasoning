@@ -1,135 +1,168 @@
 # Semantic Museum Guide Robot with Ambient-Aware Reasoning
 
-## Project Overview
+This university HRAI project develops a TIAGo museum assistant in ROS 2 Humble and Gazebo. The robot is intended to combine a known geometric map with semantic museum knowledge, ambient context, visitor interaction state, and explainable deterministic decisions.
 
-This project implements a TIAGo-based museum guide robot in simulation. The target system is a mobile service robot that can navigate through an indoor museum environment and support visitors through semantic, context-aware guidance.
+The repository currently contains a working simulation and reasoning baseline. It does **not** yet contain an end-to-end autonomous visitor-guidance pipeline.
 
-The intended final system uses a known map, ROS2 Humble, Gazebo simulation, Nav2 navigation, a semantic graph of the museum, simulated ambient sensors, LLM-based reasoning, and later a lightweight vision module for role-aware interaction. The semantic layer will connect visitor requests to rooms, artworks, constraints, and navigation goals. Ambient sensing will provide dynamic context such as crowd level, room status, and environmental conditions. The vision module is planned for lightweight recognition of guide or staff cues, such as a badge or marker, without identifying individual people.
+## Status At A Glance
 
-At the current stage, the repository provides the focused Docker environment, TIAGo Gazebo launch path, and a minimal ROS2 Python workspace for the future museum assistant nodes.
+### Implemented
 
-## Why TIAGo/Gazebo/Nav2
+- Docker image and launcher for the public TIAGo ROS 2 Humble simulation.
+- Gazebo launch with TIAGo in a lightweight custom museum world.
+- Manual keyboard teleoperation.
+- ROS 2 topic and sensor inventory for the TIAGo simulation baseline.
+- YAML semantic map with rooms, artworks, roles, sensors, relations, and room navigation poses.
+- NetworkX semantic graph loading, validation, queries, and deterministic recommendations.
+- Scripted ambient room-state updates for crowd, noise, and open/closed status.
+- Structured JSON request validation and deterministic reasoning.
+- Reasoning responses containing a selected room, explanation, abstract skill, and `nav_pose`.
+- SLAM Toolbox configuration and a saved museum occupancy map.
+- Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
+- Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
 
-The original course stack contained multiple robots, simulators, and integration layers. This repository has been refactored to focus on the TIAGo/Gazebo/Nav2 track because it is the most suitable track for an indoor museum-guide scenario.
+The validated runtime baseline is documented in [the user manual](docs/user_manual.md). Nav2 is functional but still needs goal calibration and tuning for some map regions.
 
-TIAGo is a service robot platform designed for human-centered indoor environments. Gazebo provides a practical simulation environment for testing robot behavior before introducing a custom museum world. Nav2 provides the ROS2 navigation infrastructure needed for localization, planning, and goal execution on a known map. This focused stack avoids maintaining unrelated robot models, bridge code, and simulator-specific tooling that are not required for the museum guide objective.
+### Partially Implemented
 
-## Current Repository Structure
+- **Natural-language interaction:** `/museum/user_request` accepts validated JSON, but there is no natural-language parser, LLM, speech-to-text, or dialogue input.
+- **Semantic-to-navigation bridge:** reasoning produces `selected_room`, `skill`, and `nav_pose`, but no interaction manager or behavior executive consumes the response and sends a Nav2 goal.
+- **Ambient world state:** updates are scripted and in memory. There is no shared persistent world-model service or task-time re-reasoning policy.
+- **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
+- **Roles and people:** roles are represented semantically and the world contains static visual markers, but there is no person tracking, engagement perception, session identity, or role perception.
+
+### Next Milestone
+
+Phase 1 is to define the module interfaces and state models for:
+
+- transient `PersonTrack` identifiers;
+- visitor `Session` identifiers and lifecycle;
+- validated structured requests;
+- reasoning decisions;
+- interaction and task state;
+- abstract behavior commands and navigation results.
+
+This phase must preserve the rule that simulation actor/model IDs stop at the perception boundary. Reasoning and interaction modules should use `PersonTrack` and `Session` IDs only.
+
+No new runtime feature from that phase is implemented in this audit.
+
+### Future Work
+
+1. Add a visitor Session Manager and simulated person-ID adapter.
+2. Connect deterministic reasoning to an Interaction Manager, Behavior Executive, and Nav2.
+3. Add a social Escort Supervisor above Nav2 using simulated visitor ground truth.
+4. Introduce a generic people publisher/tracking abstraction.
+5. Add human-aware local navigation while preserving DWB as the comparison baseline.
+6. Add deterministic natural-language parsing with a controlled LLM fallback.
+7. Add faster-whisper speech-to-text.
+8. Add grounded response generation and text-to-speech.
+9. Re-reason when relevant ambient state changes during an active task.
+10. Optionally add lightweight role/context perception without identifying people.
+11. Evaluate baseline, semantic/ambient-aware, and social variants.
+
+See [Architecture](docs/architecture.md) for module boundaries and [Repository Audit](docs/repository_audit.md) for the evidence behind these classifications.
+
+## Current Runtime Shape
+
+The implemented components form two adjacent but not yet connected paths:
+
+```text
+Scripted/manual JSON request       Scripted ambient update
+              \                         /
+               -> deterministic reasoning
+                  -> /museum/assistant_response
+                     (no runtime consumer yet)
+
+Manual coordinate or RViz goal
+              -> Nav2 + AMCL + saved map
+                 -> DWB local controller
+                    -> TIAGo
+```
+
+The target architecture adds perception, sessions, language, interaction management, behavior execution, and escort supervision between the human and Nav2. Social escort and social navigation are deliberately separate:
+
+- **Social escort** decides whether the guidance task is succeeding socially.
+- **Social navigation** controls how the robot moves around people.
+
+## Repository Layout
 
 ```text
 dockerfiles/
-  Dockerfile.tiago_museum        # ROS2 Humble image with TIAGo public simulation dependencies
+  Dockerfile.tiago_museum
 
-start_museum_tiago.sh            # Helper script to start the Docker container with X11 support
+start_museum_tiago.sh
 
-exchange/
-  museum_ws/                     # ROS2 workspace for museum-specific packages
-    src/
-      museum_assistant/          # Minimal Python package for semantic and ambient nodes
+exchange/museum_ws/src/museum_assistant/
+  config/                 # Semantic map, Nav2, and SLAM configuration
+  launch/                 # Museum, reasoning, SLAM, and Nav2 launches
+  maps/                   # Saved occupancy map
+  museum_assistant/       # Python nodes and deterministic logic
+  worlds/                 # Lightweight Gazebo museum world
+  package.xml
+  setup.py
 
-docs/                            # Setup notes and project documentation
+docs/
+  architecture.md         # Current and target module architecture
+  repository_audit.md     # Implemented/prototype/planned/obsolete audit
+  user_manual.md          # Build, launch, demo, and troubleshooting commands
+  raw/                    # Captured ROS 2 baseline evidence
 ```
 
-Booster, Circus, SimBridge, Webots, and Pixi are not used in this project. The repository is now scoped to the TIAGo/Gazebo/Nav2 museum-guide track.
+Booster, Circus, SimBridge, Webots, MuJoCo, Pixi, and Booster SDK are out of scope.
 
-## Requirements On The Host
+## Host Requirements
 
-The host machine should provide:
+- Ubuntu 22.04 or a compatible Linux host
+- Git and Docker Engine
+- X11 display access for Gazebo and RViz
+- Optional NVIDIA driver and NVIDIA Container Toolkit
 
-- Ubuntu 22.04
-- Git
-- Docker Engine
-- NVIDIA driver, if GPU acceleration is available
-- NVIDIA Container Toolkit, if GPU acceleration is available
-- X11 display access for Gazebo and RViz windows
+ROS 2, Gazebo, Nav2, SLAM Toolbox, TIAGo, and Python reasoning dependencies stay inside Docker.
 
-ROS2, Gazebo, Nav2, SLAM Toolbox, and the TIAGo public simulation workspace are installed inside the Docker image. They do not need to be installed on the host.
-
-## Build Docker Image
-
-Build the Docker image from the repository root:
-
-```bash
-docker build -t museum-tiago:humble -f dockerfiles/Dockerfile.tiago_museum dockerfiles
-```
-
-The image is tagged as `museum-tiago:humble`.
-
-## Start The Container
+## Build And Start
 
 From the repository root:
 
 ```bash
-chmod +x start_museum_tiago.sh
+docker build -f dockerfiles/Dockerfile.tiago_museum -t museum-tiago:humble .
 ./start_museum_tiago.sh
 ```
-
-The script starts the `museum-tiago:humble` image with host networking, X11 display access for Gazebo/RViz, optional GPU support when available, and the repository mounted at `/root/exchange`.
-
-## Launch TIAGo In Gazebo
 
 Inside the container:
 
 ```bash
-ros2 launch tiago_gazebo tiago_gazebo.launch.py is_public_sim:=True
+cd /root/exchange/exchange/museum_ws
+colcon build --symlink-install --packages-select museum_assistant
+source install/setup.bash
 ```
 
-This launches the public TIAGo simulation in Gazebo. At the current stage, this is used to validate the container, ROS2 environment, Gazebo integration, and TIAGo model before adding the museum world and navigation configuration.
-
-## Control TIAGo Manually
-
-Open a second terminal on the host and enter the running container:
+Launch TIAGo in the museum:
 
 ```bash
-docker exec -it museum_tiago bash
+ros2 launch museum_assistant tiago_museum_world.launch.py
 ```
 
-List relevant velocity and base-control topics:
+Launch the deterministic reasoning demo in another sourced terminal:
 
 ```bash
-ros2 topic list | grep -E "cmd|vel|base"
+ros2 launch museum_assistant reasoning_demo.launch.py
+ros2 topic echo /museum/assistant_response
 ```
 
-Publish a short forward velocity command on `/mobile_base_controller/cmd_vel_unstamped`:
+Launch known-map Nav2 separately:
 
 ```bash
-ros2 topic pub --once /mobile_base_controller/cmd_vel_unstamped geometry_msgs/msg/Twist \
-  "{linear: {x: 0.2, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
+ros2 launch museum_assistant museum_navigation.launch.py
 ```
 
-Stop the robot:
+The complete workflows, terminal setup, lifecycle checks, and goal commands are in [the user manual](docs/user_manual.md).
 
-```bash
-ros2 topic pub --once /mobile_base_controller/cmd_vel_unstamped geometry_msgs/msg/Twist \
-  "{linear: {x: 0.0, y: 0.0, z: 0.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
-```
+## Safety And Architectural Constraints
 
-Manual base movement is the next validation step before configuring Nav2 behavior in a museum map.
-
-## Current Status
-
-Working now:
-
-- The Docker image builds successfully.
-- The container starts from `start_museum_tiago.sh`.
-- Gazebo opens.
-- TIAGo is visible in the PAL office world.
-
-Next validation:
-
-- Verify manual base movement through the velocity command topic.
-
-Planned features such as museum-world navigation, semantic reasoning, ambient-aware planning, LLM-based request parsing, and vision-based guide/staff recognition are not yet complete.
-
-## Roadmap
-
-1. Verify manual base movement.
-2. Add `teleop_twist_keyboard` to the Dockerfile.
-3. Inspect TIAGo sensors and ROS2 topics.
-4. Create a museum Gazebo world.
-5. Create a known map using SLAM.
-6. Configure Nav2 for the museum map.
-7. Implement the semantic graph.
-8. Implement simulated ambient sensors.
-9. Implement the LLM planner.
-10. Implement lightweight vision for guide/staff badge recognition.
+- Natural-language or LLM output may only become validated structured data.
+- An LLM must never emit arbitrary ROS commands, coordinates, shell commands, or code for execution.
+- Robot actions must come from a fixed skill set.
+- Semantic location IDs must be resolved to verified poses inside the robot-control boundary.
+- Gazebo actor/model IDs must not leak into reasoning or interaction logic.
+- Social escort must remain above Nav2; human-aware motion belongs in the navigation layer.
+- Role perception may infer transient role/context cues, never personal identity.

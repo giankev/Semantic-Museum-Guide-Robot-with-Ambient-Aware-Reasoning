@@ -1,8 +1,8 @@
-# Semantic Map Milestone
+# Semantic World-Model Baseline
 
-This milestone implements the first functional semantic predicate layer for the TIAGo museum guide project.
+This page records the historical semantic-map milestone that implemented the first functional semantic predicate layer. The current repository has since added live scripted ambient updates, structured deterministic reasoning, a museum world, a saved map, and a separate Nav2 baseline.
 
-In the course notation `SM = <R, M, P>`, Milestone 2 documented the ROS2/Gazebo interfaces that support the reference and geometric/sensor layers `R` and `M`. This milestone starts `P`: rooms, artworks, roles, simulated room sensors, semantic relations, and deterministic recommendation rules.
+In the course notation `SM = <R, M, P>`, the earlier ROS 2/Gazebo interface inventory supports the reference and geometric/sensor layers `R` and `M`. This semantic baseline starts `P`: rooms, artworks, roles, simulated room sensors, semantic relations, and deterministic recommendation rules.
 
 Build and run inside the Docker container:
 
@@ -16,7 +16,7 @@ ros2 run museum_assistant museum_query --child-friendly
 ros2 launch museum_assistant semantic_graph.launch.py
 ```
 
-This milestone does not include Nav2, LLM planning, vision, or live ambient sensor updates yet. The graph is loaded from YAML and queried deterministically.
+At the time of this milestone, the graph was loaded from YAML and queried deterministically without live updates. The current package now updates room ambient state in memory through `/museum/ambient_state`, but it still has no LLM, vision, session/task knowledge, persistent state store, or connection from reasoning to Nav2.
 
 ## Navigation Pose Calibration
 
@@ -26,4 +26,4 @@ Room and artwork `nav_pose` values should be calibrated from `/amcl_pose` on the
 ros2 run museum_assistant capture_nav_pose --name <room_or_artwork_id>
 ```
 
-Review the printed YAML snippet before copying its `x`, `y`, and `yaw` values into the matching `nav_pose` entry in `config/semantic_map.yaml`, or before storing it in a future navigation-goals file.
+Review the printed YAML snippet before copying its `x`, `y`, and `yaw` values into the matching `nav_pose` entry in `config/semantic_map.yaml`, or before storing it in a future navigation-goals file. A pose being present in YAML does not prove that it is calibrated or currently free in the Nav2 costmaps.

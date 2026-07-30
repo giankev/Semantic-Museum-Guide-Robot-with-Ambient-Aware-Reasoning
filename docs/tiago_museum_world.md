@@ -1,6 +1,6 @@
-# TIAGo In The Museum World
+# TIAGo In The Museum World Baseline
 
-Milestone 7 connects the validated TIAGo Gazebo baseline to the lightweight museum world created for the semantic museum guide demo.
+This page records the milestone that connected the validated TIAGo Gazebo baseline to the lightweight museum world. Known-map Nav2 now exists as a separate launch, but this launch intentionally remains a simulation-only bringup.
 
 The museum world represents the same semantic rooms defined in `exchange/museum_ws/src/museum_assistant/config/semantic_map.yaml`:
 
@@ -62,5 +62,5 @@ Expected result:
 - Nav2 is not enabled in this launch.
 - SLAM is not enabled in this launch.
 - The robot is not navigating autonomously.
-- No LLM or vision functionality is connected to this launch.
+- No reasoning, session, interaction, escort, language, speech, social-navigation, or perception functionality is connected by this launch.
 - If a more precise spawn pose is needed later, the next milestone should inspect the lower-level TIAGo spawn mechanism because the public launch arguments do not expose spawn coordinates.

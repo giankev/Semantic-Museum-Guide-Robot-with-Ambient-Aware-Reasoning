@@ -1,8 +1,8 @@
 # Museum Mapping With SLAM Toolbox
 
-Milestone 8 adds a minimal SLAM Toolbox setup for creating a 2D occupancy map of the custom museum world. The saved map will later become the known map used by Nav2.
+This page records the historical mapping milestone that added a minimal SLAM Toolbox workflow for the custom museum world. The repository now contains the saved map and uses it in the separate known-map Nav2 baseline.
 
-This milestone is mapping only. It does not add Nav2, autonomous navigation, LLM behavior, or vision.
+The workflow on this page is mapping only. It does not launch Nav2 or any interaction/reasoning modules.
 
 ## Interfaces
 
@@ -76,13 +76,12 @@ exchange/museum_ws/src/museum_assistant/maps/museum_map.pgm
 
 Do not commit a generated map until it has been inspected and confirmed useful.
 
-## Later Nav2 Use
+## Current Nav2 Use
 
-The generated `museum_map.yaml` and `museum_map.pgm` will be used in a later milestone as the known map for Nav2 localization and navigation. The semantic map already contains placeholder `nav_pose` values for rooms; after a good map exists, those poses can be checked and adjusted against the saved occupancy map.
+The generated `museum_map.yaml` and `museum_map.pgm` are used by `museum_navigation.launch.py` for known-map localization and navigation. The semantic map contains room `nav_pose` values, but each pose still needs free-space calibration and repeatable goal validation against this map.
 
-## Current Limitations
+## Mapping Workflow Limitations
 
-- Mapping only; no autonomous navigation.
-- No Nav2 bringup or localization yet.
+- This launch performs mapping only; autonomous navigation uses a separate launch.
 - No automatic map quality validation.
 - No semantic graph changes are made by this milestone.

@@ -22,7 +22,10 @@ setup(
     zip_safe=True,
     maintainer="Museum Robotics Team",
     maintainer_email="museum@example.com",
-    description="Semantic map and deterministic recommendation layer for a TIAGo museum guide robot.",
+    description=(
+        "Semantic world model, deterministic reasoning, simulation assets, "
+        "and Nav2 helpers for a TIAGo museum guide robot."
+    ),
     license="Apache-2.0",
     entry_points={
         "console_scripts": [
