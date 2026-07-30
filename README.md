@@ -17,6 +17,10 @@ The repository currently contains a working simulation and reasoning baseline. I
 - Scripted ambient room-state updates for crowd, noise, and open/closed status.
 - Structured JSON request validation and deterministic reasoning.
 - Reasoning responses containing a selected room, explanation, abstract skill, and `nav_pose`.
+- ROS-independent Phase 1 contracts for perception identities, sessions,
+  requests, decisions, interaction/behavior commands, escort states, and
+  navigation results.
+- Strict semantic behavior-command validation with a fixed skill whitelist.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
@@ -29,36 +33,37 @@ The validated runtime baseline is documented in [the user manual](docs/user_manu
 - **Semantic-to-navigation bridge:** reasoning produces `selected_room`, `skill`, and `nav_pose`, but no interaction manager or behavior executive consumes the response and sends a Nav2 goal.
 - **Ambient world state:** updates are scripted and in memory. There is no shared persistent world-model service or task-time re-reasoning policy.
 - **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
-- **Roles and people:** roles are represented semantically and the world contains static visual markers, but there is no person tracking, engagement perception, session identity, or role perception.
+- **Roles and people:** roles are represented semantically and the world contains static visual markers, but there is no person tracking, engagement perception, runtime session identity, or role perception.
+- **Sessions and downstream modules:** Phase 1 defines their contracts, but
+  there is no Session Manager, Interaction Manager, Behavior Executive,
+  Escort Supervisor, or semantic Nav2 executor.
 
 ### Next Milestone
 
-Phase 1 is to define the module interfaces and state models for:
+Phase 2 is to implement the Visitor Session Manager and the simulation-side
+identity adapter:
 
-- transient `PersonTrack` identifiers;
-- visitor `Session` identifiers and lifecycle;
-- validated structured requests;
-- reasoning decisions;
-- interaction and task state;
-- abstract behavior commands and navigation results.
+- convert Gazebo actor/model identity into a transient `PersonTrackId`;
+- create and transition `SessionState` records;
+- publish or expose only `PersonTrackId` and `SessionId` downstream;
+- test session creation, reuse, ending, and closure without adding reasoning,
+  interaction, escort, or navigation behavior.
 
-This phase must preserve the rule that simulation actor/model IDs stop at the perception boundary. Reasoning and interaction modules should use `PersonTrack` and `Session` IDs only.
-
-No new runtime feature from that phase is implemented in this audit.
+Phase 1 contracts are implemented in `museum_assistant/contracts.py`. Phase 2
+runtime behavior has not started.
 
 ### Future Work
 
-1. Add a visitor Session Manager and simulated person-ID adapter.
-2. Connect deterministic reasoning to an Interaction Manager, Behavior Executive, and Nav2.
-3. Add a social Escort Supervisor above Nav2 using simulated visitor ground truth.
-4. Introduce a generic people publisher/tracking abstraction.
-5. Add human-aware local navigation while preserving DWB as the comparison baseline.
-6. Add deterministic natural-language parsing with a controlled LLM fallback.
-7. Add faster-whisper speech-to-text.
-8. Add grounded response generation and text-to-speech.
-9. Re-reason when relevant ambient state changes during an active task.
-10. Optionally add lightweight role/context perception without identifying people.
-11. Evaluate baseline, semantic/ambient-aware, and social variants.
+1. Connect deterministic reasoning to an Interaction Manager, Behavior Executive, and Nav2.
+2. Add a social Escort Supervisor above Nav2 using simulated visitor ground truth.
+3. Introduce a generic people publisher/tracking abstraction.
+4. Add human-aware local navigation while preserving DWB as the comparison baseline.
+5. Add deterministic natural-language parsing with a controlled LLM fallback.
+6. Add faster-whisper speech-to-text.
+7. Add grounded response generation and text-to-speech.
+8. Re-reason when relevant ambient state changes during an active task.
+9. Optionally add lightweight role/context perception without identifying people.
+10. Evaluate baseline, semantic/ambient-aware, and social variants.
 
 See [Architecture](docs/architecture.md) for module boundaries and [Repository Audit](docs/repository_audit.md) for the evidence behind these classifications.
 
@@ -97,6 +102,8 @@ exchange/museum_ws/src/museum_assistant/
   launch/                 # Museum, reasoning, SLAM, and Nav2 launches
   maps/                   # Saved occupancy map
   museum_assistant/       # Python nodes and deterministic logic
+    contracts.py          # ROS-independent Phase 1 contracts
+  test/                   # Contract and deterministic-reasoning tests
   worlds/                 # Lightweight Gazebo museum world
   package.xml
   setup.py

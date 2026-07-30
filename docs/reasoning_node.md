@@ -2,6 +2,12 @@
 
 This page records the deterministic structured-request milestone. The current repository also has a separate Nav2 baseline, but reasoning is still not connected to robot control.
 
+`museum_assistant/contracts.py` now defines the ROS-independent
+`StructuredRequest` and `ReasoningDecision` boundaries used by the deterministic
+reasoner. Dictionary/JSON input is validated into a contract object before
+semantic reasoning, then the typed decision is serialized back to the existing
+response schema.
+
 `/museum/user_request` carries JSON strings that simulate the future output of an LLM parser. A request contains a `request_id`, an `intent`, and optional semantic constraints:
 
 ```json
@@ -16,6 +22,21 @@ This page records the deterministic structured-request milestone. The current re
   }
 }
 ```
+
+During the Phase 1 migration, a request may also carry an optional session:
+
+```json
+{
+  "request_id": "req_001",
+  "session_id": "session_001",
+  "intent": "recommend",
+  "constraints": {"style": "impressionism"}
+}
+```
+
+Requests without `session_id` remain valid and produce the original response
+shape. When provided, the validated session ID is copied into the reasoning
+response for correlation only; the reasoner does not manage session state.
 
 Supported intents are `recommend` and `recommend_and_prepare_navigation`. Supported constraints are `style`, `avoid_crowd`, `child_friendly`, and `wheelchair_accessible`.
 
@@ -43,3 +64,18 @@ ros2 topic echo /museum/assistant_response
 ```
 
 This interface can later receive output from a deterministic natural-language parser or controlled LLM fallback. It returns an abstract `navigate_to` skill and semantic-map `nav_pose`, but `/museum/assistant_response` has no Interaction Manager, Behavior Executive, escort, or navigation consumer. The current request simulator is not natural-language interaction.
+
+The semantic room ID is the authoritative decision target. `nav_pose` remains
+in the response only for compatibility and debugging; raw coordinates are not
+allowed in the future language-to-behavior command contract.
+
+## Phase 1 Tests
+
+Run without Gazebo, Nav2, or a ROS graph:
+
+```bash
+cd /root/exchange/exchange/museum_ws
+colcon build --packages-select museum_assistant
+colcon test --packages-select museum_assistant
+colcon test-result --verbose
+```

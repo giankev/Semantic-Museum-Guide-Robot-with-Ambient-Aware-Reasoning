@@ -14,7 +14,10 @@ setup(
         (f"share/{package_name}/launch", glob("launch/*.launch.py")),
         (
             f"share/{package_name}/maps",
-            ["maps/.gitkeep"] + glob("maps/*.yaml") + glob("maps/*.pgm") + glob("maps/*.png"),
+            ["maps/.gitkeep"]
+            + glob("maps/*.yaml")
+            + glob("maps/*.pgm")
+            + glob("maps/*.png"),
         ),
         (f"share/{package_name}/worlds", glob("worlds/*.world")),
     ],
@@ -27,12 +30,19 @@ setup(
         "and Nav2 helpers for a TIAGo museum guide robot."
     ),
     license="Apache-2.0",
+    tests_require=["pytest"],
     entry_points={
         "console_scripts": [
             "semantic_graph_node = museum_assistant.semantic_graph_node:main",
-            "ambient_sensor_simulator = museum_assistant.ambient_sensor_simulator_node:main",
+            (
+                "ambient_sensor_simulator = "
+                "museum_assistant.ambient_sensor_simulator_node:main"
+            ),
             "reasoning_node = museum_assistant.reasoning_node:main",
-            "user_request_simulator = museum_assistant.user_request_simulator_node:main",
+            (
+                "user_request_simulator = "
+                "museum_assistant.user_request_simulator_node:main"
+            ),
             "send_nav_goal = museum_assistant.send_nav_goal:main",
             "capture_nav_pose = museum_assistant.capture_nav_pose:main",
             "museum_query = museum_assistant.semantic_query_cli:main",

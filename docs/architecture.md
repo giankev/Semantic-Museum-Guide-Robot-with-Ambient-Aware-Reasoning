@@ -43,6 +43,8 @@ Important current properties:
 - `send_nav_goal` accepts raw coordinates from a developer CLI. It is a test helper, not a semantic navigation executor.
 - Nav2 uses the standard DWB local planner. There is no people layer or human-aware controller.
 - The visual visitor, guide, and staff models in `museum.world` are static markers, not tracked people or sessions.
+- Phase 1 contract classes exist independently of ROS, but none of the future
+  runtime managers or adapters have been implemented.
 
 ## Target Architecture
 
@@ -92,15 +94,15 @@ The arrows show the main control flow, not a requirement that every module be a 
 
 | Layer | Responsibility | Current status | Current artifact or future boundary |
 | --- | --- | --- | --- |
-| Perception | Detect/track an engaged person and publish transient robot-centric observations. | Planned | Future simulation adapter may read Gazebo actor/model state, but only emits `PersonTrack` IDs downstream. |
-| Session | Map a transient track to a visitor interaction session and own session lifecycle. | Planned | `Gazebo actor/model ID -> PersonTrack ID -> Session ID`; actor IDs do not cross this boundary. |
-| Language | Convert speech/text into a validated structured request. | Prototype interface only | `/museum/user_request` and request validation exist; no text parser, LLM, or STT exists. |
+| Perception | Detect/track an engaged person and publish transient robot-centric observations. | Contract implemented; runtime planned | `PersonTrackId` and `PersonTrack` exist. A future simulation adapter may read Gazebo actor/model state, but only emits track IDs downstream. |
+| Session | Map a transient track to a visitor interaction session and own session lifecycle. | Contract implemented; runtime planned | Typed session IDs, state, and lifecycle transitions exist; no Session Manager exists. |
+| Language | Convert speech/text into a validated structured request. | Contract and structured-topic prototype implemented | `StructuredRequest` validates `/museum/user_request`; no text parser, LLM, or STT exists. |
 | Semantic World Model | Represent persistent museum knowledge and dynamic contextual facts. | Implemented for museum and ambient facts; planned for people/session/task facts | `semantic_map.yaml`, `semantic_graph.py`, in-memory room updates. |
-| Reasoning | Select a destination/alternative from validated constraints and explain the choice. | Implemented deterministic baseline | `reasoning.py` and `reasoning_node.py`. |
-| Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Planned | Must consume reasoning results instead of embedding dialogue policy in the reasoner. |
-| Behavior Execution | Validate and dispatch only whitelisted robot skills. | Planned | Future skills include `navigate_to(location_id)`, `ask_clarification`, `recommend_alternative`, and `explain_decision`. |
-| Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Planned | Sits above Nav2; consumes session and visitor-following state. |
-| Navigation | Localize, plan, control, and execute a verified goal. | Implemented baseline; semantic execution is planned | Saved map, AMCL, Nav2 bringup, DWB, manual goal helper. |
+| Reasoning | Select a destination/alternative from validated constraints and explain the choice. | Implemented deterministic baseline and typed boundary | `reasoning.py` consumes `StructuredRequest` and produces `ReasoningDecision`. |
+| Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Contract implemented; runtime planned | `InteractionCommand` exists; no manager or dialogue policy exists. |
+| Behavior Execution | Validate and dispatch only whitelisted robot skills. | Contract implemented; runtime planned | `BehaviorCommand` accepts only `navigate_to(semantic_target)` or `ask_clarification(question)`; no executive exists. |
+| Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | State enum implemented; runtime planned | `EscortState` values exist; no supervisor or transitions exist. |
+| Navigation | Localize, plan, control, and execute a verified goal. | Geometric baseline and result contract implemented; semantic execution planned | Saved map, AMCL, Nav2, DWB, manual helper, and `NavigationResult`; no semantic executor. |
 
 ## Semantic World Model
 
@@ -144,20 +146,21 @@ detector/tracker -> PersonTrack ID -> Session ID
 
 Reasoning, interaction, behavior, and escort code must not depend on Gazebo names or future detector-specific IDs. A `PersonTrack` may be short-lived or replaced; a `Session` is the interaction-level identity and owns preferences and task context.
 
-## Proposed Interface Boundaries
+## Phase 1 Contract Boundaries
 
-Phase 1 should define and test these contracts before adding nodes:
+Phase 1 implements and tests these ROS-independent contracts in
+`museum_assistant/contracts.py`:
 
 | Contract | Minimum content | Producer | Consumer |
 | --- | --- | --- | --- |
-| `PersonTrack` | `track_id`, timestamp, pose/relative position, tracking state, optional role cue | Perception adapter | Session Manager, Escort |
-| `SessionState` | `session_id`, active `track_id`, lifecycle state, preferences, timestamps | Session Manager | Language, World Model, Interaction Manager, Escort |
+| `PersonTrack` | typed `track_id` and observation timestamp | Perception adapter | Session Manager, Escort |
+| `SessionState` | typed `session_id`, current `track_id`, and explicit lifecycle | Session Manager | Language, World Model, Interaction Manager, Escort |
 | `StructuredRequest` | `request_id`, `session_id`, supported intent, validated constraints | Language | Reasoner |
 | `ReasoningDecision` | status, selected semantic location, abstract skill, reason, rejected alternatives | Reasoner | Interaction Manager |
-| `InteractionCommand` | task/dialogue transition plus approved next action | Interaction Manager | Behavior Executive |
-| `BehaviorCommand` | whitelisted skill and semantic arguments | Behavior Executive | Escort or Navigation adapter |
-| `EscortState` | following/stopped/lagging/lost/recovered/arrived plus timing/distance evidence | Escort Supervisor | Interaction Manager, Behavior Executive |
-| `NavigationResult` | semantic target, Nav2 status, failure category, timestamps | Navigation adapter | Escort, Behavior Executive, World Model |
+| `InteractionCommand` | request/session correlation plus an approved semantic action | Interaction Manager | Behavior Executive |
+| `BehaviorCommand` | whitelisted skill plus semantic target or clarification question | Behavior Executive | Escort or Navigation adapter |
+| `EscortState` | following/stopped/lagging/lost/recovered/arrived values | Escort Supervisor | Interaction Manager, Behavior Executive |
+| `NavigationResult` | semantic target, result status, and optional session | Navigation adapter | Escort, Behavior Executive, World Model |
 
 The current `nav_pose` in `ReasoningDecision` is useful for the prototype and debugging. In the target design, the Behavior/Navigation boundary should resolve the selected semantic location to the latest verified pose rather than trusting coordinates from language input or an external model.
 
@@ -198,10 +201,11 @@ It belongs in or beside the Nav2 local-planning layer. DWB remains the baseline 
 
 ## Phase Boundaries
 
-The development sequence is intentionally incremental:
+The development sequence is intentionally incremental. Phase 1 is complete;
+Phase 2 is next:
 
-1. Define interfaces and state ownership.
-2. Add sessions and simulated identity abstraction.
+1. **Complete:** define interfaces and state ownership.
+2. **Next:** add sessions and simulated identity abstraction.
 3. Connect reasoner, interaction, behavior, and Nav2.
 4. Add escort supervision with simulation ground truth.
 5. Generalize people tracking.

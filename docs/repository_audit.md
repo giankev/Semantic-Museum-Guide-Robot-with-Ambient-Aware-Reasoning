@@ -2,7 +2,9 @@
 
 ## Audit Scope
 
-This audit was performed on branch `setup-tiago-museum` at commit `7858233`. It reviewed:
+The Phase 0 audit was performed on branch `setup-tiago-museum` at commit
+`7858233`. Phase 1 extends that audited baseline with ROS-independent contracts
+and tests. The audit reviewed:
 
 - repository history and working-tree state;
 - `README.md`, `AGENTS.md`, and all current Markdown documentation;
@@ -30,6 +32,7 @@ The classifications below use source presence plus the validated milestones alre
 | Ambient updates | `ambient_sensor_simulator_node.py`, graph update handlers | Scripted JSON and process-local memory. |
 | Deterministic reasoning | `reasoning.py`, `reasoning_node.py` | Fixed intents/constraints; no natural-language parsing. |
 | Structured request/response topics | `/museum/user_request`, `/museum/assistant_response` | JSON over `std_msgs/String`; simulator/manual producer. |
+| Phase 1 contracts | `contracts.py`, contract/reasoning tests | Typed IDs, session lifecycle, requests, decisions, safe commands, escort states, and navigation results; no runtime managers. |
 | SLAM workflow and saved map | SLAM launch/config plus `museum_map.yaml/.pgm` | Map is present; no automated quality test. |
 | Known-map Nav2 baseline | `museum_navigation.launch.py`, `nav2_museum.yaml`, validated navigation notes | AMCL/Nav2/DWB; some goals/regions remain unstable. |
 | Navigation test helpers | `capture_nav_pose`, `send_nav_goal` entry points | Developer tools; coordinate goal input only. |
@@ -39,7 +42,7 @@ The classifications below use source presence plus the validated milestones alre
 | Capability | What exists | Missing for completion |
 | --- | --- | --- |
 | Semantic navigation intent | Reasoner emits `selected_room`, `navigate_to`, and `nav_pose`. | No consumer, pose verification, task executive, or automatic Nav2 action. |
-| Visitor request interface | Schema validation and scripted JSON requests. | No text parser, dialogue, session context, STT, or LLM fallback. |
+| Visitor request interface | Strict `StructuredRequest`, optional session correlation, and scripted JSON requests. | No text parser, dialogue, Session Manager, STT, or LLM fallback. |
 | Dynamic world model | Room ambient fields update in memory. | No shared authority, persistence, timestamps, provenance, visitor/session/task facts, or task-time re-reasoning. |
 | Navigation poses | Every room has a `nav_pose`; AMCL capture helper exists. | Poses are not all documented as calibrated/free-space tested. |
 | Museum topology | `connected_to` relations are stored. | No route-level semantic traversal uses them; edges are directed unless reverse relations are added. |
@@ -52,7 +55,7 @@ The classifications below use source presence plus the validated milestones alre
 There is no runtime implementation for:
 
 - person or engagement perception;
-- `PersonTrack` abstraction;
+- producer of `PersonTrack` observations;
 - visitor Session Manager;
 - speech-to-text;
 - natural-language parsing or LLM fallback;
@@ -121,13 +124,13 @@ The package manifest already declared the Python, message, and Nav2 action depen
 | Target layer | Gap |
 | --- | --- |
 | Perception | No tracked-person observation or engagement signal. |
-| Session | No stable interaction identity, lifecycle, preferences, or mapping from simulation identity. |
+| Session | Contracts and lifecycle rules exist, but there is no manager, runtime identity mapping, or preference state. |
 | Language | Only already-structured JSON; no natural language or speech. |
 | World model | No shared dynamic authority and no person/session/task state. |
 | Reasoning | No session-aware constraints, active-task re-reasoning, or downstream orchestration. |
-| Interaction | Entire layer is absent. |
-| Behavior | No whitelist-enforcing executive or navigation adapter. |
-| Escort | Entire social task-supervision layer is absent. |
+| Interaction | Command contract exists; runtime manager and dialogue policy are absent. |
+| Behavior | Safe command contract exists; executive and navigation adapter are absent. |
+| Escort | State values exist; the social task-supervision runtime is absent. |
 | Navigation | Baseline exists, but no semantic goal resolver, calibrated goal set, or human-aware local planner. |
 | Evaluation | No repeatable scenarios or metrics comparing variants. |
 
@@ -143,16 +146,19 @@ The repository history can be retained without using milestone numbers that conf
 6. **Museum simulation baseline:** added the custom world and TIAGo launch integration.
 7. **Geometric navigation baseline:** added SLAM configuration, saved map, AMCL/Nav2/DWB bringup, and manual goal tools.
 8. **Architecture audit and documentation cleanup:** reconciled status, module boundaries, gaps, and future phases.
+9. **Contract and state-model baseline:** added typed identity/session contracts, strict request/decision serialization, safe abstract commands, and ROS-independent tests.
 
-This history records what was achieved while leaving sessions, interaction, behavior, escort, language, speech, social navigation, and perception clearly unimplemented.
+This history records what was achieved while leaving runtime sessions,
+interaction, behavior execution, escort, language, speech, social navigation,
+and perception clearly unimplemented.
 
 ## Revised Roadmap
 
 | Phase | Deliverable | Completion test |
 | --- | --- | --- |
-| 0 | Repository and documentation cleanup | Source-backed status and coherent architecture/roadmap. |
-| 1 | Module interfaces and state models | Contract validation tests cover IDs, lifecycle/state enums, allowed transitions, and invalid input. |
-| 2 | Visitor Session Manager and simulated person IDs | Gazebo identity is converted to `PersonTrack`, then to `Session`, without leaking actor IDs downstream. |
+| 0 | **Complete:** repository and documentation cleanup | Source-backed status and coherent architecture/roadmap. |
+| 1 | **Complete:** module interfaces and state models | Contract validation tests cover IDs, lifecycle/state enums, allowed transitions, and invalid input. |
+| 2 | **Next:** Visitor Session Manager and simulated person IDs | Gazebo identity is converted to `PersonTrack`, then to `Session`, without leaking actor IDs downstream. |
 | 3 | Reasoner -> Interaction Manager -> Behavior Executive -> Nav2 | A validated structured request produces one verified semantic goal and a reported navigation result. |
 | 4 | Basic escort state machine with simulated ground truth | Following, stopped, lagging, lost, recovered, and arrived transitions are reproducible. |
 | 5 | Generic people publisher/tracking abstraction | Escort/session code runs unchanged against the generic interface. |
@@ -166,11 +172,14 @@ This history records what was achieved while leaving sessions, interaction, beha
 
 ## Recommended Next Implementation Task
 
-Do not start with a new ROS 2 node. Implement the smallest part of Phase 1 as a ROS-independent interface/state-model module with tests:
+Phase 2 should implement only the Visitor Session Manager and a lightweight
+simulation identity adapter against the Phase 1 contracts. It should:
 
-- define `PersonTrackId`, `SessionId`, session lifecycle states, and the mapping boundary;
-- define validated `StructuredRequest` and `ReasoningDecision` records compatible with the current JSON;
-- define allowed abstract skills and reject raw-coordinate or unknown-skill commands at the behavior boundary;
-- test serialization, invalid IDs, invalid transitions, and unknown fields.
+- translate Gazebo identity to `PersonTrackId` at the adapter boundary;
+- create and transition `SessionState` records;
+- keep Gazebo identifiers out of all downstream state;
+- test creation, track/session association, valid lifecycle transitions,
+  closure, and invalid reuse.
 
-This task is independently testable without Gazebo, creates no heavy dependency, and establishes the contracts required before the Session Manager or semantic-to-Nav2 connection is added.
+It must not add interaction, behavior execution, escort, semantic navigation,
+language, speech, or vision features.

@@ -1,117 +1,118 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any
 
+from museum_assistant.contracts import (
+    ContractValidationError,
+    DecisionStatus,
+    ReasoningDecision,
+    RequestIntent,
+    SessionId,
+    Skill,
+    StructuredRequest,
+    SUPPORTED_CONSTRAINTS as CONTRACT_SUPPORTED_CONSTRAINTS,
+)
 
-SUPPORTED_INTENTS = {"recommend", "recommend_and_prepare_navigation"}
-SUPPORTED_CONSTRAINTS = {
-    "style",
-    "avoid_crowd",
-    "child_friendly",
-    "wheelchair_accessible",
-}
+
+SUPPORTED_INTENTS = {intent.value for intent in RequestIntent}
+SUPPORTED_CONSTRAINTS = CONTRACT_SUPPORTED_CONSTRAINTS
 
 
 class DeterministicReasoner:
     def __init__(self, semantic_graph):
         self.semantic_graph = semantic_graph
 
-    def handle_request(self, request: dict[str, Any]) -> dict[str, Any]:
-        validation_error = self._validate_request(request)
-        if validation_error:
-            return _invalid_response(request, validation_error)
+    def handle_request(self, request: Any) -> dict[str, Any]:
+        """Validate a JSON-compatible request and serialize its decision."""
+        try:
+            structured_request = StructuredRequest.from_dict(request)
+        except ContractValidationError as exc:
+            return _invalid_response(request, str(exc))
 
-        request_id = request.get("request_id")
-        intent = request["intent"]
-        constraints = request.get("constraints", {})
+        return self.decide(structured_request).to_dict()
 
+    def decide(self, request: StructuredRequest) -> ReasoningDecision:
+        """Apply deterministic semantic reasoning to a validated request."""
+        constraints = request.constraints
         recommendation = self.semantic_graph.recommend_room(
             style=constraints.get("style"),
             avoid_crowd=constraints.get("avoid_crowd", False),
             child_friendly=constraints.get("child_friendly"),
-            wheelchair_accessible=constraints.get("wheelchair_accessible"),
+            wheelchair_accessible=constraints.get(
+                "wheelchair_accessible"
+            ),
         )
 
         selected_room = recommendation["selected_room"]
         if not selected_room:
-            return {
-                "request_id": request_id,
-                "status": "no_match",
-                "intent": intent,
-                "selected_room": None,
-                "selected_room_display_name": None,
-                "skill": "ask_clarification",
-                "nav_pose": None,
-                "reason": recommendation["reason"],
-                "matching_artworks": [],
-                "rejected_rooms": recommendation["rejected_rooms"],
-            }
+            return ReasoningDecision(
+                request_id=request.request_id,
+                session_id=request.session_id,
+                status=DecisionStatus.NO_MATCH,
+                intent=request.intent.value,
+                semantic_target=None,
+                semantic_target_display_name=None,
+                skill=Skill.ASK_CLARIFICATION,
+                nav_pose=None,
+                reason=recommendation["reason"],
+                rejected_rooms=tuple(recommendation["rejected_rooms"]),
+            )
 
-        return {
-            "request_id": request_id,
-            "status": "success",
-            "intent": intent,
-            "selected_room": selected_room["id"],
-            "selected_room_display_name": selected_room["display_name"],
-            "skill": "navigate_to",
-            "nav_pose": deepcopy(selected_room["nav_pose"]),
-            "reason": recommendation["reason"],
-            "matching_artworks": [
-                artwork["id"] for artwork in recommendation["matching_artworks"]
-            ],
-            "rejected_rooms": recommendation["rejected_rooms"],
-        }
+        return ReasoningDecision(
+            request_id=request.request_id,
+            session_id=request.session_id,
+            status=DecisionStatus.SUCCESS,
+            intent=request.intent.value,
+            semantic_target=selected_room["id"],
+            semantic_target_display_name=selected_room["display_name"],
+            skill=Skill.NAVIGATE_TO,
+            nav_pose=selected_room["nav_pose"],
+            reason=recommendation["reason"],
+            matching_artworks=tuple(
+                artwork["id"]
+                for artwork in recommendation["matching_artworks"]
+            ),
+            rejected_rooms=tuple(recommendation["rejected_rooms"]),
+        )
 
     def _validate_request(self, request: Any) -> str | None:
-        if not isinstance(request, dict):
-            return "Request must be a JSON object."
-
-        request_id = request.get("request_id")
-        if request_id is not None and not isinstance(request_id, str):
-            return "request_id must be a string when provided."
-
-        intent = request.get("intent")
-        if intent not in SUPPORTED_INTENTS:
-            supported = ", ".join(sorted(SUPPORTED_INTENTS))
-            return f"Unsupported or missing intent. Supported intents: {supported}."
-
-        constraints = request.get("constraints", {})
-        if not isinstance(constraints, dict):
-            return "constraints must be a JSON object when provided."
-
-        unknown_constraints = sorted(set(constraints) - SUPPORTED_CONSTRAINTS)
-        if unknown_constraints:
-            return "Unsupported constraints: " + ", ".join(unknown_constraints) + "."
-
-        style = constraints.get("style")
-        if style is not None and not isinstance(style, str):
-            return "constraints.style must be a string."
-
-        for field in ("avoid_crowd", "child_friendly", "wheelchair_accessible"):
-            value = constraints.get(field)
-            if value is not None and not isinstance(value, bool):
-                return f"constraints.{field} must be a boolean."
-
+        """Compatibility helper retained for callers of the previous API."""
+        try:
+            StructuredRequest.from_dict(request)
+        except ContractValidationError as exc:
+            return str(exc)
         return None
 
 
-def reason_about_request(semantic_graph, request: dict[str, Any]) -> dict[str, Any]:
+def reason_about_request(
+    semantic_graph,
+    request: Any,
+) -> dict[str, Any]:
     return DeterministicReasoner(semantic_graph).handle_request(request)
 
 
-def _invalid_response(request: Any, reason: str) -> dict[str, Any]:
-    request_id = request.get("request_id") if isinstance(request, dict) else None
-    intent = request.get("intent") if isinstance(request, dict) else None
-    return {
-        "request_id": request_id,
-        "status": "invalid_request",
-        "intent": intent,
-        "selected_room": None,
-        "selected_room_display_name": None,
-        "skill": "ask_clarification",
-        "nav_pose": None,
-        "reason": reason,
-        "matching_artworks": [],
-        "rejected_rooms": [],
-    }
+def _invalid_response(
+    request: Any,
+    reason: str,
+) -> dict[str, Any]:
+    request_id = None
+    intent = None
+    session_id = None
+
+    if isinstance(request, dict):
+        if isinstance(request.get("request_id"), str):
+            request_id = request["request_id"]
+        if isinstance(request.get("intent"), str):
+            intent = request["intent"]
+        try:
+            if request.get("session_id") is not None:
+                session_id = SessionId(request["session_id"])
+        except ContractValidationError:
+            session_id = None
+
+    return ReasoningDecision.invalid(
+        request_id=request_id,
+        session_id=session_id,
+        intent=intent,
+        reason=reason,
+    ).to_dict()

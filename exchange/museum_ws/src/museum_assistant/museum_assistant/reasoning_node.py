@@ -5,6 +5,7 @@ from ament_index_python.packages import get_package_share_directory
 from rclpy.node import Node
 from std_msgs.msg import String
 
+from museum_assistant.contracts import ReasoningDecision
 from museum_assistant.reasoning import DeterministicReasoner
 from museum_assistant.semantic_graph import SemanticMapError, load_semantic_graph
 
@@ -46,7 +47,9 @@ class ReasoningNode(Node):
         self.get_logger().info(f"Loaded semantic map: {semantic_map_path}")
         self.get_logger().info("Subscribed to /museum/ambient_state")
         self.get_logger().info("Subscribed to /museum/user_request")
-        self.get_logger().info("Publishing assistant responses on /museum/assistant_response")
+        self.get_logger().info(
+            "Publishing assistant responses on /museum/assistant_response"
+        )
 
     def _handle_ambient_state(self, msg: String) -> None:
         try:
@@ -74,24 +77,9 @@ class ReasoningNode(Node):
         try:
             request = json.loads(msg.data)
         except json.JSONDecodeError as exc:
-            request = {
-                "request_id": None,
-                "intent": None,
-                "constraints": {},
-                "_json_error": str(exc),
-            }
-            response = {
-                "request_id": None,
-                "status": "invalid_request",
-                "intent": None,
-                "selected_room": None,
-                "selected_room_display_name": None,
-                "skill": "ask_clarification",
-                "nav_pose": None,
-                "reason": f"Request data is not valid JSON: {exc}",
-                "matching_artworks": [],
-                "rejected_rooms": [],
-            }
+            response = ReasoningDecision.invalid(
+                reason=f"Request data is not valid JSON: {exc}"
+            ).to_dict()
             self._publish_response(response)
             self.get_logger().warning(response["reason"])
             return
