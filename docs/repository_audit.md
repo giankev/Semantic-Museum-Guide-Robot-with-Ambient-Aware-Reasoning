@@ -3,8 +3,9 @@
 ## Audit Scope
 
 The Phase 0 audit was performed on branch `setup-tiago-museum` at commit
-`7858233`. Phase 1 extends that audited baseline with minimal ROS-independent
-data models and tests. The audit reviewed:
+`7858233`. Later phases extend that audited baseline with minimal contracts, a
+simulated visitor session, and a focused semantic-navigation prototype. The
+audit reviewed:
 
 - repository history and working-tree state;
 - `README.md`, `AGENTS.md`, and all current Markdown documentation;
@@ -33,6 +34,7 @@ The classifications below use source presence plus the validated milestones alre
 | Deterministic reasoning | `reasoning.py`, `reasoning_node.py` | Fixed intents/constraints; no natural-language parsing. |
 | Structured request/response topics | `/museum/user_request`, `/museum/assistant_response` | JSON over `std_msgs/String`; simulator/manual producer. |
 | Phase 1 data models | `contracts.py`, contract/reasoning tests | Plain-string person/session IDs, minimal person/session state, validated requests, reasoning decisions, and current reasoner skills; no runtime managers. |
+| Phase 2 visitor session | `visitor_session_node.py`, `/museum/session_state` | One static Gazebo-ground-truth visitor mapped to one in-memory active session. |
 | SLAM workflow and saved map | SLAM launch/config plus `museum_map.yaml/.pgm` | Map is present; no automated quality test. |
 | Known-map Nav2 baseline | `museum_navigation.launch.py`, `nav2_museum.yaml`, validated navigation notes | AMCL/Nav2/DWB; some goals/regions remain unstable. |
 | Navigation test helpers | `capture_nav_pose`, `send_nav_goal` entry points | Developer tools; coordinate goal input only. |
@@ -41,8 +43,8 @@ The classifications below use source presence plus the validated milestones alre
 
 | Capability | What exists | Missing for completion |
 | --- | --- | --- |
-| Semantic navigation intent | Reasoner emits `selected_room`, `navigate_to`, and `nav_pose`. | No consumer, pose verification, task executive, or automatic Nav2 action. |
-| Visitor request interface | Strict `StructuredRequest`, optional session correlation, and scripted JSON requests. | No text parser, dialogue, Session Manager, STT, or LLM fallback. |
+| Semantic navigation execution | `semantic_navigation_node` filters executable decisions, sends `NavigateToPose`, and publishes `/museum/navigation_result`. | Full simulator acceptance, semantic-pose calibration, and repeatability evidence remain. |
+| Visitor request interface | Strict `StructuredRequest`, optional session correlation, and scripted JSON requests. | No text parser, dialogue, general session policy, STT, or LLM fallback. |
 | Dynamic world model | Room ambient fields update in memory. | No shared authority, persistence, timestamps, provenance, visitor/session/task facts, or task-time re-reasoning. |
 | Navigation poses | Every room has a `nav_pose`; AMCL capture helper exists. | Poses are not all documented as calibrated/free-space tested. |
 | Museum topology | `connected_to` relations are stored. | No route-level semantic traversal uses them; edges are directed unless reverse relations are added. |
@@ -55,8 +57,8 @@ The classifications below use source presence plus the validated milestones alre
 There is no runtime implementation for:
 
 - person or engagement perception;
-- producer of `PersonTrack` observations;
-- visitor Session Manager;
+- real producer of tracked-person observations;
+- general multi-visitor Session Manager;
 - speech-to-text;
 - natural-language parsing or LLM fallback;
 - Interaction Manager;
@@ -89,6 +91,8 @@ All executables used by current package launch files are registered in `setup.py
 - `semantic_graph_node`
 - `ambient_sensor_simulator`
 - `reasoning_node`
+- `visitor_session_node`
+- `semantic_navigation_node`
 - `user_request_simulator`
 
 The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` are also registered.
@@ -100,10 +104,12 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 | `semantic_graph.launch.py` | Starts the graph demo node. | No ambient simulator or reasoning request interface. |
 | `ambient_reasoning.launch.py` | Starts graph demo plus scripted ambient updates. | No request reasoning or Nav2. |
 | `reasoning_demo.launch.py` | Starts deterministic reasoner, ambient simulator, and request simulator. | No interaction manager or navigation execution. |
+| `visitor_session.launch.py` | Starts the single simulated visitor-session node. | No reasoning, navigation, or real perception. |
+| `semantic_navigation.launch.py` | Starts the filtered reasoning-to-Nav2 adapter. | No Nav2 bringup, reasoner, task manager, or escort. |
 | `museum_world.launch.py` | Opens the museum world without TIAGo. | No robot, SLAM, or Nav2. |
 | `tiago_museum_world.launch.py` | Includes the TIAGo Gazebo launch with the museum world. | No SLAM or Nav2 in that launch. |
 | `museum_slam.launch.py` | Starts async SLAM Toolbox with `/scan_raw` remapping. | No robot/world launch and no map saving automation. |
-| `museum_navigation.launch.py` | Includes Nav2 bringup with saved map and museum parameters. | No robot/world launch and no semantic goal consumer. |
+| `museum_navigation.launch.py` | Includes Nav2 bringup with saved map and museum parameters. | No robot/world launch or semantic adapter in the same launch. |
 
 ### Configuration And Assets
 
@@ -124,14 +130,14 @@ The package manifest already declared the Python, message, and Nav2 action depen
 | Target layer | Gap |
 | --- | --- |
 | Perception | No tracked-person observation or engagement signal. |
-| Session | A minimal state model and lifecycle values exist, but there is no manager, transition policy, or runtime identity mapping. |
+| Session | One static visitor-to-session mapping exists; there is no general lifecycle, disappearance, persistence, or multi-visitor policy. |
 | Language | Only already-structured JSON; no natural language or speech. |
 | World model | No shared dynamic authority and no person/session/task state. |
 | Reasoning | No session-aware constraints, active-task re-reasoning, or downstream orchestration. |
 | Interaction | The manager, dialogue policy, and command contract are planned. |
 | Behavior | The executive and its command contract are planned. |
 | Escort | The state model and social task-supervision runtime are planned. |
-| Navigation | Baseline exists, but no semantic goal resolver, calibrated goal set, or human-aware local planner. |
+| Navigation | A focused semantic adapter exists, but runtime acceptance, calibrated goals, and human-aware planning remain. |
 | Evaluation | No repeatable scenarios or metrics comparing variants. |
 
 ## Coherent Milestone History
@@ -149,10 +155,14 @@ The repository history can be retained without using milestone numbers that conf
 9. **Contract and state-model baseline:** added minimal person/session data,
    validated request/decision serialization, current reasoner skills, and
    ROS-independent tests.
+10. **Simulated visitor session:** mapped the static Gazebo visitor marker to
+    one stable track and in-memory session.
+11. **Semantic navigation prototype:** filtered explicitly prepared decisions,
+    sent their deterministic poses to Nav2, and reported correlated results.
 
-This history records what was achieved while leaving runtime sessions,
-interaction, behavior execution, escort, language, speech, social navigation,
-and perception clearly unimplemented.
+This history records what was achieved while leaving interaction management,
+behavior execution, escort, language, speech, social navigation, and real
+perception clearly unimplemented.
 
 ## Revised Roadmap
 
@@ -160,8 +170,8 @@ and perception clearly unimplemented.
 | --- | --- | --- |
 | 0 | **Complete:** repository and documentation cleanup | Source-backed status and coherent architecture/roadmap. |
 | 1 | **Complete:** minimal contracts and state models | Focused tests cover request validation, optional session correlation, simple session state, and deterministic reasoning. |
-| 2 | **Next:** Visitor Session Manager and simulated person IDs | Gazebo identity is converted to `PersonTrack`, then to `Session`, without leaking actor IDs downstream. |
-| 3 | Reasoner -> Interaction Manager -> Behavior Executive -> Nav2 | A validated structured request produces one verified semantic goal and a reported navigation result. |
+| 2 | **Complete:** minimal visitor session and simulated identity | Gazebo identity is converted to `PersonTrack`, then to `Session`, without leaking actor IDs downstream. |
+| 3 | **Prototype:** filtered reasoner -> Nav2 adapter | A prepared request produces a correlated Nav2 goal/result; runtime acceptance and pose calibration remain. |
 | 4 | Basic escort state machine with simulated ground truth | Following, stopped, lagging, lost, recovered, and arrived transitions are reproducible. |
 | 5 | Generic people publisher/tracking abstraction | Escort/session code runs unchanged against the generic interface. |
 | 6 | Human-aware/social Nav2 controller | Human-aware variant runs beside an unchanged DWB baseline and can be compared. |
@@ -174,14 +184,8 @@ and perception clearly unimplemented.
 
 ## Recommended Next Implementation Task
 
-Phase 2 should implement only the Visitor Session Manager and a lightweight
-simulation identity adapter against the Phase 1 contracts. It should:
-
-- translate Gazebo identity to a plain `PersonTrack.track_id` at the adapter boundary;
-- create and transition `SessionState` records;
-- keep Gazebo identifiers out of all downstream state;
-- test creation, track/session association, state changes, closure, and invalid
-  reuse.
-
-It must not add interaction, behavior execution, escort, semantic navigation,
-language, speech, or vision features.
+Before Phase 4, run the documented Phase 3 simulator acceptance workflow and
+calibrate every semantic pose used by the final demo with `capture_nav_pose`.
+Keep plain recommendations non-moving and record accepted, succeeded, aborted,
+or canceled outcomes. Interaction management, behavior execution, escort,
+social navigation, language, speech, and vision remain future work.

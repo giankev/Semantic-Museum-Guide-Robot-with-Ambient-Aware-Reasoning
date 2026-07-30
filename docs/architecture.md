@@ -12,8 +12,8 @@ Status labels used below:
 
 ## Current Architecture
 
-The current repository correlates one simulated visitor session with the
-structured reasoning path. Navigation remains separate.
+The current repository correlates one simulated visitor session through
+structured reasoning and a focused semantic-navigation prototype.
 
 ```text
 visitor_marker -> Gazebo model states -> visitor_session_node
@@ -30,12 +30,14 @@ semantic_map.yaml --------------------+           |
                            session_id + selected_room +
                            skill + nav_pose + explanation
                                       |
-                                no consumer
-
-museum.world -> TIAGo -> scan/odom/TF -> AMCL + Nav2 -> DWB -> TIAGo base
-                                             ^
-                                             |
-                              RViz/manual action/send_nav_goal
+                                      v
+                         semantic_navigation_node
+                                      |
+                                      v
+                   Nav2 NavigateToPose -> DWB -> TIAGo base
+                                      |
+                                      v
+                         /museum/navigation_result
 ```
 
 Important current properties:
@@ -44,7 +46,9 @@ Important current properties:
 - `semantic_graph_node` also owns a separate in-memory graph when launched. The two processes do not share state.
 - `ambient_reasoning.launch.py` demonstrates ambient updates with `semantic_graph_node`.
 - `reasoning_demo.launch.py` demonstrates ambient updates and requests with `reasoning_node`.
-- `/museum/assistant_response` has no implemented interaction, behavior, escort, or navigation consumer.
+- `semantic_navigation_node` is the only navigation consumer of
+  `/museum/assistant_response`; Interaction Manager, Behavior Executive, and
+  escort remain unimplemented.
 - `send_nav_goal` accepts raw coordinates from a developer CLI. It is a test helper, not a semantic navigation executor.
 - Nav2 uses the standard DWB local planner. There is no people layer or human-aware controller.
 - The visual visitor, guide, and staff models in `museum.world` remain static.
@@ -111,7 +115,7 @@ The arrows show the main control flow, not a requirement that every module be a 
 | Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Planned | No manager, dialogue policy, or command contract exists. |
 | Behavior Execution | Validate and dispatch only whitelisted robot skills. | Planned | The reasoner has a small `Skill` enum for its current outputs; no behavior command or executive exists. |
 | Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Planned | No escort state model or supervisor exists. |
-| Navigation | Localize, plan, control, and execute a verified goal. | Geometric baseline implemented; semantic execution planned | Saved map, AMCL, Nav2, DWB, and a manual helper exist; no semantic executor or navigation-result contract exists. |
+| Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution prototype implemented | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose` and publishes JSON results; runtime calibration and acceptance remain. |
 
 ## Semantic World Model
 
@@ -195,10 +199,48 @@ Phase 1 implements and tests these ROS-independent contracts in
 | `ReasoningDecision` | current response status, semantic room, skill, reason, compatibility fields | Reasoner | Current JSON response topic |
 | `Skill` | `navigate_to` or `ask_clarification` | Reasoner | Current JSON response topic |
 
-The current `nav_pose` in `ReasoningDecision` is retained for compatibility and
-debugging. A future semantic navigation layer should resolve the selected
-semantic location to a verified pose; no contract for that layer is implemented
-yet.
+The Phase 3 adapter temporarily uses the current `nav_pose` in
+`ReasoningDecision`, which is produced deterministically from the selected
+semantic room. These poses must be verified against the occupancy map. A later
+architecture may resolve semantic locations at the navigation boundary, but no
+additional graph or navigation-result contract is introduced in Phase 3.
+
+## Phase 3 Semantic Navigation Prototype
+
+`semantic_navigation_node` subscribes to `/museum/assistant_response`. It sends
+a `map`-frame `NavigateToPose` goal only when all three conditions match:
+
+```text
+status = success
+skill = navigate_to
+intent = recommend_and_prepare_navigation
+```
+
+Plain `recommend` decisions, no-match results, clarification requests, and
+malformed poses do not move TIAGo. The adapter validates finite numeric `x`,
+`y`, and `yaw`, then uses the deterministic pose already present in the
+reasoning response.
+
+Only one goal may be active. A boolean is set before contacting Nav2 and
+cleared after server failure, rejection, success, abort, or cancellation.
+Additional decisions are ignored while it is set; there is no queue,
+preemption, recovery policy, Interaction Manager, or Behavior Executive.
+
+`/museum/navigation_result` is JSON over `std_msgs/String`. It carries available
+`request_id`, `session_id`, and `selected_room` correlation fields plus one of:
+
+```text
+accepted
+succeeded
+aborted
+canceled
+rejected
+server_unavailable
+```
+
+Nav2 retains responsibility for its standard planning and recovery behavior.
+The semantic poses remain a calibration dependency, so this layer is classified
+as a prototype until the complete simulator acceptance workflow succeeds.
 
 ## Social Escort Versus Social Navigation
 
@@ -238,12 +280,13 @@ It belongs in or beside the Nav2 local-planning layer. DWB remains the baseline 
 ## Phase Boundaries
 
 The development sequence is intentionally incremental. Phases 1 and 2 are
-complete; Phase 3 is next:
+complete; Phase 3 is implemented as a prototype pending runtime acceptance:
 
 1. **Complete:** define interfaces and state ownership.
 2. **Complete:** add one in-memory session using simulated identity ground truth.
-3. **Next:** connect reasoner, interaction, behavior, and Nav2.
-4. Add escort supervision with simulation ground truth.
+3. **Prototype:** connect explicitly prepared deterministic decisions directly
+   to Nav2 without introducing future task-management layers.
+4. **Not started:** add escort supervision with simulation ground truth.
 5. Generalize people tracking.
 6. Add human-aware local navigation.
 7. Add natural-language parsing.

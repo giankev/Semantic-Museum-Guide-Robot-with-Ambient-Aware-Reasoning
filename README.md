@@ -21,6 +21,8 @@ The repository currently contains a working simulation and reasoning baseline. I
   structured requests, reasoning decisions, and the reasoner's current skills.
 - Minimal Phase 2 simulation identity and in-memory visitor session published
   on `/museum/session_state`.
+- Focused Phase 3 semantic-navigation prototype that sends explicitly prepared
+  successful decisions to Nav2 and publishes correlated navigation results.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
@@ -30,7 +32,10 @@ The validated runtime baseline is documented in [the user manual](docs/user_manu
 ### Partially Implemented
 
 - **Natural-language interaction:** `/museum/user_request` accepts validated JSON, but there is no natural-language parser, LLM, speech-to-text, or dialogue input.
-- **Semantic-to-navigation bridge:** reasoning produces `selected_room`, `skill`, and `nav_pose`, but no interaction manager or behavior executive consumes the response and sends a Nav2 goal.
+- **Semantic-to-navigation bridge:** `semantic_navigation_node` consumes only
+  successful `recommend_and_prepare_navigation` decisions and sends their
+  deterministic `nav_pose` to Nav2. Full simulator acceptance and pose
+  calibration are still required.
 - **Ambient world state:** updates are scripted and in memory. There is no shared persistent world-model service or task-time re-reasoning policy.
 - **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
 - **Roles and people:** roles are represented semantically. The static
@@ -40,33 +45,35 @@ The validated runtime baseline is documented in [the user manual](docs/user_manu
 - **Sessions and downstream modules:** one minimal in-memory session is created
   for the static simulated visitor. There are no preferences, history, tasks,
   persistence, Interaction Manager, Behavior Executive, Escort Supervisor, or
-  semantic Nav2 executor.
+  task framework.
 
 ### Next Milestone
 
-Phase 3 is to connect deterministic reasoning to future interaction, behavior,
-and semantic Nav2 execution. Those runtime modules and their contracts have not
-been implemented.
+Run the Phase 3 simulator acceptance workflow and calibrate every semantic pose
+used in the final demo. Phase 4 escort work, Interaction Manager, Behavior
+Executive, and social navigation have not started.
 
 ### Future Work
 
-1. Connect deterministic reasoning to an Interaction Manager, Behavior Executive, and Nav2.
-2. Add a social Escort Supervisor above Nav2 using simulated visitor ground truth.
-3. Introduce a generic people publisher/tracking abstraction.
-4. Add human-aware local navigation while preserving DWB as the comparison baseline.
-5. Add deterministic natural-language parsing with a controlled LLM fallback.
-6. Add faster-whisper speech-to-text.
-7. Add grounded response generation and text-to-speech.
-8. Re-reason when relevant ambient state changes during an active task.
-9. Optionally add lightweight role/context perception without identifying people.
-10. Evaluate baseline, semantic/ambient-aware, and social variants.
+1. Validate and calibrate the Phase 3 semantic-navigation demo.
+2. Introduce Interaction Manager and Behavior Executive only when their
+   runtime policies are required.
+3. Add a social Escort Supervisor above Nav2 using simulated visitor ground truth.
+4. Introduce a generic people publisher/tracking abstraction.
+5. Add human-aware local navigation while preserving DWB as the comparison baseline.
+6. Add deterministic natural-language parsing with a controlled LLM fallback.
+7. Add faster-whisper speech-to-text.
+8. Add grounded response generation and text-to-speech.
+9. Re-reason when relevant ambient state changes during an active task.
+10. Optionally add lightweight role/context perception without identifying people.
+11. Evaluate baseline, semantic/ambient-aware, and social variants.
 
 See [Architecture](docs/architecture.md) for module boundaries and [Repository Audit](docs/repository_audit.md) for the evidence behind these classifications.
 
 ## Current Runtime Shape
 
-The simulated session is correlated with structured reasoning requests, but
-reasoning and navigation remain separate:
+The simulated session is correlated through reasoning and the focused semantic
+navigation adapter:
 
 ```text
 visitor_marker -> /gazebo/model_states -> visitor_session_node
@@ -74,12 +81,11 @@ visitor_marker -> /gazebo/model_states -> visitor_session_node
                                       -> scripted structured request
                                       -> deterministic reasoning
                                       -> /museum/assistant_response
-                                         (same session_id; no consumer)
-
-Manual coordinate or RViz goal
-              -> Nav2 + AMCL + saved map
-                 -> DWB local controller
-                    -> TIAGo
+                                      -> semantic_navigation_node
+                                      -> NavigateToPose
+                                      -> Nav2 + AMCL + saved map
+                                      -> DWB -> TIAGo
+                                      -> /museum/navigation_result
 ```
 
 The target architecture adds perception, sessions, language, interaction management, behavior execution, and escort supervision between the human and Nav2. Social escort and social navigation are deliberately separate:
@@ -101,6 +107,8 @@ exchange/museum_ws/src/museum_assistant/
   maps/                   # Saved occupancy map
   museum_assistant/       # Python nodes and deterministic logic
     contracts.py          # Minimal ROS-independent Phase 1 data models
+    semantic_navigation.py
+    semantic_navigation_node.py
     visitor_session.py    # Minimal in-memory Phase 2 session logic
     visitor_session_node.py
   test/                   # Contract, session, and reasoning tests
@@ -210,6 +218,101 @@ ros2 topic pub --once /museum/user_request std_msgs/msg/String \
 The response contains the same `"session_id": "session_1"`. Alternatively,
 `reasoning_demo.launch.py` starts the existing request simulator, which now
 uses the active session ID received from `/museum/session_state`.
+
+## Phase 3 Semantic Navigation Demo
+
+Do not use `reasoning_demo.launch.py` for this workflow because it starts the
+periodic request simulator. Run one explicit navigation request instead.
+
+Build the package, then use separate sourced container terminals.
+
+Terminal 1 — launch TIAGo in the museum:
+
+```bash
+cd /root/exchange/exchange/museum_ws
+source install/setup.bash
+ros2 launch museum_assistant tiago_museum_world.launch.py
+```
+
+Terminal 2 — launch known-map Nav2:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 launch museum_assistant museum_navigation.launch.py
+```
+
+Terminal 3 — verify Nav2 lifecycle nodes:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+for node in map_server amcl planner_server controller_server bt_navigator behavior_server; do
+  ros2 lifecycle get "/$node"
+done
+```
+
+All listed nodes must report `active [3]`. Set or confirm TIAGo's initial pose
+in RViz before sending the navigation request. For the documented entrance
+estimate:
+
+```bash
+ros2 topic pub --once /initialpose \
+  geometry_msgs/msg/PoseWithCovarianceStamped \
+  "{header: {frame_id: map}, pose: {pose: {position: {x: 0.0, y: 0.0, z: 0.0}, orientation: {z: 0.0, w: 1.0}}, covariance: [0.25, 0, 0, 0, 0, 0, 0, 0.25, 0, 0, 0, 0, 0, 0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.068]}}"
+```
+
+Terminal 4 — launch only the reasoner:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 run museum_assistant reasoning_node
+```
+
+Terminal 5 — launch the Phase 2 visitor session:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 launch museum_assistant visitor_session.launch.py
+```
+
+Terminal 6 — launch only the semantic navigation adapter:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 launch museum_assistant semantic_navigation.launch.py
+```
+
+Terminal 7 — observe reasoning decisions:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 topic echo /museum/assistant_response
+```
+
+Terminal 8 — observe navigation acceptance and completion:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 topic echo /museum/navigation_result
+```
+
+Terminal 9 — send one correlated request for the Impressionism Hall:
+
+```bash
+source /root/exchange/exchange/museum_ws/install/setup.bash
+ros2 topic pub --once /museum/user_request std_msgs/msg/String \
+  "{data: '{\"request_id\":\"nav_demo_001\",\"session_id\":\"session_1\",\"intent\":\"recommend_and_prepare_navigation\",\"constraints\":{\"style\":\"impressionism\"}}'}"
+```
+
+The assistant response should select `impressionism_hall`. The navigation
+result first reports `accepted`, followed by `succeeded`, `aborted`, or
+`canceled`.
+
+Plain `recommend` requests never move the robot. Before the final demo, verify
+the selected room pose against free space in the saved occupancy map. Use:
+
+```bash
+ros2 run museum_assistant capture_nav_pose --name impressionism_hall
+```
 
 Launch known-map Nav2 separately:
 

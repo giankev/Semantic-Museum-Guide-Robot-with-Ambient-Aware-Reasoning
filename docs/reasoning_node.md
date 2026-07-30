@@ -1,6 +1,8 @@
 # Deterministic Structured-Request Reasoning
 
-This page records the deterministic structured-request milestone. The current repository also has a separate Nav2 baseline, but reasoning is still not connected to robot control.
+This page records the deterministic structured-request milestone. Phase 3 adds
+a separate focused consumer that can send explicitly prepared successful
+decisions to the existing Nav2 baseline.
 
 `museum_assistant/contracts.py` now defines the ROS-independent
 `StructuredRequest` and `ReasoningDecision` boundaries used by the deterministic
@@ -63,12 +65,18 @@ Inspect responses:
 ros2 topic echo /museum/assistant_response
 ```
 
-This interface can later receive output from a deterministic natural-language parser or controlled LLM fallback. It returns an abstract `navigate_to` skill and semantic-map `nav_pose`, but `/museum/assistant_response` has no Interaction Manager, Behavior Executive, escort, or navigation consumer. The current request simulator is not natural-language interaction.
+This interface can later receive output from a deterministic natural-language
+parser or controlled LLM fallback. It returns an abstract `navigate_to` skill
+and semantic-map `nav_pose`. `semantic_navigation_node` consumes only successful
+`recommend_and_prepare_navigation` responses; no Interaction Manager, Behavior
+Executive, or escort runtime exists. The current request simulator is not
+natural-language interaction.
 
-The semantic room ID is the authoritative decision target. `nav_pose` remains
-in the response only for compatibility and debugging. A future downstream
-interface should use semantic targets rather than accept raw coordinates; that
-interface has not been implemented.
+The semantic room ID remains the authoritative decision target. During the
+minimal Phase 3 prototype, the navigation adapter uses the deterministic
+`nav_pose` already copied from the semantic map. It never accepts coordinates
+from the user request, and every demo pose still requires occupancy-map
+calibration.
 
 ## Phase 1 Tests
 

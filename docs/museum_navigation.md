@@ -7,7 +7,8 @@ exchange/museum_ws/src/museum_assistant/maps/museum_map.yaml
 exchange/museum_ws/src/museum_assistant/maps/museum_map.pgm
 ```
 
-Semantic reasoning is not connected to Nav2 yet. Goals are still sent manually.
+Phase 3 adds a focused semantic-navigation prototype alongside the existing
+manual goal tools.
 
 ## Current Status
 
@@ -29,6 +30,12 @@ The BT XML path is fixed to:
 ```
 
 `/navigate_to_pose` accepts goals, and Nav2 velocity commands reach TIAGo. Some map coordinates still abort during planning or recovery, so treat this as a working but not fully tuned Nav2 baseline.
+
+`semantic_navigation_node` subscribes to `/museum/assistant_response` and sends
+a goal only for a successful `recommend_and_prepare_navigation` decision using
+the `navigate_to` skill. It publishes correlated JSON status updates on
+`/museum/navigation_result`. Full runtime acceptance of that new path is still
+pending.
 
 ## Launch TIAGo
 
@@ -196,19 +203,24 @@ The helper prints whether the goal was accepted, succeeded, aborted, or canceled
 
 ## Current Limitations
 
-- Semantic reasoning is not connected to Nav2 yet.
-- Goals are sent manually through the Nav2 action interface or helper CLI.
-- No LLM, vision, or autonomous semantic navigation is included.
+- Semantic execution exists as a focused prototype but has not completed the
+  full simulator acceptance workflow.
+- Manual goals remain available through the Nav2 action interface and helper
+  CLI.
+- No Interaction Manager, Behavior Executive, escort, LLM, or vision is
+  included.
 - Navigation is functional but still unstable for some goals and map regions.
+- Every semantic room pose still needs free-space calibration.
 
 ## Architectural Next Steps
 
-Do not connect `/museum/assistant_response` directly to Nav2 as an isolated shortcut. The revised sequence is:
+Phase 3 intentionally uses one direct, tightly filtered adapter instead of
+introducing unused task-management layers. The next work is to:
 
-1. define session, request, decision, behavior, and navigation-result contracts;
-2. add transient person-to-session identity handling;
-3. connect deterministic reasoning through an Interaction Manager and whitelist-enforcing Behavior Executive;
-4. resolve the selected semantic location to a calibrated pose at the navigation boundary;
-5. add escort supervision above Nav2 in a later phase.
+1. validate the complete reasoning-to-Nav2 path in simulation;
+2. calibrate each final-demo semantic pose with `capture_nav_pose`;
+3. keep plain recommendations non-moving;
+4. leave Interaction Manager, Behavior Executive, and escort policies for
+   milestones that actually require them.
 
 See [Architecture](architecture.md) and [Repository Audit](repository_audit.md).
