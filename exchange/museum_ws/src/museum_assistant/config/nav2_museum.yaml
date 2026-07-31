@@ -16,8 +16,8 @@ amcl:
     max_beams: 60
     min_particles: 500
     max_particles: 2000
-    update_min_d: 0.15
-    update_min_a: 0.15
+    update_min_d: 0.05
+    update_min_a: 0.05
     resample_interval: 1
     set_initial_pose: true
     initial_pose:
@@ -61,7 +61,7 @@ controller_server:
       min_vel_y: 0.0
       max_vel_x: 0.35
       max_vel_y: 0.0
-      max_vel_theta: 0.8
+      max_vel_theta: 0.3
       min_speed_xy: 0.0
       max_speed_xy: 0.35
       min_speed_theta: 0.0
@@ -126,7 +126,7 @@ local_costmap:
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         cost_scaling_factor: 5.0
-        inflation_radius: 0.25
+        inflation_radius: 0.40
       always_send_full_costmap: true
 
 global_costmap:
@@ -148,7 +148,7 @@ global_costmap:
       inflation_layer:
         plugin: nav2_costmap_2d::InflationLayer
         cost_scaling_factor: 5.0
-        inflation_radius: 0.30
+        inflation_radius: 0.40
       always_send_full_costmap: true
 
 planner_server:
@@ -191,7 +191,7 @@ behavior_server:
     robot_base_frame: base_footprint
     transform_tolerance: 0.5
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.8
+    max_rotational_vel: 0.3
     min_rotational_vel: 0.2
     rotational_acc_lim: 1.2
 
@@ -268,8 +268,8 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: OPEN_LOOP
-    max_velocity: [0.35, 0.0, 0.8]
-    min_velocity: [-0.15, 0.0, -0.8]
+    max_velocity: [0.35, 0.0, 0.3]
+    min_velocity: [-0.15, 0.0, -0.3]
     max_accel: [0.6, 0.0, 1.2]
     max_decel: [-0.6, 0.0, -1.2]
     odom_topic: /mobile_base_controller/odom
