@@ -4,7 +4,8 @@
 
 The Phase 0 audit was performed on branch `setup-tiago-museum` at commit
 `7858233`. Later phases extend that audited baseline with minimal contracts, a
-simulated visitor session, and a focused semantic-navigation prototype. The
+simulated visitor session, an accepted semantic-navigation chain, and a minimal
+simulation-ground-truth escort prototype. The
 audit reviewed:
 
 - repository history and working-tree state;
@@ -17,7 +18,10 @@ audit reviewed:
 - Docker and container launch files;
 - captured ROS 2 evidence under `docs/raw/`.
 
-The classifications below use source presence plus the validated milestones already recorded in the repository. This documentation audit did not perform a fresh Gazebo/Nav2 runtime acceptance test.
+The classifications below use source presence plus validated milestones. The
+Phase 4 update additionally verified the current Gazebo model-state interfaces,
+manual visitor repositioning, escort pause/resume, terminal loss, and joint
+arrival in the running TIAGo simulation.
 
 ## Classification
 
@@ -43,14 +47,15 @@ The classifications below use source presence plus the validated milestones alre
 
 | Capability | What exists | Missing for completion |
 | --- | --- | --- |
-| Semantic navigation execution | `semantic_navigation_node` filters executable decisions, sends `NavigateToPose`, and publishes `/museum/navigation_result`. | Full simulator acceptance, semantic-pose calibration, and repeatability evidence remain. |
+| Semantic navigation execution | `semantic_navigation_node` filters executable decisions, sends `NavigateToPose`, and publishes `/museum/navigation_result`. | The complete chain is runtime-accepted for `impressionism_hall`; other poses and repeatability evidence remain. |
+| Minimal social escort | `escort.py`, `/museum/visitor_observation`, and `/museum/escort_state` support one task with intentional Nav2 pause/resume. | Gazebo ground truth and a manually moved static marker only; no real tracking, generic people interface, or recovery from `LOST`. |
 | Visitor request interface | Strict `StructuredRequest`, optional session correlation, and scripted JSON requests. | No text parser, dialogue, general session policy, STT, or LLM fallback. |
 | Dynamic world model | Room ambient fields update in memory. | No shared authority, persistence, timestamps, provenance, visitor/session/task facts, or task-time re-reasoning. |
 | Navigation poses | Every room has a `nav_pose`; AMCL capture helper exists. | Poses are not all documented as calibrated/free-space tested. |
 | Museum topology | `connected_to` relations are stored. | No route-level semantic traversal uses them; edges are directed unless reverse relations are added. |
 | Roles | Visitor/guide/staff concepts and permissions are in YAML. | No current-speaker role, authorization enforcement, role perception, or session binding. |
-| Human representation | Static visitor/guide/staff visual models exist in Gazebo. | They are not Gazebo actors, tracked people, engagement observations, or escort targets. |
-| Navigation reliability | Nav2 activates and accepts goals. | Tuning, calibrated semantic goals, repeatability metrics, and failure handling remain incomplete. |
+| Human representation | The static visitor supplies simulation-ground-truth presence and robot distance for escort tests. | It is not a Gazebo actor, tracked person, engagement observation, or real perception output. |
+| Navigation reliability | Nav2 activates and the accepted Impressionism goal succeeds. | Remaining semantic goals, repeatability metrics, and broader failure evidence remain incomplete. |
 
 ### Documented Or Planned Only
 
@@ -63,7 +68,6 @@ There is no runtime implementation for:
 - natural-language parsing or LLM fallback;
 - Interaction Manager;
 - Behavior Executive;
-- Social Escort Supervisor;
 - people publisher/tracker abstraction;
 - human-aware/social local navigation;
 - grounded answer generation or TTS;
@@ -104,8 +108,8 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 | `semantic_graph.launch.py` | Starts the graph demo node. | No ambient simulator or reasoning request interface. |
 | `ambient_reasoning.launch.py` | Starts graph demo plus scripted ambient updates. | No request reasoning or Nav2. |
 | `reasoning_demo.launch.py` | Starts deterministic reasoner, ambient simulator, and request simulator. | No interaction manager or navigation execution. |
-| `visitor_session.launch.py` | Starts the single simulated visitor-session node. | No reasoning, navigation, or real perception. |
-| `semantic_navigation.launch.py` | Starts the filtered reasoning-to-Nav2 adapter. | No Nav2 bringup, reasoner, task manager, or escort. |
+| `visitor_session.launch.py` | Starts the simulated visitor-session and public distance-observation adapter. | No reasoning, navigation, generic people tracking, or real perception. |
+| `semantic_navigation.launch.py` | Starts the filtered reasoning-to-Nav2 adapter with minimal escort state logic. | No Nav2 bringup, reasoner, task manager, Behavior Executive, or social navigation. |
 | `museum_world.launch.py` | Opens the museum world without TIAGo. | No robot, SLAM, or Nav2. |
 | `tiago_museum_world.launch.py` | Includes the TIAGo Gazebo launch with the museum world. | No SLAM or Nav2 in that launch. |
 | `museum_slam.launch.py` | Starts async SLAM Toolbox with `/scan_raw` remapping. | No robot/world launch and no map saving automation. |
@@ -114,7 +118,7 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 ### Configuration And Assets
 
 - `setup.py` installs all current YAML, launch, map, and world assets.
-- The saved PGM is a 253 by 183 occupancy image referenced by `museum_map.yaml`.
+- The saved PGM is a 300 by 220 occupancy image referenced by `museum_map.yaml`.
 - `nav2_museum.yaml` uses AMCL, NavFn, DWB, standard recovery behaviors, and the saved map launch.
 - `semantic_map.yaml` contains seven rooms, five artworks, six simulated sensors, three roles, and semantic relations.
 - Semantic room poses are copied directly into reasoning responses; their calibration status is not encoded.
@@ -136,8 +140,8 @@ The package manifest already declared the Python, message, and Nav2 action depen
 | Reasoning | No session-aware constraints, active-task re-reasoning, or downstream orchestration. |
 | Interaction | The manager, dialogue policy, and command contract are planned. |
 | Behavior | The executive and its command contract are planned. |
-| Escort | The state model and social task-supervision runtime are planned. |
-| Navigation | A focused semantic adapter exists, but runtime acceptance, calibrated goals, and human-aware planning remain. |
+| Escort | One static simulated visitor and one task are supported; no general recovery, moving visitor, or real perception exists. |
+| Navigation | The semantic adapter and accepted Impressionism goal work; remaining semantic poses and human-aware planning are separate work. |
 | Evaluation | No repeatable scenarios or metrics comparing variants. |
 
 ## Coherent Milestone History
@@ -159,10 +163,13 @@ The repository history can be retained without using milestone numbers that conf
     one stable track and in-memory session.
 11. **Semantic navigation prototype:** filtered explicitly prepared decisions,
     sent their deterministic poses to Nav2, and reported correlated results.
+12. **Minimal simulated escort:** added a public visitor-distance observation,
+    four-state escort logic, intentional Nav2 pause/resume, terminal loss, and
+    joint robot-plus-visitor arrival.
 
 This history records what was achieved while leaving interaction management,
-behavior execution, escort, language, speech, social navigation, and real
-perception clearly unimplemented.
+behavior execution, generic people tracking, language, speech, social
+navigation, and real perception clearly unimplemented.
 
 ## Revised Roadmap
 
@@ -171,8 +178,8 @@ perception clearly unimplemented.
 | 0 | **Complete:** repository and documentation cleanup | Source-backed status and coherent architecture/roadmap. |
 | 1 | **Complete:** minimal contracts and state models | Focused tests cover request validation, optional session correlation, simple session state, and deterministic reasoning. |
 | 2 | **Complete:** minimal visitor session and simulated identity | Gazebo identity is converted to `PersonTrack`, then to `Session`, without leaking actor IDs downstream. |
-| 3 | **Prototype:** filtered reasoner -> Nav2 adapter | A prepared request produces a correlated Nav2 goal/result; runtime acceptance and pose calibration remain. |
-| 4 | Basic escort state machine with simulated ground truth | Following, stopped, lagging, lost, recovered, and arrived transitions are reproducible. |
+| 3 | **Complete:** filtered reasoner -> Nav2 adapter | The prepared Impressionism request produces one correlated successful Nav2 goal; plain recommendations remain non-moving. |
+| 4 | **Prototype implemented:** basic escort with simulated ground truth | Escort, wait/cancel, recover/resend, lost/cancel, and joint arrival are reproducible with the static marker. |
 | 5 | Generic people publisher/tracking abstraction | Escort/session code runs unchanged against the generic interface. |
 | 6 | Human-aware/social Nav2 controller | Human-aware variant runs beside an unchanged DWB baseline and can be compared. |
 | 7 | Deterministic language parser plus LLM fallback | Text becomes schema-valid JSON; invalid/unsafe model output is rejected. |
@@ -182,10 +189,10 @@ perception clearly unimplemented.
 | 11 | Optional lightweight perception | Role/context cues are inferred without personal identity recognition. |
 | 12 | Experimental evaluation | Repeatable metrics compare baseline and semantic/social variants. |
 
-## Recommended Next Implementation Task
+## Current Gate
 
-Before Phase 4, run the documented Phase 3 simulator acceptance workflow and
-calibrate every semantic pose used by the final demo with `capture_nav_pose`.
-Keep plain recommendations non-moving and record accepted, succeeded, aborted,
-or canceled outcomes. Interaction management, behavior execution, escort,
-social navigation, language, speech, and vision remain future work.
+Phase 4 is implemented only at the simulator-ground-truth prototype boundary.
+The exact manual acceptance procedure is documented in `social_escort.md`.
+Remaining semantic poses can be calibrated independently; generic people
+tracking, Interaction Management, Behavior Execution, social navigation,
+language, speech, and vision remain future work.

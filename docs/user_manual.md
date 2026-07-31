@@ -2,7 +2,13 @@
 
 ## Short Project Overview
 
-This project integrates a TIAGo robot in Gazebo with a custom museum world, semantic map and deterministic reasoning, simulated ambient sensors, SLAM mapping, and Nav2 known-map navigation. The current system supports semantic and ambient-aware demos, map creation, and manual Nav2 goal testing. It does not yet connect a visitor session and interaction task to autonomous navigation. See [Architecture](architecture.md) for the complete boundary between implemented and planned modules.
+This project integrates a TIAGo robot in Gazebo with a custom museum world,
+semantic map and deterministic reasoning, simulated ambient sensors, SLAM
+mapping, and Nav2 known-map navigation. The current system includes a validated
+structured-request-to-Nav2 chain and minimal simulator-ground-truth escort
+supervision for one static visitor. It does not include real person perception
+or social navigation. See [Architecture](architecture.md) for the boundary
+between implemented and planned modules.
 
 ## Prerequisites
 
@@ -251,7 +257,53 @@ The command reads `/amcl_pose` and prints a YAML snippet. Review the output, the
 
 ## Semantic Goal Execution
 
-The current package has no named-goal resolver or semantic navigation executor. Until the Phase 3 Behavior/Navigation adapter exists, use `capture_nav_pose` and manually review poses before adding them to configuration. The future adapter should accept a semantic location ID, resolve it to a verified configured pose, and then call Nav2; it should not accept coordinates from natural-language or LLM output.
+The Phase 3 semantic adapter consumes only successful
+`recommend_and_prepare_navigation` decisions with the `navigate_to` skill. The
+reasoner supplies the configured semantic `nav_pose`; natural-language or LLM
+output never supplies raw coordinates.
+
+Launch the required processes in separate sourced terminals:
+
+```bash
+ros2 launch museum_assistant tiago_museum_world.launch.py
+ros2 launch museum_assistant museum_navigation.launch.py
+ros2 launch museum_assistant visitor_session.launch.py
+ros2 run museum_assistant reasoning_node
+ros2 launch museum_assistant semantic_navigation.launch.py
+```
+
+Observe the correlated results:
+
+```bash
+ros2 topic echo /museum/navigation_result
+ros2 topic echo /museum/escort_state
+```
+
+Send an executable request:
+
+```bash
+ros2 topic pub --once /museum/user_request std_msgs/msg/String \
+  "{data: '{\"request_id\":\"museum_demo_001\",\"session_id\":\"session_1\",\"intent\":\"recommend_and_prepare_navigation\",\"constraints\":{\"style\":\"impressionism\"}}'}"
+```
+
+The complete Phase 3 chain is runtime-accepted for `impressionism_hall` at
+`(5.0, 1.5)`. A plain `recommend` request remains non-moving.
+
+## Phase 4 Manual Escort Demo
+
+`visitor_session_node` publishes one Gazebo-ground-truth planar observation on
+`/museum/visitor_observation`. `semantic_navigation_node` uses it to pause and
+resume its own Nav2 goal and publishes `ESCORTING`, `WAITING`, `LOST`, or
+`ARRIVED` on `/museum/escort_state`.
+
+The visitor is still a static marker and must be repositioned through the
+verified `/gazebo/set_entity_state` service. The exact pause, resume, lost, and
+joint-arrival commands are documented in
+[Phase 4 Social Escort Supervision](social_escort.md).
+
+Nav2 `succeeded` only means the robot reached the destination. Phase 4 task
+success requires `/museum/escort_state` to report `arrived` after both robot
+and visitor are within the configured arrival condition.
 
 ## Useful Debug Commands
 
@@ -321,20 +373,27 @@ killall gzserver gzclient gazebo 2>/dev/null || true
 
 ## Current Limitations
 
-- Nav2 known-map navigation works but may still need tuning.
+- The accepted Impressionism semantic goal works, but not every configured room
+  pose has completed runtime acceptance.
 - Not all arbitrary map coordinates are valid navigation goals.
-- Semantic reasoning is not connected to Nav2; `/museum/assistant_response` currently has no behavior or navigation consumer.
+- Escort input is Gazebo ground truth for one manually moved static marker.
+- `LOST` has no automatic or dialogue recovery.
+- DWB is unchanged; social navigation and people-aware costmaps are not
+  implemented.
 - The LLM parser is future work.
-- Person tracking, visitor sessions, interaction management, escort, social navigation, speech, and role-aware perception are future work.
+- Real person tracking, general session management, interaction management,
+  speech, and role-aware perception are future work.
 
 ## Final Demo Sequence
 
 Suggested order:
 
 1. Launch TIAGo in the museum world.
-2. Show a semantic query with `museum_query`.
-3. Show ambient reasoning with `ambient_reasoning.launch.py`.
-4. Launch Nav2 with `museum_navigation.launch.py`.
-5. Send a calibrated coordinate goal with `send_nav_goal`; semantic/named execution remains a Phase 3 feature.
-6. Show TIAGo moving in Gazebo.
-7. Explain current limitations and the planned session-aware interaction/behavior connection to Nav2.
+2. Launch Nav2, visitor session, reasoner, and semantic navigation.
+3. Send the structured Impressionism request and show TIAGo moving.
+4. Leave the visitor behind until `waiting` cancels Nav2.
+5. Move the marker near TIAGo and show `escorting` plus the resent goal.
+6. Show `navigation_result=succeeded` followed by `escort_state=arrived`.
+7. Run the separate documented `lost` episode.
+8. Explain that the marker is simulator ground truth and DWB remains the
+   non-social baseline.

@@ -7,8 +7,9 @@ exchange/museum_ws/src/museum_assistant/maps/museum_map.yaml
 exchange/museum_ws/src/museum_assistant/maps/museum_map.pgm
 ```
 
-Phase 3 adds a focused semantic-navigation prototype alongside the existing
-manual goal tools.
+Phase 3 adds the validated semantic-navigation path alongside the existing
+manual goal tools. Phase 4 keeps the same Nav2/DWB stack and adds only
+simulation-ground-truth escort supervision in the existing action owner.
 
 ## Current Status
 
@@ -29,13 +30,21 @@ The BT XML path is fixed to:
 /opt/ros/humble/share/nav2_bt_navigator/behavior_trees/navigate_to_pose_w_replanning_and_recovery.xml
 ```
 
-`/navigate_to_pose` accepts goals, and Nav2 velocity commands reach TIAGo. Some map coordinates still abort during planning or recovery, so treat this as a working but not fully tuned Nav2 baseline.
+`/navigate_to_pose` accepts goals, and Nav2 velocity commands reach TIAGo. The
+complete Phase 3 chain reached `impressionism_hall` at `(5.0, 1.5)` and passed
+its positive and non-moving negative acceptance tests. Other semantic poses
+still require individual free-space verification.
 
 `semantic_navigation_node` subscribes to `/museum/assistant_response` and sends
 a goal only for a successful `recommend_and_prepare_navigation` decision using
 the `navigate_to` skill. It publishes correlated JSON status updates on
-`/museum/navigation_result`. Full runtime acceptance of that new path is still
-pending.
+`/museum/navigation_result`.
+
+For Phase 4 the same node also subscribes to
+`/museum/visitor_observation`, publishes `/museum/escort_state`, and may
+intentionally cancel/resend its current goal when the simulated visitor lags
+and recovers. Nav2 configuration, NavFn, costmaps, and DWB are unchanged. See
+[Phase 4 Social Escort Supervision](social_escort.md).
 
 ## Launch TIAGo
 
@@ -203,24 +212,27 @@ The helper prints whether the goal was accepted, succeeded, aborted, or canceled
 
 ## Current Limitations
 
-- Semantic execution exists as a focused prototype but has not completed the
-  full simulator acceptance workflow.
+- Semantic execution passed the complete Phase 3 runtime acceptance for
+  `impressionism_hall`; the remaining room poses are not all runtime-accepted.
 - Manual goals remain available through the Nav2 action interface and helper
   CLI.
-- No Interaction Manager, Behavior Executive, escort, LLM, or vision is
-  included.
-- Navigation is functional but still unstable for some goals and map regions.
-- Every semantic room pose still needs free-space calibration.
+- Escort monitoring is a one-visitor Gazebo-ground-truth prototype with a
+  static marker moved manually.
+- No Interaction Manager, Behavior Executive, real perception, LLM, speech,
+  or vision is included.
+- DWB has no people-aware cost or social-navigation behavior.
+- Every semantic room pose other than the accepted Impressionism goal still
+  needs free-space calibration.
 
 ## Architectural Next Steps
 
-Phase 3 intentionally uses one direct, tightly filtered adapter instead of
-introducing unused task-management layers. The next work is to:
+The current system intentionally uses one direct, tightly filtered adapter
+instead of introducing unused task-management layers. Remaining work includes:
 
-1. validate the complete reasoning-to-Nav2 path in simulation;
-2. calibrate each final-demo semantic pose with `capture_nav_pose`;
-3. keep plain recommendations non-moving;
-4. leave Interaction Manager, Behavior Executive, and escort policies for
-   milestones that actually require them.
+1. calibrate each remaining final-demo semantic pose with `capture_nav_pose`;
+2. keep plain recommendations non-moving;
+3. repeat the documented manual escort scenarios where evaluation evidence is
+   required;
+4. leave generic people tracking and social navigation for later phases.
 
 See [Architecture](architecture.md) and [Repository Audit](repository_audit.md).

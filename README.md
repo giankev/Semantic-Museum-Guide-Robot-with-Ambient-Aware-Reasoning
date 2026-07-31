@@ -2,7 +2,9 @@
 
 This university HRAI project develops a TIAGo museum assistant in ROS 2 Humble and Gazebo. The robot is intended to combine a known geometric map with semantic museum knowledge, ambient context, visitor interaction state, and explainable deterministic decisions.
 
-The repository currently contains a working simulation and reasoning baseline. It does **not** yet contain an end-to-end autonomous visitor-guidance pipeline.
+The repository contains a validated semantic-navigation chain and a minimal
+simulation-ground-truth escort prototype. It is not yet a real-perception or
+social-navigation system.
 
 ## Status At A Glance
 
@@ -21,52 +23,57 @@ The repository currently contains a working simulation and reasoning baseline. I
   structured requests, reasoning decisions, and the reasoner's current skills.
 - Minimal Phase 2 simulation identity and in-memory visitor session published
   on `/museum/session_state`.
-- Focused Phase 3 semantic-navigation prototype that sends explicitly prepared
+- Focused Phase 3 semantic-navigation path that sends explicitly prepared
   successful decisions to Nav2 and publishes correlated navigation results.
+- Minimal Phase 4 visitor observation and escort supervision with
+  `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED` states.
+- Intentional Nav2 cancel/resume when the static simulated visitor lags and
+  joint robot-plus-visitor arrival as escort success.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
 
-The validated runtime baseline is documented in [the user manual](docs/user_manual.md). Nav2 is functional but still needs goal calibration and tuning for some map regions.
+The validated runtime baseline is documented in [the user manual](docs/user_manual.md).
+The Phase 4 manual procedure is in [Social Escort](docs/social_escort.md).
 
 ### Partially Implemented
 
 - **Natural-language interaction:** `/museum/user_request` accepts validated JSON, but there is no natural-language parser, LLM, speech-to-text, or dialogue input.
 - **Semantic-to-navigation bridge:** `semantic_navigation_node` consumes only
   successful `recommend_and_prepare_navigation` decisions and sends their
-  deterministic `nav_pose` to Nav2. Full simulator acceptance and pose
-  calibration are still required.
+  deterministic `nav_pose` to Nav2. The complete chain has passed runtime
+  acceptance for `impressionism_hall`; other semantic poses still require
+  individual calibration.
 - **Ambient world state:** updates are scripted and in memory. There is no shared persistent world-model service or task-time re-reasoning policy.
 - **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
 - **Roles and people:** roles are represented semantically. The static
   `visitor_marker` is detected through Gazebo ground truth for the Phase 2
   demo, but there is no real person tracking, engagement perception, or role
   perception.
-- **Sessions and downstream modules:** one minimal in-memory session is created
-  for the static simulated visitor. There are no preferences, history, tasks,
-  persistence, Interaction Manager, Behavior Executive, Escort Supervisor, or
-  task framework.
+- **Sessions and downstream modules:** one minimal in-memory session and one
+  escort task are supported for the static simulated visitor. There are no
+  preferences, history, persistence, Interaction Manager, Behavior Executive,
+  or general task framework.
 
-### Next Milestone
+### Current Milestone
 
-Run the Phase 3 simulator acceptance workflow and calibrate every semantic pose
-used in the final demo. Phase 4 escort work, Interaction Manager, Behavior
-Executive, and social navigation have not started.
+Phase 4 is limited to simulator-ground-truth escort supervision. Its manual
+pause, resume, lost, and joint-arrival procedure is documented. Generic people
+tracking and social navigation remain unimplemented.
 
 ### Future Work
 
-1. Validate and calibrate the Phase 3 semantic-navigation demo.
+1. Calibrate the remaining semantic navigation poses used by final demos.
 2. Introduce Interaction Manager and Behavior Executive only when their
    runtime policies are required.
-3. Add a social Escort Supervisor above Nav2 using simulated visitor ground truth.
-4. Introduce a generic people publisher/tracking abstraction.
-5. Add human-aware local navigation while preserving DWB as the comparison baseline.
-6. Add deterministic natural-language parsing with a controlled LLM fallback.
-7. Add faster-whisper speech-to-text.
-8. Add grounded response generation and text-to-speech.
-9. Re-reason when relevant ambient state changes during an active task.
-10. Optionally add lightweight role/context perception without identifying people.
-11. Evaluate baseline, semantic/ambient-aware, and social variants.
+3. Introduce a generic people publisher/tracking abstraction.
+4. Add human-aware local navigation while preserving DWB as the comparison baseline.
+5. Add deterministic natural-language parsing with a controlled LLM fallback.
+6. Add faster-whisper speech-to-text.
+7. Add grounded response generation and text-to-speech.
+8. Re-reason when relevant ambient state changes during an active task.
+9. Optionally add lightweight role/context perception without identifying people.
+10. Evaluate baseline, semantic/ambient-aware, and social variants.
 
 See [Architecture](docs/architecture.md) for module boundaries and [Repository Audit](docs/repository_audit.md) for the evidence behind these classifications.
 
@@ -78,17 +85,28 @@ navigation adapter:
 ```text
 visitor_marker -> /gazebo/model_states -> visitor_session_node
                                       -> /museum/session_state
+                                      -> /museum/visitor_observation
                                       -> scripted structured request
                                       -> deterministic reasoning
                                       -> /museum/assistant_response
                                       -> semantic_navigation_node
-                                      -> NavigateToPose
-                                      -> Nav2 + AMCL + saved map
-                                      -> DWB -> TIAGo
-                                      -> /museum/navigation_result
+                                           |               |
+                                           v               v
+                              /museum/escort_state    NavigateToPose
+                                                           |
+                                                           v
+                                               Nav2 + AMCL + saved map
+                                                           |
+                                                           v
+                                                    DWB -> TIAGo
+                                                           |
+                                                           v
+                                          /museum/navigation_result
 ```
 
-The target architecture adds perception, sessions, language, interaction management, behavior execution, and escort supervision between the human and Nav2. Social escort and social navigation are deliberately separate:
+The target architecture adds real perception, language, interaction
+management, and behavior execution. Social escort and social navigation remain
+deliberately separate:
 
 - **Social escort** decides whether the guidance task is succeeding socially.
 - **Social navigation** controls how the robot moves around people.
@@ -107,11 +125,12 @@ exchange/museum_ws/src/museum_assistant/
   maps/                   # Saved occupancy map
   museum_assistant/       # Python nodes and deterministic logic
     contracts.py          # Minimal ROS-independent Phase 1 data models
+    escort.py             # Minimal Phase 4 escort state machine
     semantic_navigation.py
     semantic_navigation_node.py
     visitor_session.py    # Minimal in-memory Phase 2 session logic
     visitor_session_node.py
-  test/                   # Contract, session, and reasoning tests
+  test/                   # Contract, session, escort, and reasoning tests
   worlds/                 # Lightweight Gazebo museum world
   package.xml
   setup.py

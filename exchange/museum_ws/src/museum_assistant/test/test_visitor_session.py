@@ -33,3 +33,30 @@ def test_public_session_data_does_not_expose_gazebo_model_name():
         "state": "active",
     }
     assert "visitor_marker" not in str(public_data)
+
+
+def test_present_observation_has_only_public_identity_and_distance():
+    visitor = VisitorSession("visitor_marker")
+
+    public_data = visitor.observation(
+        present=True,
+        distance_to_robot=1.8,
+    )
+
+    assert public_data == {
+        "session_id": "session_1",
+        "track_id": "visitor_1",
+        "present": True,
+        "distance_to_robot": 1.8,
+    }
+    assert "visitor_marker" not in str(public_data)
+
+
+def test_absent_observation_omits_distance():
+    visitor = VisitorSession("visitor_marker")
+
+    assert visitor.observation(present=False) == {
+        "session_id": "session_1",
+        "track_id": "visitor_1",
+        "present": False,
+    }

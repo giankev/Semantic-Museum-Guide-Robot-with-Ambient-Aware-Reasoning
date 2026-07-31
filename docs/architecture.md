@@ -13,11 +13,12 @@ Status labels used below:
 ## Current Architecture
 
 The current repository correlates one simulated visitor session through
-structured reasoning and a focused semantic-navigation prototype.
+structured reasoning, semantic navigation, and minimal escort supervision.
 
 ```text
 visitor_marker -> Gazebo model states -> visitor_session_node
                                       -> /museum/session_state
+                                      -> /museum/visitor_observation
                                       -> user_request_simulator
                                                   |
 semantic_map.yaml --------------------+           |
@@ -32,12 +33,16 @@ semantic_map.yaml --------------------+           |
                                       |
                                       v
                          semantic_navigation_node
-                                      |
-                                      v
-                   Nav2 NavigateToPose -> DWB -> TIAGo base
-                                      |
-                                      v
-                         /museum/navigation_result
+                          escort.py state logic
+                              |             |
+                              v             v
+                 /museum/escort_state   Nav2 NavigateToPose
+                                             |
+                                             v
+                                      DWB -> TIAGo base
+                                             |
+                                             v
+                                /museum/navigation_result
 ```
 
 Important current properties:
@@ -47,17 +52,22 @@ Important current properties:
 - `ambient_reasoning.launch.py` demonstrates ambient updates with `semantic_graph_node`.
 - `reasoning_demo.launch.py` demonstrates ambient updates and requests with `reasoning_node`.
 - `semantic_navigation_node` is the only navigation consumer of
-  `/museum/assistant_response`; Interaction Manager, Behavior Executive, and
-  escort remain unimplemented.
+  `/museum/assistant_response` and the only owner of the current
+  `NavigateToPose` goal. Interaction Manager and Behavior Executive remain
+  unimplemented.
 - `send_nav_goal` accepts raw coordinates from a developer CLI. It is a test helper, not a semantic navigation executor.
 - Nav2 uses the standard DWB local planner. There is no people layer or human-aware controller.
 - The visual visitor, guide, and staff models in `museum.world` remain static.
   Only `visitor_marker` is used as simulation ground truth for one session; it
   is not real person perception or tracking.
 - `visitor_session_node` keeps the Gazebo model name internal and publishes
-  only `session_id`, `track_id`, and state on `/museum/session_state`.
+  session state plus a public present/distance observation. Neither public JSON
+  topic contains Gazebo model names.
 - The Phase 2 session is minimal and in memory. It has no preferences, history,
   task state, persistence, or disappearance/re-identification behavior.
+- `escort.py` provides four states for one task. It can request an intentional
+  cancel/resend through the existing semantic-navigation node, but it does not
+  control local motion or alter DWB.
 
 ## Target Architecture
 
@@ -107,15 +117,15 @@ The arrows show the main control flow, not a requirement that every module be a 
 
 | Layer | Responsibility | Current status | Current artifact or future boundary |
 | --- | --- | --- | --- |
-| Perception | Detect/track an engaged person and publish transient robot-centric observations. | Simulation-ground-truth prototype | `visitor_session_node` observes static `visitor_marker` through Gazebo model states and maps it internally to `visitor_1`; no real perception exists. |
+| Perception | Detect/track an engaged person and publish transient robot-centric observations. | Simulation-ground-truth prototype | `visitor_session_node` observes the static visitor and TIAGo through Gazebo model states and publishes presence plus planar distance; no real perception exists. |
 | Session | Map a transient track to a visitor interaction session and own session lifecycle. | Minimal runtime implemented | One in-memory active `SessionState` named `session_1` is created and reused for `visitor_1`. |
 | Language | Convert speech/text into a validated structured request. | Contract and structured-topic prototype implemented | `StructuredRequest` validates `/museum/user_request`; no text parser, LLM, or STT exists. |
 | Semantic World Model | Represent persistent museum knowledge and dynamic contextual facts. | Implemented for museum and ambient facts; planned for people/session/task facts | `semantic_map.yaml`, `semantic_graph.py`, in-memory room updates. |
 | Reasoning | Select a destination/alternative from validated constraints and explain the choice. | Implemented deterministic baseline and typed boundary | `reasoning.py` consumes `StructuredRequest` and produces `ReasoningDecision`. |
 | Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Planned | No manager, dialogue policy, or command contract exists. |
 | Behavior Execution | Validate and dispatch only whitelisted robot skills. | Planned | The reasoner has a small `Skill` enum for its current outputs; no behavior command or executive exists. |
-| Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Planned | No escort state model or supervisor exists. |
-| Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution prototype implemented | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose` and publishes JSON results; runtime calibration and acceptance remain. |
+| Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Minimal simulation-ground-truth prototype | `escort.py` implements `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED`; `semantic_navigation_node` performs intentional pause/resume for one task. |
+| Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution runtime accepted for the Phase 3 goal | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose`; Nav2/AMCL/NavFn/DWB remain unchanged. |
 
 ## Semantic World Model
 
@@ -141,8 +151,8 @@ Most of this is already represented in `config/semantic_map.yaml`. The graph cur
 - escort status and relevant interaction facts;
 - navigation/task outcomes.
 
-Ambient room state and one minimal in-memory visitor session are implemented.
-Preferences, task state, persistence, and escort facts remain planned.
+Ambient room state, one minimal in-memory visitor session, and transient escort
+state for one task are implemented. Preferences and persistence remain planned.
 
 ## Identity Abstraction
 
@@ -159,18 +169,19 @@ A future real deployment substitutes its detector/tracker on the left:
 detector/tracker -> PersonTrack ID -> Session ID
 ```
 
-In Phase 2, `visitor_session_node` is this boundary: it observes
-`visitor_marker`, maps it to `visitor_1`, and publishes the in-memory
-`session_1`. The Gazebo name is not present in `/museum/session_state`,
-structured requests, or reasoning responses. A future perception system can
-replace the simulation-ground-truth input without changing those public IDs.
+In Phases 2 and 4, `visitor_session_node` is this boundary: it observes the
+configured simulator models, maps the visitor to `visitor_1`, and publishes the
+in-memory `session_1` plus a planar distance observation. Gazebo names are not
+present in `/museum/session_state`, `/museum/visitor_observation`, structured
+requests, reasoning responses, or escort state.
 
 ## Phase 2 Simulated Visitor Session
 
 The museum world loads the standard Gazebo ROS state plugin at 1 Hz.
-`visitor_session_node` subscribes to `/gazebo/model_states` and checks only for
-the existing static `visitor_marker`. Its mapping is intentionally fixed and
-small:
+`visitor_session_node` subscribes to `/gazebo/model_states` and observes the
+existing static visitor plus TIAGo. Its simulation-only model-name parameters
+default to the runtime-verified `visitor_marker` and `tiago`; its public mapping
+remains intentionally fixed and small:
 
 ```text
 visitor_marker (node-internal) -> visitor_1 -> session_1 (active)
@@ -181,6 +192,10 @@ The session is stored only in process memory and reused on every observation.
 demo terminal can observe it. The request simulator caches the active
 `session_id` and adds it to subsequent structured requests; the unchanged
 reasoner copies it into `/museum/assistant_response`.
+
+Phase 4 also publishes `/museum/visitor_observation` with `session_id`,
+`track_id`, `present`, and `distance_to_robot` when available. This is simulator
+ground truth, not a generic tracked-person contract.
 
 The static marker is not a moving person, actor, tracker, engagement signal, or
 identity-perception system. Session closure on disappearance is deferred until
@@ -205,7 +220,7 @@ semantic room. These poses must be verified against the occupancy map. A later
 architecture may resolve semantic locations at the navigation boundary, but no
 additional graph or navigation-result contract is introduced in Phase 3.
 
-## Phase 3 Semantic Navigation Prototype
+## Phase 3 Semantic Navigation
 
 `semantic_navigation_node` subscribes to `/museum/assistant_response`. It sends
 a `map`-frame `NavigateToPose` goal only when all three conditions match:
@@ -221,10 +236,9 @@ malformed poses do not move TIAGo. The adapter validates finite numeric `x`,
 `y`, and `yaw`, then uses the deterministic pose already present in the
 reasoning response.
 
-Only one goal may be active. A boolean is set before contacting Nav2 and
-cleared after server failure, rejection, success, abort, or cancellation.
-Additional decisions are ignored while it is set; there is no queue,
-preemption, recovery policy, Interaction Manager, or Behavior Executive.
+Only one semantic escort/navigation task may be active. Additional executable
+decisions are ignored until it becomes terminal; there is no queue, priority,
+preemption system, Interaction Manager, or Behavior Executive.
 
 `/museum/navigation_result` is JSON over `std_msgs/String`. It carries available
 `request_id`, `session_id`, and `selected_room` correlation fields plus one of:
@@ -238,9 +252,30 @@ rejected
 server_unavailable
 ```
 
-Nav2 retains responsibility for its standard planning and recovery behavior.
-The semantic poses remain a calibration dependency, so this layer is classified
-as a prototype until the complete simulator acceptance workflow succeeds.
+Nav2 retains responsibility for planning, recovery, and local control. The full
+Phase 3 chain passed runtime acceptance for `impressionism_hall`; other semantic
+poses remain individual calibration dependencies.
+
+## Phase 4 Minimal Escort Prototype
+
+`escort.py` is a ROS-independent state machine with only `ESCORTING`, `WAITING`,
+`LOST`, and `ARRIVED`. Before a task starts it is inactive. The semantic
+navigation node feeds it public visitor observations and remains the sole Nav2
+action owner.
+
+When lag beyond `wait_distance` persists for `wait_delay`, the state becomes
+`WAITING` and the node intentionally cancels the active Nav2 goal. That canceled
+result remains visible on `/museum/navigation_result`, but a small internal
+pause marker keeps the semantic task alive. Recovery below `resume_distance`
+resends the same stored pose. A cancellation without that pause marker is
+terminal. `LOST` cancels if necessary and never auto-recovers.
+
+Nav2 `succeeded` does not complete the escort. The state becomes `ARRIVED` only
+when the visitor is present within `arrival_distance`. Otherwise it remains
+`WAITING` at the stopped destination until the visitor arrives, with no goal
+resend. `/museum/escort_state` publishes the current public state, correlation
+fields, and the available distance. See [Social Escort](social_escort.md) for
+the exact schemas and runtime procedure.
 
 ## Social Escort Versus Social Navigation
 
@@ -279,14 +314,15 @@ It belongs in or beside the Nav2 local-planning layer. DWB remains the baseline 
 
 ## Phase Boundaries
 
-The development sequence is intentionally incremental. Phases 1 and 2 are
-complete; Phase 3 is implemented as a prototype pending runtime acceptance:
+The development sequence is intentionally incremental. Phases 1 through 3 are
+complete and Phase 4 is the current constrained prototype:
 
 1. **Complete:** define interfaces and state ownership.
 2. **Complete:** add one in-memory session using simulated identity ground truth.
-3. **Prototype:** connect explicitly prepared deterministic decisions directly
-   to Nav2 without introducing future task-management layers.
-4. **Not started:** add escort supervision with simulation ground truth.
+3. **Complete:** connect explicitly prepared deterministic decisions directly
+   to Nav2 and pass the runtime acceptance chain.
+4. **Prototype implemented:** supervise one static simulated visitor with
+   manual, simulator-ground-truth pause/resume/lost/arrival scenarios.
 5. Generalize people tracking.
 6. Add human-aware local navigation.
 7. Add natural-language parsing.

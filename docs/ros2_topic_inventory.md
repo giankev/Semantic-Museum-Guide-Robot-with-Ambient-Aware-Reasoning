@@ -89,10 +89,14 @@ Nav2 actions such as `/navigate_to_pose` are absent from this raw capture becaus
 | --- | --- | --- |
 | `/museum/ambient_state` | `std_msgs/msg/String` containing validated JSON fields | Scripted room crowd/noise/status updates consumed into process-local semantic state. |
 | `/museum/user_request` | `std_msgs/msg/String` containing structured JSON | Manual or scripted input to the deterministic reasoner; not natural language. |
-| `/museum/assistant_response` | `std_msgs/msg/String` containing structured JSON | Reasoning result with selected room, skill, explanation, and pose; no runtime consumer yet. |
+| `/museum/assistant_response` | `std_msgs/msg/String` containing structured JSON | Reasoning result consumed by the filtered semantic-navigation/escort node. |
+| `/museum/session_state` | `std_msgs/msg/String` containing JSON | One in-memory session for the static simulated visitor. |
+| `/museum/visitor_observation` | `std_msgs/msg/String` containing JSON | Gazebo-ground-truth visitor presence and planar distance without simulator model names. |
+| `/museum/navigation_result` | `std_msgs/msg/String` containing JSON | Correlated low-level Nav2 acceptance and terminal result. |
+| `/museum/escort_state` | `std_msgs/msg/String` containing JSON | Correlated `escorting`, `waiting`, `lost`, or `arrived` state for one task. |
 | `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM output or saved-map server output. |
 | `/amcl_pose` | `geometry_msgs/msg/PoseWithCovarianceStamped` | Known-map localization and semantic pose capture. |
-| `/navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | Manual/RViz/helper goal execution; not yet driven by semantic decisions. |
+| `/navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | Manual tools or the filtered semantic-navigation node; only that node owns escort pause/resume goals. |
 
 ## Mapping to Project Architecture
 
@@ -102,19 +106,20 @@ Nav2 actions such as `/navigate_to_pose` are absent from this raw capture becaus
 | Geometric map | `/scan_raw`, `/mobile_base_controller/odom`, `/tf`, `/tf_static`, `/map`, `/amcl_pose` | Build and localize against the saved museum map. |
 | Semantic map | No direct TIAGo topic; stored in project configuration and semantic graph nodes. | Represents rooms, artworks, navigation poses, styles, constraints, and relations. |
 | Ambient sensors | `/museum/ambient_state` | Provides scripted dynamic semantic state such as crowd level, noise, and closures. |
-| Structured reasoning | `/museum/user_request`, `/museum/assistant_response` | Produces deterministic recommendations and abstract skills without robot execution. |
+| Structured reasoning | `/museum/user_request`, `/museum/assistant_response` | Produces deterministic recommendations and prepared navigation skills. |
+| Simulated escort | `/museum/session_state`, `/museum/visitor_observation`, `/museum/escort_state`, `/museum/navigation_result` | Supervises one static visitor with Gazebo ground truth; not real tracking or social navigation. |
 | Role-aware vision | `/head_front_camera/rgb/image_raw`, `/head_front_camera/depth/image_raw`, camera info topics, point clouds | Future lightweight detection of guide/staff badge or marker cues. |
-| Nav2 baseline | `/navigate_to_pose` plus controller command routing | Executes manual test goals; the semantic Behavior/Navigation adapter is planned. |
+| Nav2 baseline | `/navigate_to_pose` plus controller command routing | Executes manual goals and filtered semantic goals while preserving DWB unchanged. |
 | Evaluation/debug | `/ground_truth_odom`, `/performance_metrics`, `/diagnostics`, `/joint_states`, `/tf` | Compare estimated behavior to simulation truth and debug controller/simulation health. |
 
 ## Current Engineering Notes
 
 - **SLAM:** `museum_slam.launch.py` remaps the SLAM node's `scan` input to `/scan_raw`. Odometry and transforms remain central diagnostics.
 - **Known map:** `maps/museum_map.yaml` and `.pgm` exist and are used by `museum_navigation.launch.py`.
-- **Navigation:** Nav2/AMCL/DWB form the current baseline. Semantic reasoning is not connected to `/navigate_to_pose`.
+- **Navigation:** Nav2/AMCL/DWB form the current baseline. The accepted Phase 3 semantic decision path is connected to `/navigate_to_pose` through `semantic_navigation_node`.
 - **Localization:** `/mobile_base_controller/odom` and TF are central to localization and navigation diagnostics. The absence of plain `/odom` should be reflected in launch/config remappings.
 - **Semantic reasoning:** Museum concepts map to poses in YAML, but poses need calibration. Raw coordinates must never come from user language or an LLM.
 - **Ambient-aware behavior:** Scripted ambient updates influence subsequent recommendations. Active-task adaptation is not implemented.
-- **Identity:** A future simulation adapter must translate Gazebo identity to `PersonTrack` before session, reasoning, or escort layers see it.
+- **Identity:** The simulation adapter translates `visitor_marker` to public `visitor_1`/`session_1` identifiers and keeps Gazebo model names out of downstream JSON.
 - **Role-aware vision:** The head RGB and depth topics provide the future input path for lightweight guide/staff badge recognition. This should remain role/context recognition, not personal identity recognition.
 - **Evaluation/debug:** `/ground_truth_odom` can support simulation-only evaluation by comparing planned or estimated robot movement with Gazebo truth. It should not be used as a normal navigation dependency.
