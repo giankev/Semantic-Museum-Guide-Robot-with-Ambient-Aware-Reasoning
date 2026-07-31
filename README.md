@@ -29,12 +29,15 @@ social-navigation system.
   `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED` states.
 - Intentional Nav2 cancel/resume when the static simulated visitor lags and
   joint robot-plus-visitor arrival as escort success.
+- Opt-in bounded scripted visitor motion for a repeatable Phase 4 lag-recovery
+  demo; manual marker control remains available.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
 
 The validated runtime baseline is documented in [the user manual](docs/user_manual.md).
-The Phase 4 manual procedure is in [Social Escort](docs/social_escort.md).
+The Phase 4 automatic and manual procedures are in
+[Social Escort](docs/social_escort.md).
 
 ### Partially Implemented
 
@@ -57,9 +60,10 @@ The Phase 4 manual procedure is in [Social Escort](docs/social_escort.md).
 
 ### Current Milestone
 
-Phase 4 is limited to simulator-ground-truth escort supervision. Its manual
-pause, resume, lost, and joint-arrival procedure is documented. Generic people
-tracking and social navigation remain unimplemented.
+Phase 4 is limited to simulator-ground-truth escort supervision. Its normal
+lag-recovery sequence is reproducible with an opt-in marker script, and its
+manual pause, resume, lost, and joint-arrival procedure remains documented.
+Generic people tracking and social navigation remain unimplemented.
 
 ### Future Work
 
@@ -102,6 +106,11 @@ visitor_marker -> /gazebo/model_states -> visitor_session_node
                                                            |
                                                            v
                                           /museum/navigation_result
+
+Optional simulation-only demo path:
+/museum/escort_state + /gazebo/model_states
+                 -> scripted_visitor_node
+                 -> /gazebo/set_entity_state -> visitor_marker
 ```
 
 The target architecture adds real perception, language, interaction
@@ -126,6 +135,8 @@ exchange/museum_ws/src/museum_assistant/
   museum_assistant/       # Python nodes and deterministic logic
     contracts.py          # Minimal ROS-independent Phase 1 data models
     escort.py             # Minimal Phase 4 escort state machine
+    scripted_visitor.py   # Bounded lag-recovery marker motion
+    scripted_visitor_node.py
     semantic_navigation.py
     semantic_navigation_node.py
     visitor_session.py    # Minimal in-memory Phase 2 session logic

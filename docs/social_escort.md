@@ -6,8 +6,8 @@ Phase 4 adds one minimal escort supervisor using Gazebo simulation ground
 truth. It is not real person perception and it is not social navigation. Nav2,
 AMCL, NavFn, and the DWB local controller are unchanged.
 
-The static `visitor_marker` and TIAGo poses are read only by
-`visitor_session_node`. Simulator model names stop at that adapter. The public
+The `visitor_marker` and TIAGo poses are read by `visitor_session_node`.
+Simulator model names stop at that adapter for robot-facing data. The public
 flow is:
 
 ```text
@@ -18,6 +18,20 @@ flow is:
                      -> /museum/navigation_result
                      -> /museum/escort_state
 ```
+
+For the repeatable demo only, the opt-in `scripted_visitor_node` also reads
+Gazebo model states and `/museum/escort_state`, then moves the existing marker
+through `/gazebo/set_entity_state`. It publishes no robot-facing state:
+
+```text
+/gazebo/model_states ----> scripted_visitor_node
+/museum/escort_state ----> scripted_visitor_node
+                           -> /gazebo/set_entity_state -> visitor_marker
+```
+
+This is scripted simulator motion, not visitor autonomy, tracking, perception,
+or social navigation. `EscortSupervisor` remains the authority for wait,
+resume, lost, and arrival decisions.
 
 ## Public Visitor Observation
 
@@ -142,6 +156,9 @@ The current `libgazebo_ros_state.so` plugin provides both verified services:
 /gazebo/set_entity_state
 ```
 
+Repeated bounded `SetEntityState` updates were accepted by the existing static
+marker, so `museum.world` required no change.
+
 The following command was verified to reposition the static visitor marker:
 
 ```bash
@@ -162,6 +179,69 @@ Useful verified marker poses for the current world are:
 - recovered/near the Impressionism route: `(3.9, 1.2)`;
 - lost from the Impressionism Hall: `(-3.0, -5.0)`, measured at about 9.94 m
   in the runtime check.
+
+## Automatic Lag-Recover Demo
+
+`scripted_visitor.launch.py` is deliberately opt-in. Its one deterministic
+`lag_recover` scenario begins when it observes the first `escorting` state for
+a new task. The marker follows TIAGo at a bounded planar speed while keeping a
+stand-off distance, stops once after the configured delay, catches up only
+after the real escort state becomes `waiting`, then follows until `arrived` or
+`lost` stops the scenario.
+
+The node does not contain the escort distance or timing thresholds. Its
+parameters are only simulator-motion controls:
+
+| Parameter | Default |
+| --- | ---: |
+| `visitor_model_name` | `visitor_marker` |
+| `robot_model_name` | `tiago` |
+| `follow_distance` | 1.5 m |
+| `follow_speed` | 0.5 m/s |
+| `catchup_speed` | 0.8 m/s |
+| `lag_after_seconds` | 5.0 s |
+| `update_rate` | 5.0 Hz |
+
+Build and source the workspace, then start each process in a separate terminal:
+
+```bash
+ros2 launch museum_assistant tiago_museum_world.launch.py
+ros2 launch museum_assistant museum_navigation.launch.py
+ros2 launch museum_assistant visitor_session.launch.py
+ros2 run museum_assistant reasoning_node
+ros2 launch museum_assistant semantic_navigation.launch.py
+ros2 launch museum_assistant scripted_visitor.launch.py
+```
+
+Observe the existing public outputs:
+
+```bash
+ros2 topic echo /museum/navigation_result
+ros2 topic echo /museum/escort_state
+```
+
+Send the already validated Impressionism request:
+
+```bash
+ros2 topic pub --once /museum/user_request std_msgs/msg/String \
+  "{data: '{\"request_id\":\"scripted_visitor_demo_001\",\"session_id\":\"session_1\",\"intent\":\"recommend_and_prepare_navigation\",\"constraints\":{\"style\":\"impressionism\"}}'}"
+```
+
+No manual `SetEntityState` call is needed during this episode. The required
+sequence is:
+
+```text
+escort:     escorting -> waiting -> escorting -> arrived
+navigation: accepted  -> canceled -> accepted  -> succeeded
+```
+
+The runtime acceptance run observed that exact sequence without a manual state
+call during the episode. It ended with TIAGo at approximately `(4.58, 1.39)`,
+the marker at `(3.19, 0.86)`, and a planar separation of 1.49 m.
+
+The marker moves directly toward the current TIAGo position; it does not plan
+a path or avoid obstacles. Omit the scripted-visitor launch to retain the
+original static/manual procedure below.
 
 ## Exact Manual Acceptance Demo
 
@@ -259,8 +339,11 @@ appears without a new `accepted` navigation result.
 ## Limitations
 
 - Observations use Gazebo ground truth, not perception.
-- `visitor_marker` is static and moved manually; there is no moving-person
-  framework.
+- `visitor_marker` is a static Gazebo model moved by service calls, either by
+  the opt-in script or manually; there is no autonomous person or
+  moving-person framework.
+- Scripted motion follows TIAGo directly with no path planning, wall avoidance,
+  animation, or physical pedestrian dynamics.
 - Only one visitor, one session, and one escort task are supported.
 - `LOST` has no automatic or dialogue recovery.
 - DWB is unchanged; there are no people-aware costs or social-navigation

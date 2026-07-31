@@ -217,7 +217,7 @@ The helper prints whether the goal was accepted, succeeded, aborted, or canceled
 - Manual goals remain available through the Nav2 action interface and helper
   CLI.
 - Escort monitoring is a one-visitor Gazebo-ground-truth prototype with a
-  static marker moved manually.
+  static marker moved manually or by the opt-in lag-recovery script.
 - No Interaction Manager, Behavior Executive, real perception, LLM, speech,
   or vision is included.
 - DWB has no people-aware cost or social-navigation behavior.
@@ -231,8 +231,8 @@ instead of introducing unused task-management layers. Remaining work includes:
 
 1. calibrate each remaining final-demo semantic pose with `capture_nav_pose`;
 2. keep plain recommendations non-moving;
-3. repeat the documented manual escort scenarios where evaluation evidence is
-   required;
+3. repeat the documented automatic or manual escort scenarios where
+   evaluation evidence is required;
 4. leave generic people tracking and social navigation for later phases.
 
 See [Architecture](architecture.md) and [Repository Audit](repository_audit.md).

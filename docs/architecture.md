@@ -43,6 +43,11 @@ semantic_map.yaml --------------------+           |
                                              |
                                              v
                                 /museum/navigation_result
+
+Optional demo-only simulation sidecar:
+/museum/escort_state + Gazebo model states
+                  -> scripted_visitor_node
+                  -> /gazebo/set_entity_state -> visitor_marker
 ```
 
 Important current properties:
@@ -57,9 +62,10 @@ Important current properties:
   unimplemented.
 - `send_nav_goal` accepts raw coordinates from a developer CLI. It is a test helper, not a semantic navigation executor.
 - Nav2 uses the standard DWB local planner. There is no people layer or human-aware controller.
-- The visual visitor, guide, and staff models in `museum.world` remain static.
-  Only `visitor_marker` is used as simulation ground truth for one session; it
-  is not real person perception or tracking.
+- The visual visitor, guide, and staff models in `museum.world` remain static
+  Gazebo models. The opt-in `scripted_visitor_node` can reposition only
+  `visitor_marker` for the lag-recovery demo. It is still simulation ground
+  truth, not real person perception, tracking, or autonomy.
 - `visitor_session_node` keeps the Gazebo model name internal and publishes
   session state plus a public present/distance observation. Neither public JSON
   topic contains Gazebo model names.
@@ -124,7 +130,7 @@ The arrows show the main control flow, not a requirement that every module be a 
 | Reasoning | Select a destination/alternative from validated constraints and explain the choice. | Implemented deterministic baseline and typed boundary | `reasoning.py` consumes `StructuredRequest` and produces `ReasoningDecision`. |
 | Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Planned | No manager, dialogue policy, or command contract exists. |
 | Behavior Execution | Validate and dispatch only whitelisted robot skills. | Planned | The reasoner has a small `Skill` enum for its current outputs; no behavior command or executive exists. |
-| Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Minimal simulation-ground-truth prototype | `escort.py` implements `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED`; `semantic_navigation_node` performs intentional pause/resume for one task. |
+| Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Minimal simulation-ground-truth prototype | `escort.py` implements `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED`; `semantic_navigation_node` performs intentional pause/resume for one task. The opt-in scripted marker is demo infrastructure, not escort intelligence. |
 | Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution runtime accepted for the Phase 3 goal | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose`; Nav2/AMCL/NavFn/DWB remain unchanged. |
 
 ## Semantic World Model
@@ -277,6 +283,13 @@ resend. `/museum/escort_state` publishes the current public state, correlation
 fields, and the available distance. See [Social Escort](social_escort.md) for
 the exact schemas and runtime procedure.
 
+The optional `scripted_visitor_node` makes the normal lag-recovery episode
+repeatable without manual marker teleports. It reads the same public escort
+state plus Gazebo model poses and uses the Gazebo state service for bounded
+planar marker motion. It neither publishes an escort decision nor controls
+TIAGo. Its direct following has no path planning or obstacle avoidance, and
+the original manual test remains available whenever the node is not launched.
+
 ## Social Escort Versus Social Navigation
 
 These are separate control concerns.
@@ -321,8 +334,9 @@ complete and Phase 4 is the current constrained prototype:
 2. **Complete:** add one in-memory session using simulated identity ground truth.
 3. **Complete:** connect explicitly prepared deterministic decisions directly
    to Nav2 and pass the runtime acceptance chain.
-4. **Prototype implemented:** supervise one static simulated visitor with
-   manual, simulator-ground-truth pause/resume/lost/arrival scenarios.
+4. **Prototype implemented:** supervise one simulated visitor with
+   simulator-ground-truth pause/resume/lost/arrival scenarios; the normal
+   lag-recovery demo can be scripted, while manual testing remains available.
 5. Generalize people tracking.
 6. Add human-aware local navigation.
 7. Add natural-language parsing.

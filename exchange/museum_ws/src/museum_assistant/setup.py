@@ -48,6 +48,10 @@ setup(
                 "museum_assistant.visitor_session_node:main"
             ),
             (
+                "scripted_visitor_node = "
+                "museum_assistant.scripted_visitor_node:main"
+            ),
+            (
                 "user_request_simulator = "
                 "museum_assistant.user_request_simulator_node:main"
             ),

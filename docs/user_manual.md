@@ -289,15 +289,22 @@ ros2 topic pub --once /museum/user_request std_msgs/msg/String \
 The complete Phase 3 chain is runtime-accepted for `impressionism_hall` at
 `(5.0, 1.5)`. A plain `recommend` request remains non-moving.
 
-## Phase 4 Manual Escort Demo
+## Phase 4 Escort Demo
 
 `visitor_session_node` publishes one Gazebo-ground-truth planar observation on
 `/museum/visitor_observation`. `semantic_navigation_node` uses it to pause and
 resume its own Nav2 goal and publishes `ESCORTING`, `WAITING`, `LOST`, or
 `ARRIVED` on `/museum/escort_state`.
 
-The visitor is still a static marker and must be repositioned through the
-verified `/gazebo/set_entity_state` service. The exact pause, resume, lost, and
+For the automatic lag-recovery episode, additionally launch:
+
+```bash
+ros2 launch museum_assistant scripted_visitor.launch.py
+```
+
+The opt-in node moves the static marker at bounded speed through the verified
+`/gazebo/set_entity_state` service. Without that launch, the marker remains
+under manual control. The exact automatic and manual pause, resume, lost, and
 joint-arrival commands are documented in
 [Phase 4 Social Escort Supervision](social_escort.md).
 
