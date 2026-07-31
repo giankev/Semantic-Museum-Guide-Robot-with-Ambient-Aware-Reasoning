@@ -25,9 +25,10 @@ arrival, and a runtime-accepted opt-in deterministic lag-recovery marker
 script.
 Phase 5 adds a runtime-accepted opt-in standard simulation people stream
 without connecting it to escort or navigation.
-Phase 6 adds an opt-in bridge and UPO local social-costmap integration while
-retaining DWB. Its build and runtime wiring pass, but its controlled behavioral
-comparison does not; it is therefore not runtime-accepted.
+Phase 6 first added an opt-in bridge and UPO local social-costmap integration;
+that variant's wiring passed but its behavioral comparison failed. Phase 6B
+then added a separate custom proxemic DWB critic which passed the controlled
+clearance, stability, and escort acceptance checks while retaining DWB.
 
 ## Classification
 
@@ -56,7 +57,7 @@ comparison does not; it is therefore not runtime-accepted.
 | Semantic navigation execution | `semantic_navigation_node` filters executable decisions, sends `NavigateToPose`, and publishes `/museum/navigation_result`. | The complete chain is runtime-accepted for `impressionism_hall`; other poses and repeatability evidence remain. |
 | Minimal social escort | `escort.py`, `/museum/visitor_observation`, and `/museum/escort_state` support one task with intentional Nav2 pause/resume; an opt-in script makes normal lag/recovery reproducible. | Gazebo ground truth and a service-moved static marker only; no real tracking, generic people interface, obstacle-aware visitor motion, or recovery from `LOST`. |
 | Simulated people stream | `simulated_people_node` maps the current visitor, guide, and staff markers to standard `social_nav_msgs/msg/Pedestrians` on `/people`; static, moving, and stopped samples are runtime-validated. | Gazebo ground truth and finite-difference velocity only; no perception, tracking, or prediction. The social consumer is opt-in. |
-| Minimal human-aware Nav2 variant | `social_people_bridge_node`, `nav2_museum_social.yaml`, and `museum_navigation_social.launch.py` connect `/people` to the UPO local social layer while retaining DWB; plugin loading, conversion, cost generation, and navigation success work. | The final same-pose comparison measured `0.603 m` baseline versus `0.604 m` social clearance, so no meaningful human-aware behavior has been accepted. |
+| Human-aware Nav2 variants | The earlier bridge/UPO-layer variant remains intact as a behavior-failed experiment. The separate `museum_social_critic` package, `nav2_museum_social_force.yaml`, and `museum_navigation_social_force.launch.py` add an accepted custom trajectory critic while retaining DWB and the baseline local costmap. | Phase 6B is accepted only for the controlled scenario: 0.665 m minimum clearance versus 0.603 m baseline at scale 32. It is not a general social-navigation evaluation, perception system, Social MPC, or learned predictor. |
 | Visitor request interface | Strict `StructuredRequest`, optional session correlation, and scripted JSON requests. | No text parser, dialogue, general session policy, STT, or LLM fallback. |
 | Dynamic world model | Room ambient fields update in memory. | No shared authority, persistence, timestamps, provenance, visitor/session/task facts, or task-time re-reasoning. |
 | Navigation poses | Every room has a `nav_pose`; AMCL capture helper exists. | Poses are not all documented as calibrated/free-space tested. |
@@ -77,7 +78,6 @@ There is no runtime implementation for:
 - Interaction Manager;
 - Behavior Executive;
 - real or generic people tracking source;
-- runtime-accepted human-aware/social local-navigation behavior;
 - grounded answer generation or TTS;
 - task-time ambient adaptation;
 - role-aware vision;
@@ -129,6 +129,7 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 | `museum_slam.launch.py` | Starts async SLAM Toolbox with `/scan_raw` remapping. | No robot/world launch and no map saving automation. |
 | `museum_navigation.launch.py` | Includes Nav2 bringup with saved map and museum parameters. | No robot/world launch or semantic adapter in the same launch. |
 | `museum_navigation_social.launch.py` | Includes the same Nav2/DWB stack with the opt-in UPO layer in the local costmap. | No people publisher, bridge, reasoner, semantic adapter, escort script, or Social MPC. |
+| `museum_navigation_social_force.launch.py` | Includes baseline Nav2/DWB with the accepted opt-in `ProxemicForceCritic` and baseline obstacle/inflation local costmap. | No people publisher, reasoner, semantic adapter, escort script, full Social Force Model, or Social MPC. |
 
 ### Configuration And Assets
 
@@ -137,15 +138,20 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 - `nav2_museum.yaml` uses AMCL, NavFn, DWB, standard recovery behaviors, and the saved map launch.
 - `nav2_museum_social.yaml` preserves the baseline global costmap and DWB
   parameters and adds only the UPO layer to the local costmap.
+- `nav2_museum_social_force.yaml` starts from the baseline, retains its local
+  costmap, and adds only the custom proxemic trajectory critic to DWB.
 - `semantic_map.yaml` contains seven rooms, five artworks, six simulated sensors, three roles, and semantic relations.
 - Semantic room poses are copied directly into reasoning responses; their calibration status is not encoded.
 
 ### Package Metadata
 
-The package manifest declares the Python, message, and Nav2 action dependencies
-used by source code. Phase 5 adds `social_nav_msgs` from apt. Phase 6 builds
-only pinned `people_msgs` and `nav2_social_costmap_plugin` source packages in a
-separate Docker overlay because `ros-humble-people-msgs` was unavailable.
+The Python package manifest declares the message and Nav2 action dependencies
+used by its source. Phase 5 adds `social_nav_msgs` from apt. The earlier Phase 6
+experiment builds pinned `people_msgs` and `nav2_social_costmap_plugin` in a
+separate overlay because `ros-humble-people-msgs` was unavailable. The new
+`ament_cmake` package builds one plugin library from existing Humble DWB,
+pluginlib, TF, costmap, and message dependencies; it does not patch or overlay
+Nav2.
 
 `setup.py` and `package.xml` now use a description that reflects the package's broader current scope instead of describing only the original semantic-map milestone.
 
@@ -161,7 +167,7 @@ separate Docker overlay because `ros-humble-people-msgs` was unavailable.
 | Interaction | The manager, dialogue policy, and command contract are planned. |
 | Behavior | The executive and its command contract are planned. |
 | Escort | One static simulated visitor and one task are supported; no general recovery, moving visitor, or real perception exists. |
-| Navigation | The semantic adapter and accepted Impressionism goal work; the opt-in social layer runs, but a repeatable behavior change is not accepted. |
+| Navigation | The semantic adapter and Impressionism goal work; Phase 6B has one accepted custom-critic scenario. Broader destinations, pedestrian configurations, and repeatability evaluation remain future work. |
 | Evaluation | A one-run functional baseline/social comparison exists; a quantitative evaluation framework remains absent. |
 
 ## Coherent Milestone History
@@ -195,6 +201,9 @@ The repository history can be retained without using milestone numbers that conf
 15. **Social-costmap technical prototype:** added a pinned third-party layer,
     a minimal compatibility bridge, and a separate DWB launch; integration
     checks pass, while behavioral runtime acceptance remains open.
+16. **Custom proxemic DWB critic:** added direct maximum-cost scoring of DWB
+    trajectories from `/people`, ignored the actively escorted visitor, and
+    accepted scale 32 after a bounded four-value comparison.
 
 This history records what was achieved while leaving interaction management,
 behavior execution, generic people tracking, language, speech, social
@@ -210,7 +219,7 @@ navigation, and real perception clearly unimplemented.
 | 3 | **Complete:** filtered reasoner -> Nav2 adapter | The prepared Impressionism request produces one correlated successful Nav2 goal; plain recommendations remain non-moving. |
 | 4 | **Prototype implemented:** basic escort with simulated ground truth | Escort, wait/cancel, recover/resend, lost/cancel, and joint arrival use the static marker; normal lag/recovery is scripted and manual tests remain available. |
 | 5 | **Runtime-validated prototype:** standard simulation people stream | `/people` reports the three Gazebo markers with stable public IDs and velocities while escort and DWB remain unchanged. |
-| 6 | Human-aware/social Nav2 controller | Human-aware variant runs beside an unchanged DWB baseline and can be compared. |
+| 6 | **Runtime-validated bounded prototype:** human-aware DWB trajectory critic | The custom critic runs beside an unchanged baseline, increases controlled guide clearance from 0.603 m to 0.665 m without destabilizing navigation, and preserves escort completion. |
 | 7 | Deterministic language parser plus LLM fallback | Text becomes schema-valid JSON; invalid/unsafe model output is rejected. |
 | 8 | faster-whisper STT | Recorded speech produces text within measured latency/resource limits. |
 | 9 | Grounded answer generation and TTS | Spoken answers cite only current request/world/task facts. |
@@ -220,10 +229,10 @@ navigation, and real perception clearly unimplemented.
 
 ## Current Gate
 
-The roadmap remains at the Phase 5 gate because Phase 6 did not pass its
-behavioral comparison. The public people boundary is documented in
-`simulated_people.md`; the opt-in integration and failure evidence are in
+The roadmap has passed the bounded Phase 6 gate through the custom critic. The
+public people boundary is documented in `simulated_people.md`; the accepted
+critic and the two earlier failed experiments are documented in
 `human_aware_navigation.md`; and Phase 4 escort remains separately documented
-in `social_escort.md`. Real people tracking, Interaction Management, Behavior
-Execution, accepted human-aware behavior, language, speech, and vision remain
-future work.
+in `social_escort.md`. Phase 7 was not started. Real people tracking,
+Interaction Management, Behavior Execution, broader human-aware evaluation,
+language, speech, and vision remain future work.

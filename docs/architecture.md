@@ -52,9 +52,11 @@ Optional demo-only simulation sidecar:
 Optional Phase 5/6 social sidecar:
 Gazebo model states -> simulated_people_node
                     -> /people (social_nav_msgs/Pedestrians)
-                    -> social_people_bridge_node
-                    -> /people_nav2 (people_msgs/People)
-                    -> UPO social local-costmap layer -> DWB
+                       |-> ProxemicForceCritic -> DWB (accepted Phase 6B)
+                       `-> social_people_bridge_node
+                           -> /people_nav2 (people_msgs/People)
+                           -> UPO social local-costmap layer -> DWB
+                              (earlier behavior-failed experiment)
 ```
 
 Important current properties:
@@ -69,9 +71,10 @@ Important current properties:
   unimplemented.
 - `send_nav_goal` accepts raw coordinates from a developer CLI. It is a test helper, not a semantic navigation executor.
 - The unchanged baseline Nav2 launch uses the standard DWB local planner and
-  no people layer. A separate opt-in launch adds the UPO social layer only to
-  the local costmap while retaining DWB. The integration runs, but its final
-  behavioral comparison has not passed.
+  no people layer. One separate opt-in launch retains the earlier UPO social
+  layer experiment. The accepted Phase 6B launch instead keeps the baseline
+  obstacle/inflation local costmap and adds a custom DWB trajectory critic that
+  consumes `/people` directly.
 - `simulated_people_node` publishes the existing visitor, guide, and staff
   markers on standard `/people` data with stable public IDs and
   finite-difference velocities. The optional compatibility bridge consumes
@@ -145,7 +148,7 @@ The arrows show the main control flow, not a requirement that every module be a 
 | Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Planned | No manager, dialogue policy, or command contract exists. |
 | Behavior Execution | Validate and dispatch only whitelisted robot skills. | Planned | The reasoner has a small `Skill` enum for its current outputs; no behavior command or executive exists. |
 | Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Minimal simulation-ground-truth prototype | `escort.py` implements `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED`; `semantic_navigation_node` performs intentional pause/resume for one task. The opt-in scripted marker is demo infrastructure, not escort intelligence. |
-| Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution accepted; optional social-costmap integration awaiting behavioral acceptance | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose`; baseline Nav2/AMCL/NavFn/DWB remain unchanged. The opt-in variant adds a local social layer but still uses DWB. |
+| Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution and bounded Phase 6B human-aware behavior accepted | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose`; baseline Nav2/AMCL/NavFn/DWB remain unchanged. The accepted opt-in variant adds `ProxemicForceCritic` to DWB and consumes `/people` directly; the earlier UPO-layer variant remains a behavior-failed experiment. |
 
 ## Phase 5 Simulation People Boundary
 
@@ -156,12 +159,13 @@ from the verified world/map-aligned x/y coordinates; velocity is estimated
 from consecutive positions using ROS simulation time.
 
 This remains the project's standard people boundary. The existing escort still
-consumes `/museum/visitor_observation`. For the opt-in Phase 6 variant only,
-`social_people_bridge_node` converts `/people` to `/people_nav2` because the
-selected third-party layer requires `people_msgs/msg/People`. DWB remains the
-controller. See [Simulated People](simulated_people.md) for the public schema
-and [Human-Aware Navigation](human_aware_navigation.md) for the compatibility
-boundary and runtime evidence.
+consumes `/museum/visitor_observation`. The accepted Phase 6B critic consumes
+`/people` directly and ignores the escorted `visitor_1`; the independent escort
+supervisor continues to own visitor-following state. The compatibility bridge
+to `/people_nav2` remains only for the earlier third-party SocialLayer
+experiment. DWB remains the controller in every variant. See
+[Simulated People](simulated_people.md) for the public schema and
+[Human-Aware Navigation](human_aware_navigation.md) for runtime evidence.
 
 ## Semantic World Model
 
@@ -345,14 +349,18 @@ Social navigation controls how the robot moves around people:
 - human-aware costs;
 - local velocity/path choices.
 
-It belongs in or beside the Nav2 local-planning layer. DWB remains the baseline for comparison when a human-aware controller or people-aware costmap is added.
+It belongs in or beside the Nav2 local-planning layer. DWB remains the unchanged
+baseline and the controller used by the accepted human-aware variant.
 
-The current opt-in prototype uses
-`nav2_social_costmap_plugin::SocialLayer` in the local costmap and preserves
-DWB. It successfully generates non-zero costs from `/people`, but the final
-controlled run measured `0.603 m` baseline versus `0.604 m` social clearance.
-That is not a meaningful trajectory effect, so Phase 6 remains pending runtime
-acceptance. Social MPC is not implemented.
+The earlier opt-in `nav2_social_costmap_plugin::SocialLayer` prototype
+generated non-zero costs but measured only `0.603 m` baseline versus `0.604 m`
+social clearance, so that variant remains behavior-failed. Phase 6B instead
+adds `museum_social_critic::ProxemicForceCritic`, which applies a bounded
+maximum proxemic cost directly to predicted DWB trajectory/person encounters.
+At the selected scale 32, the same controlled scenario succeeded with 0.665 m
+minimum clearance, a 0.062 m or 10.3% increase over baseline, while preserving
+the automatic escort sequence. This is a small proxemic/social-force-inspired
+critic, not the full Helbing model, Social MPC, or learned prediction.
 
 ## Language And Robot-Control Safety
 
@@ -365,8 +373,8 @@ acceptance. Social MPC is not implemented.
 ## Phase Boundaries
 
 The development sequence is intentionally incremental. Phases 1 through 3 are
-complete, Phases 4 and 5 are constrained validated prototypes, and the Phase 6
-technical integration is awaiting behavioral acceptance:
+complete, Phases 4 and 5 are constrained validated prototypes, and Phase 6 is
+runtime-validated through the bounded custom-critic result:
 
 1. **Complete:** define interfaces and state ownership.
 2. **Complete:** add one in-memory session using simulated identity ground truth.
@@ -378,9 +386,10 @@ technical integration is awaiting behavioral acceptance:
 5. **Runtime-validated prototype:** publish the current Gazebo human markers
    on a standard `/people` stream without changing escort or baseline
    navigation.
-6. **Technical prototype, acceptance pending:** bridge the public people
-   stream to an opt-in local social-costmap layer while preserving DWB; the
-   required clearance/trajectory difference has not yet been demonstrated.
+6. **Runtime-validated bounded prototype:** directly score DWB trajectories
+   from `/people` using the custom proxemic critic while preserving the
+   baseline and the independent escort supervisor. The earlier generic
+   SocialLayer and Phase 6A tuning results remain documented failures.
 7. Add natural-language parsing.
 8. Add speech-to-text.
 9. Add grounded answers and speech output.

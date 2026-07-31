@@ -2,21 +2,24 @@
 
 ## Status
 
-The opt-in technical integration is implemented and runs, but Phase 6 is not
-runtime-accepted yet. Both baseline and social navigation reached the goal,
-the social layer consumed the converted people stream, and non-zero social
-costs were measured. The controlled comparison did not show a meaningful
-increase in robot-bystander distance or a visibly different local trajectory.
+Phase 6 is runtime-validated through the opt-in custom trajectory critic added
+in Phase 6B. The earlier generic SocialLayer integration still has technical
+value but failed its behavioral comparison, and the bounded Phase 6A generic
+DWB tuning remains rejected. The accepted variant scores DWB trajectories
+directly from `/people` and produced a repeatable, measurable increase in
+clearance without changing the baseline stack.
 
-The two variants are:
+The three separately launchable variants are:
 
 ```text
 BASELINE: Nav2 + DWB
-SOCIAL:   Nav2 + DWB + UPO social layer in the local costmap
+LAYER:    Nav2 + DWB + UPO social layer in the local costmap (behavior FAIL)
+CRITIC:   Nav2 + DWB + ProxemicForceCritic (Phase 6B PASS)
 ```
 
-DWB remains the controller in both variants. Social MPC, MPPI, prediction,
-people-aware global planning, and a custom social controller are not included.
+DWB remains the controller in all variants. Social MPC, MPPI, people-aware
+global planning, and a custom controller are not included. The Phase 6B critic
+uses only bounded proxemic cost and constant-velocity pedestrian prediction.
 
 ## External Dependencies
 
@@ -111,6 +114,19 @@ The covariance was the one bounded adjustment made after the first run. No
 DWB critic, global planner, escort threshold, or earlier-phase parameter was
 tuned.
 
+The accepted custom-critic variant uses:
+
+```text
+config/nav2_museum_social_force.yaml
+launch/museum_navigation_social_force.launch.py
+```
+
+It starts from the baseline configuration, retains
+`dwb_core::DWBLocalPlanner`, and keeps the baseline local costmap with only
+`obstacle_layer` and `inflation_layer`. It adds only
+`museum_social_critic::ProxemicForceCritic` to `FollowPath.critics`. It does
+not load the UPO SocialLayer or require the `/people_nav2` bridge.
+
 ## Launch Commands
 
 After starting TIAGo and Gazebo, choose exactly one Nav2 stack.
@@ -127,6 +143,13 @@ Social, in separate sourced terminals:
 ros2 launch museum_assistant people.launch.py
 ros2 launch museum_assistant social_people_bridge.launch.py
 ros2 launch museum_assistant museum_navigation_social.launch.py
+```
+
+Accepted custom critic, in separate sourced terminals:
+
+```bash
+ros2 launch museum_assistant people.launch.py
+ros2 launch museum_assistant museum_navigation_social_force.launch.py
 ```
 
 Do not run the baseline and social Nav2 launches simultaneously. The social
@@ -147,9 +170,11 @@ ros2 param get /controller_server local_costmap.plugins
 
 - Docker image build: passed.
 - Unmodified `people_msgs` plus social-layer source build: passed.
-- `colcon build --packages-select museum_assistant`: passed.
-- `colcon test --packages-select museum_assistant`: 48 passed, 0 failed,
-  0 skipped.
+- `colcon build --packages-select museum_social_critic museum_assistant`:
+  passed.
+- `colcon test --packages-select museum_social_critic museum_assistant`: 55
+  tests passed, 0 failed, 0 skipped. This comprises 48 existing Python tests,
+  six focused critic-math cases, and the CMake test wrapper.
 - The bridge conversion helper has focused tests for name, position,
   velocity, header, empty input, and multiple pedestrians.
 
@@ -247,29 +272,129 @@ Phase 6A runs, the Phase 3 reasoning/semantic dispatch chain and Phase 5 people
 stream continued to operate; navigation itself failed only under the rejected
 experimental social settings.
 
-Phase 6 behavioral acceptance therefore remains **FAIL**. The bounded tuning
-experiment is closed; a dedicated social critic or Social MPC requires a
-separate reviewed milestone and was not started here.
+Phase 6A behavioral acceptance therefore remains **FAIL**. The bounded generic
+critic tuning experiment is closed. Phase 6B below implements the separately
+reviewed dedicated critic; Social MPC was not started.
+
+## Phase 6B Custom Proxemic Trajectory Critic
+
+The small `ament_cmake` package `museum_social_critic` implements and exports
+`museum_social_critic::ProxemicForceCritic` as a
+`dwb_core::TrajectoryCritic`. This is inspired by proxemics, virtual repulsive
+potentials, and social-force concepts. It is **not** the full Helbing Social
+Force Model, Social MPC, a learned predictor, or a claim of research novelty.
+Its project-specific contribution is to score DWB candidates directly from
+pedestrian position and velocity.
+
+The implementation was matched to the installed Nav2 Humble DWB API
+(`dwb_core` 1.1.20): `onInit()` declares critic parameters and creates the
+subscription; `prepare(pose, velocity, goal, plan)` prepares one control-cycle
+snapshot; and `scoreTrajectory(Trajectory2D)` returns a raw score. DWB loads
+the exact class from `FollowPath.ProxemicForce.class`, then applies the normal
+critic `scale`.
+
+`/people` is in `map`, while the rolling local costmap and DWB trajectory poses
+are in `odom`. In each `prepare()` call the critic looks up one transform at
+the people-message timestamp and applies it to all non-ignored positions and
+velocity vectors. It stores only the latest message. Missing, stale, empty, or
+untransformable people data clears the prepared set and contributes zero for
+that cycle; it never rejects otherwise valid trajectories.
+
+For trajectory sample time `t_i`, pedestrian prediction and clearance are:
+
+```text
+P_i = P_0 + V * t_i
+d_i = ||R_i - P_i||
+```
+
+The bounded cost is:
+
+```text
+c(d_i) = 1 / (1 + exp((d_i - comfort_distance) / sigma))
+raw trajectory score = max c(d_i) over all person/trajectory-pose pairs
+```
+
+Maximum aggregation represents the closest predicted encounter and avoids the
+Phase 6A failure mode of accumulating a broad penalty across every trajectory
+sample. Physical collision handling remains with Nav2.
+
+The selected parameters are:
+
+```yaml
+comfort_distance: 1.0
+sigma: 0.4
+people_topic: /people
+people_timeout: 1.0
+ignored_identifiers: [visitor_1]
+scale: 32.0
+```
+
+`visitor_1` is excluded from social scoring because the independent escort
+supervisor answers “is my visitor still with me?” The critic answers “how
+should I move around other people?” and considers `guide_1` and `staff_1`.
+No Gazebo model name is hardcoded in the critic.
+
+The technical gate passed: pluginlib discovered the exported XML, the
+controller loaded the exact critic class while remaining
+`dwb_core::DWBLocalPlanner`, and the critic logged three input pedestrians as
+two considered plus one ignored. A no-people direct goal succeeded in 4.4 s,
+and a people-enabled short goal succeeded while producing a non-zero raw
+candidate-score range. This verifies both direct `/people` consumption and
+baseline-like zero contribution when data is absent.
+
+Only `ProxemicForce.scale` changed during the bounded four-value sweep. All
+runs used the same start, semantic Impressionism goal, guide pose
+`(2.2, 0.15)`, local costmap, DWB settings, and escort behavior:
+
+| Scale | Result | Simulated navigation time | Minimum guide distance |
+| ---: | --- | ---: | ---: |
+| Recorded baseline | succeeded | 29.820 s | 0.603 m |
+| 8 | succeeded | 28.810 s | 0.628 m |
+| 16 | succeeded | 28.655 s | 0.633 m |
+| **32** | **succeeded** | **28.820 s** | **0.665 m** |
+| 64 | rejected: controller no-progress | not completed | not accepted |
+
+Scale 32 increased minimum guide clearance by 0.062 m, or 10.3%, relative to
+the controlled baseline. This is 62 times the 1 mm baseline/SocialLayer
+difference previously classified as simulation noise. The closest observed
+robot pose was approximately `(2.063, 0.801)` with the guide fixed at
+`(2.2, 0.15)`. Motion remained stable, the critic reported non-zero and
+trajectory-discriminating raw scores near the guide, and there were no
+unexpected oscillations or recoveries. Scale 64 produced `Failed to make
+progress` and was discarded without further tuning.
+
+The accepted scale-32 run preserved the automatic escort sequence:
+
+```text
+navigation: accepted -> canceled -> accepted -> succeeded
+escort:     escorting -> waiting -> escorting -> arrived
+```
+
+Phase 6B behavioral acceptance is therefore **PASS**. The optional moving
+bystander runtime check was not needed; constant-velocity prediction is covered
+by its focused unit test, and no additional moving-human framework was added.
 
 ## Regression Result
 
-- Original baseline launch works without people publisher, bridge, or social
-  layer.
+- Original baseline launch remains independent of the custom package behavior.
+  A final baseline run used only the original DWB critic list and succeeded in
+  28.915 simulated seconds.
 - Phase 3 reasoning and semantic navigation still select and reach
   `impressionism_hall`.
 - Phase 4 automatic `escorting -> waiting -> escorting -> arrived` behavior
   still completes under the baseline.
 - Phase 5 `/people` still runs independently with its original message type.
-- Social navigation remains opt-in.
+- Phase 5 `/people` retained `social_nav_msgs/msg/Pedestrians`, the same three
+  public identifiers, and position/velocity fields.
+- The previous SocialLayer configuration and launch remain unchanged and
+  opt-in. The new custom-critic configuration is a third, separate variant.
 
 ## Remaining Limitations
 
-- Phase 6 must not be described as runtime-validated until the social variant
-  produces a repeatable local-trajectory or clearance change without breaking
-  navigation.
-- The existing DWB baseline gives obstacle costs a deliberately low weight;
-  resolving the missing behavioral effect requires a separately reviewed,
-  bounded experiment rather than undocumented parameter tuning.
+- Phase 6B is a one-scenario functional acceptance result, not a broad
+  quantitative evaluation or general social-navigation guarantee.
+- Only the selected scale-32 setting is accepted. Scale 64 demonstrated the
+  upper failure boundary and must not be selected.
 - People positions are Gazebo ground truth, not perception or tracking.
 - One comparison is functional evidence only, not a quantitative evaluation.
 - Social MPC and Phase 7 were not started.
