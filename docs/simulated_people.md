@@ -4,16 +4,20 @@
 
 Phase 5 adds one opt-in simulation adapter from Gazebo model states to the
 standard ROS 2 `/people` stream. It is simulation ground truth, not perception,
-tracking, engagement detection, or social navigation. DWB and the validated
-Phase 4 escort interfaces are unchanged.
+tracking, or engagement detection. Baseline DWB and the validated Phase 4
+escort interfaces are unchanged.
 
 ```text
 /gazebo/model_states -> simulated_people_node
                      -> /people (social_nav_msgs/msg/Pedestrians)
 ```
 
-`/people` is the intended input boundary for a later human-aware navigation
-milestone. No current robot behavior consumes it.
+`/people` remains the public input boundary for human-aware navigation. The
+optional Phase 6 compatibility bridge consumes it and republishes
+`people_msgs/msg/People` on `/people_nav2` only because the selected
+third-party costmap layer requires that older message. See
+[Human-Aware Navigation](human_aware_navigation.md). Escort still does not
+consume `/people`.
 
 ## Verified Standard Message
 
@@ -165,4 +169,6 @@ added.
   engagement state.
 - The marker script has no obstacle avoidance or human motion model.
 - Escort does not consume `/people`; it retains its validated Phase 4 input.
-- DWB does not consume `/people`; social navigation remains unimplemented.
+- Baseline DWB does not consume `/people`. The opt-in social-costmap variant
+  uses it through the compatibility bridge, but behavioral runtime acceptance
+  remains open.

@@ -56,6 +56,10 @@ setup(
                 "museum_assistant.simulated_people_node:main"
             ),
             (
+                "social_people_bridge_node = "
+                "museum_assistant.social_people_bridge_node:main"
+            ),
+            (
                 "user_request_simulator = "
                 "museum_assistant.user_request_simulator_node:main"
             ),

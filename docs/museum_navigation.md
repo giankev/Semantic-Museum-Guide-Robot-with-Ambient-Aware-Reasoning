@@ -10,6 +10,8 @@ exchange/museum_ws/src/museum_assistant/maps/museum_map.pgm
 Phase 3 adds the validated semantic-navigation path alongside the existing
 manual goal tools. Phase 4 keeps the same Nav2/DWB stack and adds only
 simulation-ground-truth escort supervision in the existing action owner.
+Phase 6 adds a separate opt-in local social-costmap configuration while
+preserving the original launch as the baseline.
 
 ## Current Status
 
@@ -70,6 +72,31 @@ cd /root/exchange/exchange/museum_ws
 source install/setup.bash
 ros2 launch museum_assistant museum_navigation.launch.py
 ```
+
+This is the unchanged `Nav2 + DWB` baseline. To select the opt-in social
+variant instead, start the people publisher and compatibility bridge in
+separate terminals, then launch the social Nav2 stack:
+
+```bash
+source /root/social_nav_ws/install/setup.bash
+ros2 launch museum_assistant people.launch.py
+```
+
+```bash
+source /root/social_nav_ws/install/setup.bash
+ros2 launch museum_assistant social_people_bridge.launch.py
+```
+
+```bash
+source /root/social_nav_ws/install/setup.bash
+ros2 launch museum_assistant museum_navigation_social.launch.py
+```
+
+The social selection is `Nav2 + DWB + local social layer`. Never run the two
+Nav2 launches simultaneously. The social launch does not start the people
+publisher, bridge, reasoner, semantic adapter, or escort script. See
+[Human-Aware Navigation](human_aware_navigation.md) for schemas, parameters,
+and the current non-passing behavioral comparison.
 
 The launch uses:
 
@@ -218,11 +245,13 @@ The helper prints whether the goal was accepted, succeeded, aborted, or canceled
   CLI.
 - Escort monitoring is a one-visitor Gazebo-ground-truth prototype with a
   static marker moved manually or by the opt-in lag-recovery script.
-- The standard simulation `/people` stream is available as an opt-in data
-  source, but no Nav2 costmap or controller consumes it.
+- The standard simulation `/people` stream remains the public boundary. An
+  opt-in bridge and local social layer consume it only in the social variant.
 - No Interaction Manager, Behavior Executive, real perception, LLM, speech,
   or vision is included.
-- DWB has no people-aware cost or social-navigation behavior.
+- Baseline DWB has no people-aware costs. The opt-in DWB variant receives
+  social local-costmap costs, but has not demonstrated a meaningful clearance
+  or trajectory change yet.
 - Every semantic room pose other than the accepted Impressionism goal still
   needs free-space calibration.
 
@@ -235,6 +264,7 @@ instead of introducing unused task-management layers. Remaining work includes:
 2. keep plain recommendations non-moving;
 3. repeat the documented automatic or manual escort scenarios where
    evaluation evidence is required;
-4. leave generic people tracking and social navigation for later phases.
+4. resolve the documented Phase 6 behavioral acceptance gap before adding a
+   different controller or real people tracking.
 
 See [Architecture](architecture.md) and [Repository Audit](repository_audit.md).

@@ -25,6 +25,9 @@ arrival, and a runtime-accepted opt-in deterministic lag-recovery marker
 script.
 Phase 5 adds a runtime-accepted opt-in standard simulation people stream
 without connecting it to escort or navigation.
+Phase 6 adds an opt-in bridge and UPO local social-costmap integration while
+retaining DWB. Its build and runtime wiring pass, but its controlled behavioral
+comparison does not; it is therefore not runtime-accepted.
 
 ## Classification
 
@@ -52,7 +55,8 @@ without connecting it to escort or navigation.
 | --- | --- | --- |
 | Semantic navigation execution | `semantic_navigation_node` filters executable decisions, sends `NavigateToPose`, and publishes `/museum/navigation_result`. | The complete chain is runtime-accepted for `impressionism_hall`; other poses and repeatability evidence remain. |
 | Minimal social escort | `escort.py`, `/museum/visitor_observation`, and `/museum/escort_state` support one task with intentional Nav2 pause/resume; an opt-in script makes normal lag/recovery reproducible. | Gazebo ground truth and a service-moved static marker only; no real tracking, generic people interface, obstacle-aware visitor motion, or recovery from `LOST`. |
-| Simulated people stream | `simulated_people_node` maps the current visitor, guide, and staff markers to standard `social_nav_msgs/msg/Pedestrians` on `/people`; static, moving, and stopped samples are runtime-validated. | Gazebo ground truth and finite-difference velocity only; no perception, tracking, prediction, or navigation consumer. |
+| Simulated people stream | `simulated_people_node` maps the current visitor, guide, and staff markers to standard `social_nav_msgs/msg/Pedestrians` on `/people`; static, moving, and stopped samples are runtime-validated. | Gazebo ground truth and finite-difference velocity only; no perception, tracking, or prediction. The social consumer is opt-in. |
+| Minimal human-aware Nav2 variant | `social_people_bridge_node`, `nav2_museum_social.yaml`, and `museum_navigation_social.launch.py` connect `/people` to the UPO local social layer while retaining DWB; plugin loading, conversion, cost generation, and navigation success work. | The final same-pose comparison measured `0.603 m` baseline versus `0.604 m` social clearance, so no meaningful human-aware behavior has been accepted. |
 | Visitor request interface | Strict `StructuredRequest`, optional session correlation, and scripted JSON requests. | No text parser, dialogue, general session policy, STT, or LLM fallback. |
 | Dynamic world model | Room ambient fields update in memory. | No shared authority, persistence, timestamps, provenance, visitor/session/task facts, or task-time re-reasoning. |
 | Navigation poses | Every room has a `nav_pose`; AMCL capture helper exists. | Poses are not all documented as calibrated/free-space tested. |
@@ -73,7 +77,7 @@ There is no runtime implementation for:
 - Interaction Manager;
 - Behavior Executive;
 - real or generic people tracking source;
-- human-aware/social local navigation;
+- runtime-accepted human-aware/social local-navigation behavior;
 - grounded answer generation or TTS;
 - task-time ambient adaptation;
 - role-aware vision;
@@ -103,6 +107,7 @@ All executables used by current package launch files are registered in `setup.py
 - `semantic_navigation_node`
 - `scripted_visitor_node`
 - `simulated_people_node`
+- `social_people_bridge_node`
 - `user_request_simulator`
 
 The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` are also registered.
@@ -118,24 +123,29 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 | `semantic_navigation.launch.py` | Starts the filtered reasoning-to-Nav2 adapter with minimal escort state logic. | No Nav2 bringup, reasoner, task manager, Behavior Executive, or social navigation. |
 | `scripted_visitor.launch.py` | Opt-in bounded movement of `visitor_marker` for one deterministic lag-recovery demo. | No escort decisions, tracking, perception, path planning, obstacle avoidance, or social navigation. |
 | `people.launch.py` | Opt-in standard `/people` publisher for three existing Gazebo markers. | No tracking, perception, costmap integration, controller, or social navigation. |
+| `social_people_bridge.launch.py` | Opt-in minimal `/people` to `/people_nav2` compatibility bridge. | No tracking, prediction, identity, session, escort, or navigation logic. |
 | `museum_world.launch.py` | Opens the museum world without TIAGo. | No robot, SLAM, or Nav2. |
 | `tiago_museum_world.launch.py` | Includes the TIAGo Gazebo launch with the museum world. | No SLAM or Nav2 in that launch. |
 | `museum_slam.launch.py` | Starts async SLAM Toolbox with `/scan_raw` remapping. | No robot/world launch and no map saving automation. |
 | `museum_navigation.launch.py` | Includes Nav2 bringup with saved map and museum parameters. | No robot/world launch or semantic adapter in the same launch. |
+| `museum_navigation_social.launch.py` | Includes the same Nav2/DWB stack with the opt-in UPO layer in the local costmap. | No people publisher, bridge, reasoner, semantic adapter, escort script, or Social MPC. |
 
 ### Configuration And Assets
 
 - `setup.py` installs all current YAML, launch, map, and world assets.
 - The saved PGM is a 300 by 220 occupancy image referenced by `museum_map.yaml`.
 - `nav2_museum.yaml` uses AMCL, NavFn, DWB, standard recovery behaviors, and the saved map launch.
+- `nav2_museum_social.yaml` preserves the baseline global costmap and DWB
+  parameters and adds only the UPO layer to the local costmap.
 - `semantic_map.yaml` contains seven rooms, five artworks, six simulated sensors, three roles, and semantic relations.
 - Semantic room poses are copied directly into reasoning responses; their calibration status is not encoded.
 
 ### Package Metadata
 
 The package manifest declares the Python, message, and Nav2 action dependencies
-used by source code. Phase 5 adds only `social_nav_msgs`; the Docker image uses
-the normal `ros-humble-social-nav-msgs` package.
+used by source code. Phase 5 adds `social_nav_msgs` from apt. Phase 6 builds
+only pinned `people_msgs` and `nav2_social_costmap_plugin` source packages in a
+separate Docker overlay because `ros-humble-people-msgs` was unavailable.
 
 `setup.py` and `package.xml` now use a description that reflects the package's broader current scope instead of describing only the original semantic-map milestone.
 
@@ -151,8 +161,8 @@ the normal `ros-humble-social-nav-msgs` package.
 | Interaction | The manager, dialogue policy, and command contract are planned. |
 | Behavior | The executive and its command contract are planned. |
 | Escort | One static simulated visitor and one task are supported; no general recovery, moving visitor, or real perception exists. |
-| Navigation | The semantic adapter and accepted Impressionism goal work; remaining semantic poses and human-aware planning are separate work. |
-| Evaluation | No repeatable scenarios or metrics comparing variants. |
+| Navigation | The semantic adapter and accepted Impressionism goal work; the opt-in social layer runs, but a repeatable behavior change is not accepted. |
+| Evaluation | A one-run functional baseline/social comparison exists; a quantitative evaluation framework remains absent. |
 
 ## Coherent Milestone History
 
@@ -182,6 +192,9 @@ The repository history can be retained without using milestone numbers that conf
 14. **Simulation people stream:** mapped the three existing human markers to
     standard `/people` positions and finite-difference velocities without
     changing escort, Nav2, or DWB.
+15. **Social-costmap technical prototype:** added a pinned third-party layer,
+    a minimal compatibility bridge, and a separate DWB launch; integration
+    checks pass, while behavioral runtime acceptance remains open.
 
 This history records what was achieved while leaving interaction management,
 behavior execution, generic people tracking, language, speech, social
@@ -207,8 +220,10 @@ navigation, and real perception clearly unimplemented.
 
 ## Current Gate
 
-Phase 5 establishes only a simulator-ground-truth `/people` boundary. The
-publisher, schema, and frame evidence are documented in `simulated_people.md`;
-Phase 4 escort remains separately documented in `social_escort.md`. Real
-people tracking, Interaction Management, Behavior Execution, social
-navigation, language, speech, and vision remain future work.
+The roadmap remains at the Phase 5 gate because Phase 6 did not pass its
+behavioral comparison. The public people boundary is documented in
+`simulated_people.md`; the opt-in integration and failure evidence are in
+`human_aware_navigation.md`; and Phase 4 escort remains separately documented
+in `social_escort.md`. Real people tracking, Interaction Management, Behavior
+Execution, accepted human-aware behavior, language, speech, and vision remain
+future work.

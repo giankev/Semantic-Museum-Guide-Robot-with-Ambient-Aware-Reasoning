@@ -50,9 +50,34 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-social-nav-msgs \
     && rm -rf /var/lib/apt/lists/*
 
+ARG PEOPLE_REPOSITORY=https://github.com/wg-perception/people.git
+ARG PEOPLE_REVISION=0ae47f6e0208cedd84d19d066743fdc1d05fcafa
+ARG SOCIAL_LAYER_REPOSITORY=https://github.com/robotics-upo/nav2_social_costmap_plugin.git
+ARG SOCIAL_LAYER_REVISION=398a7e5e9937189a5a4b19000bc30a025421e103
+
+ENV SOCIAL_NAV_WS=/root/social_nav_ws
+
+RUN mkdir -p ${SOCIAL_NAV_WS}/src \
+    && git clone --branch ros2 --single-branch --filter=blob:none --no-checkout \
+        ${PEOPLE_REPOSITORY} ${SOCIAL_NAV_WS}/src/people \
+    && git -C ${SOCIAL_NAV_WS}/src/people sparse-checkout set people_msgs \
+    && git -C ${SOCIAL_NAV_WS}/src/people checkout ${PEOPLE_REVISION} \
+    && git clone --branch humble --single-branch \
+        ${SOCIAL_LAYER_REPOSITORY} \
+        ${SOCIAL_NAV_WS}/src/nav2_social_costmap_plugin \
+    && git -C ${SOCIAL_NAV_WS}/src/nav2_social_costmap_plugin \
+        checkout ${SOCIAL_LAYER_REVISION}
+
+RUN source /opt/ros/humble/setup.bash \
+    && cd ${SOCIAL_NAV_WS} \
+    && colcon build \
+        --packages-select people_msgs nav2_social_costmap_plugin \
+        --cmake-args -DBUILD_TESTING=OFF
+
 RUN printf '%s\n' \
     'source /opt/ros/humble/setup.bash' \
     'source /root/tiago_public_ws/install/setup.bash' \
+    'source /root/social_nav_ws/install/setup.bash' \
     'export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp' \
     >> /root/.bashrc
 

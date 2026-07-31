@@ -37,6 +37,9 @@ The optional Phase 5 `/people` publisher runs in parallel but is not part of
 this control path. Escort deliberately continues to consume the validated
 `/museum/visitor_observation` interface; see
 [Simulated People](simulated_people.md).
+The Phase 6 bridge and local social layer are also separate opt-in components;
+they do not change escort thresholds, states, pause/resume ownership, or the
+scripted visitor. See [Human-Aware Navigation](human_aware_navigation.md).
 
 ## Public Visitor Observation
 
@@ -351,7 +354,8 @@ appears without a new `accepted` navigation result.
   animation, or physical pedestrian dynamics.
 - Only one visitor, one session, and one escort task are supported.
 - `LOST` has no automatic or dialogue recovery.
-- DWB is unchanged; there are no people-aware costs or social-navigation
-  behaviors.
+- The validated escort baseline keeps DWB unchanged. A separate opt-in DWB
+  stack can load social local-costmap costs, but its behavioral acceptance is
+  still pending and it does not alter escort logic.
 - There is no Interaction Manager, Behavior Executive, task scheduler, LLM,
   speech, or persistent session memory.

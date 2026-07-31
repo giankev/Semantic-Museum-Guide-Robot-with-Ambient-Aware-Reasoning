@@ -49,9 +49,12 @@ Optional demo-only simulation sidecar:
                   -> scripted_visitor_node
                   -> /gazebo/set_entity_state -> visitor_marker
 
-Optional Phase 5 data boundary, not connected to Nav2:
+Optional Phase 5/6 social sidecar:
 Gazebo model states -> simulated_people_node
                     -> /people (social_nav_msgs/Pedestrians)
+                    -> social_people_bridge_node
+                    -> /people_nav2 (people_msgs/People)
+                    -> UPO social local-costmap layer -> DWB
 ```
 
 Important current properties:
@@ -65,11 +68,14 @@ Important current properties:
   `NavigateToPose` goal. Interaction Manager and Behavior Executive remain
   unimplemented.
 - `send_nav_goal` accepts raw coordinates from a developer CLI. It is a test helper, not a semantic navigation executor.
-- Nav2 uses the standard DWB local planner. There is no people layer or human-aware controller.
+- The unchanged baseline Nav2 launch uses the standard DWB local planner and
+  no people layer. A separate opt-in launch adds the UPO social layer only to
+  the local costmap while retaining DWB. The integration runs, but its final
+  behavioral comparison has not passed.
 - `simulated_people_node` publishes the existing visitor, guide, and staff
   markers on standard `/people` data with stable public IDs and
-  finite-difference velocities. No current navigation or escort component
-  consumes that topic.
+  finite-difference velocities. The optional compatibility bridge consumes
+  that topic only for the third-party social layer; escort does not.
 - The visual visitor, guide, and staff models in `museum.world` remain static
   Gazebo models. The opt-in `scripted_visitor_node` can reposition only
   `visitor_marker` for the lag-recovery demo. It is still simulation ground
@@ -139,7 +145,7 @@ The arrows show the main control flow, not a requirement that every module be a 
 | Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Planned | No manager, dialogue policy, or command contract exists. |
 | Behavior Execution | Validate and dispatch only whitelisted robot skills. | Planned | The reasoner has a small `Skill` enum for its current outputs; no behavior command or executive exists. |
 | Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Minimal simulation-ground-truth prototype | `escort.py` implements `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED`; `semantic_navigation_node` performs intentional pause/resume for one task. The opt-in scripted marker is demo infrastructure, not escort intelligence. |
-| Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution runtime accepted for the Phase 3 goal | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose`; Nav2/AMCL/NavFn/DWB remain unchanged. |
+| Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution accepted; optional social-costmap integration awaiting behavioral acceptance | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose`; baseline Nav2/AMCL/NavFn/DWB remain unchanged. The opt-in variant adds a local social layer but still uses DWB. |
 
 ## Phase 5 Simulation People Boundary
 
@@ -149,11 +155,13 @@ publishes `social_nav_msgs/msg/Pedestrians` on `/people`. Position is copied
 from the verified world/map-aligned x/y coordinates; velocity is estimated
 from consecutive positions using ROS simulation time.
 
-This establishes only the standard input boundary for later human-aware
-navigation. The existing escort still consumes `/museum/visitor_observation`.
-Nav2 and DWB do not subscribe to `/people`, so robot behavior is unchanged.
-See [Simulated People](simulated_people.md) for the schema, frame evidence, and
-runtime commands.
+This remains the project's standard people boundary. The existing escort still
+consumes `/museum/visitor_observation`. For the opt-in Phase 6 variant only,
+`social_people_bridge_node` converts `/people` to `/people_nav2` because the
+selected third-party layer requires `people_msgs/msg/People`. DWB remains the
+controller. See [Simulated People](simulated_people.md) for the public schema
+and [Human-Aware Navigation](human_aware_navigation.md) for the compatibility
+boundary and runtime evidence.
 
 ## Semantic World Model
 
@@ -339,6 +347,13 @@ Social navigation controls how the robot moves around people:
 
 It belongs in or beside the Nav2 local-planning layer. DWB remains the baseline for comparison when a human-aware controller or people-aware costmap is added.
 
+The current opt-in prototype uses
+`nav2_social_costmap_plugin::SocialLayer` in the local costmap and preserves
+DWB. It successfully generates non-zero costs from `/people`, but the final
+controlled run measured `0.603 m` baseline versus `0.604 m` social clearance.
+That is not a meaningful trajectory effect, so Phase 6 remains pending runtime
+acceptance. Social MPC is not implemented.
+
 ## Language And Robot-Control Safety
 
 - Speech/text parsing ends in a schema-validated request.
@@ -350,7 +365,8 @@ It belongs in or beside the Nav2 local-planning layer. DWB remains the baseline 
 ## Phase Boundaries
 
 The development sequence is intentionally incremental. Phases 1 through 3 are
-complete and Phase 4 is the current constrained prototype:
+complete, Phases 4 and 5 are constrained validated prototypes, and the Phase 6
+technical integration is awaiting behavioral acceptance:
 
 1. **Complete:** define interfaces and state ownership.
 2. **Complete:** add one in-memory session using simulated identity ground truth.
@@ -359,9 +375,12 @@ complete and Phase 4 is the current constrained prototype:
 4. **Prototype implemented:** supervise one simulated visitor with
    simulator-ground-truth pause/resume/lost/arrival scenarios; the normal
    lag-recovery demo can be scripted, while manual testing remains available.
-5. **Prototype implemented:** publish the current Gazebo human markers on a
-   standard `/people` stream without changing escort or navigation.
-6. Add human-aware local navigation while preserving DWB as the baseline.
+5. **Runtime-validated prototype:** publish the current Gazebo human markers
+   on a standard `/people` stream without changing escort or baseline
+   navigation.
+6. **Technical prototype, acceptance pending:** bridge the public people
+   stream to an opt-in local social-costmap layer while preserving DWB; the
+   required clearance/trajectory difference has not yet been demonstrated.
 7. Add natural-language parsing.
 8. Add speech-to-text.
 9. Add grounded answers and speech output.

@@ -2,9 +2,10 @@
 
 This university HRAI project develops a TIAGo museum assistant in ROS 2 Humble and Gazebo. The robot is intended to combine a known geometric map with semantic museum knowledge, ambient context, visitor interaction state, and explainable deterministic decisions.
 
-The repository contains a validated semantic-navigation chain and a minimal
-simulation-ground-truth escort prototype. It is not yet a real-perception or
-social-navigation system.
+The repository contains a validated semantic-navigation chain, a minimal
+simulation-ground-truth escort prototype, and an opt-in first social-costmap
+integration. It is not a real-perception system, and the social variant has
+not yet passed its behavioral runtime acceptance.
 
 ## Status At A Glance
 
@@ -34,6 +35,10 @@ social-navigation system.
 - Opt-in Phase 5 `/people` stream using standard
   `social_nav_msgs/msg/Pedestrians` for the three Gazebo human markers, with
   finite-difference planar velocities.
+- Opt-in Phase 6 compatibility bridge from `/people` to the third-party-only
+  `people_msgs/msg/People` boundary.
+- Separate Nav2 + DWB + UPO social local-costmap launch; the original Nav2 +
+  DWB launch and configuration remain unchanged.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
@@ -43,6 +48,8 @@ The Phase 4 automatic and manual procedures are in
 [Social Escort](docs/social_escort.md).
 The simulation people boundary is in
 [Simulated People](docs/simulated_people.md).
+The Phase 6 integration and its non-passing behavioral comparison are in
+[Human-Aware Navigation](docs/human_aware_navigation.md).
 
 ### Partially Implemented
 
@@ -66,10 +73,12 @@ The simulation people boundary is in
 
 ### Current Milestone
 
-Phase 5 exposes simulator-ground-truth positions and estimated velocities on a
-standard people message. It does not change the validated Phase 4 escort path,
-and no navigation component consumes `/people` yet. Real people tracking and
-social navigation remain unimplemented.
+Phase 6 now converts the Phase 5 people stream for an opt-in third-party local
+costmap layer while retaining DWB. Plugin loading, bridge data, social costs,
+navigation success, and earlier-phase regressions pass. The final controlled
+comparison measured `0.603 m` baseline versus `0.604 m` social minimum
+bystander distance, so Phase 6 is not runtime-accepted and the roadmap has not
+been advanced.
 
 ### Future Work
 
@@ -78,7 +87,8 @@ social navigation remain unimplemented.
    runtime policies are required.
 3. Replace simulation ground truth with real or generic people tracking only
    after the standard `/people` boundary is validated.
-4. Add human-aware local navigation while preserving DWB as the comparison baseline.
+4. Make the existing social-costmap variant produce a repeatable clearance or
+   local-trajectory change while preserving DWB as the comparison baseline.
 5. Add deterministic natural-language parsing with a controlled LLM fallback.
 6. Add faster-whisper speech-to-text.
 7. Add grounded response generation and text-to-speech.
@@ -119,8 +129,10 @@ Optional simulation-only demo path:
                  -> scripted_visitor_node
                  -> /gazebo/set_entity_state -> visitor_marker
 
-Optional future-navigation data boundary:
+Optional Phase 6 social-navigation sidecar:
 /gazebo/model_states -> simulated_people_node -> /people
+                 -> social_people_bridge_node -> /people_nav2
+                 -> UPO social local-costmap layer -> DWB
 ```
 
 The target architecture adds real perception, language, interaction
@@ -149,6 +161,8 @@ exchange/museum_ws/src/museum_assistant/
     scripted_visitor_node.py
     simulated_people.py   # Stable IDs and finite-difference velocities
     simulated_people_node.py
+    social_people_bridge.py
+    social_people_bridge_node.py
     semantic_navigation.py
     semantic_navigation_node.py
     visitor_session.py    # Minimal in-memory Phase 2 session logic

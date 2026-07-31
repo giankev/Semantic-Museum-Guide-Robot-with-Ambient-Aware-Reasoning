@@ -94,7 +94,9 @@ Nav2 actions such as `/navigate_to_pose` are absent from this raw capture becaus
 | `/museum/visitor_observation` | `std_msgs/msg/String` containing JSON | Gazebo-ground-truth visitor presence and planar distance without simulator model names. |
 | `/museum/navigation_result` | `std_msgs/msg/String` containing JSON | Correlated low-level Nav2 acceptance and terminal result. |
 | `/museum/escort_state` | `std_msgs/msg/String` containing JSON | Correlated `escorting`, `waiting`, `lost`, or `arrived` state for one task. |
-| `/people` | `social_nav_msgs/msg/Pedestrians` | Opt-in Gazebo-ground-truth positions and finite-difference velocities for the visitor, guide, and staff markers; intended for future human-aware navigation. |
+| `/people` | `social_nav_msgs/msg/Pedestrians` | Project-standard opt-in Gazebo-ground-truth positions and finite-difference velocities for the visitor, guide, and staff markers. |
+| `/people_nav2` | `people_msgs/msg/People` | Opt-in third-party compatibility output consumed only by the UPO social layer. |
+| `/local_costmap/social_grid` | `nav_msgs/msg/OccupancyGrid` | Opt-in debug grid containing only UPO social-layer costs when `publish_occgrid` is enabled. |
 | `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM output or saved-map server output. |
 | `/amcl_pose` | `geometry_msgs/msg/PoseWithCovarianceStamped` | Known-map localization and semantic pose capture. |
 | `/navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | Manual tools or the filtered semantic-navigation node; only that node owns escort pause/resume goals. |
@@ -109,7 +111,8 @@ Nav2 actions such as `/navigate_to_pose` are absent from this raw capture becaus
 | Ambient sensors | `/museum/ambient_state` | Provides scripted dynamic semantic state such as crowd level, noise, and closures. |
 | Structured reasoning | `/museum/user_request`, `/museum/assistant_response` | Produces deterministic recommendations and prepared navigation skills. |
 | Simulated escort | `/museum/session_state`, `/museum/visitor_observation`, `/museum/escort_state`, `/museum/navigation_result` | Supervises one static visitor with Gazebo ground truth; not real tracking or social navigation. |
-| Simulated people boundary | `/people` | Publishes three stable public pedestrian IDs from Gazebo ground truth; not consumed by DWB and not real tracking. |
+| Simulated people boundary | `/people` | Publishes three stable public pedestrian IDs from Gazebo ground truth; baseline DWB does not consume it and it is not real tracking. |
+| Social-costmap compatibility | `/people_nav2`, `/local_costmap/social_grid` | Adapts the public people stream for the opt-in third-party local layer and exposes its debug costs; DWB remains the controller and behavioral acceptance is pending. |
 | Role-aware vision | `/head_front_camera/rgb/image_raw`, `/head_front_camera/depth/image_raw`, camera info topics, point clouds | Future lightweight detection of guide/staff badge or marker cues. |
 | Nav2 baseline | `/navigate_to_pose` plus controller command routing | Executes manual goals and filtered semantic goals while preserving DWB unchanged. |
 | Evaluation/debug | `/ground_truth_odom`, `/performance_metrics`, `/diagnostics`, `/joint_states`, `/tf` | Compare estimated behavior to simulation truth and debug controller/simulation health. |
@@ -118,7 +121,7 @@ Nav2 actions such as `/navigate_to_pose` are absent from this raw capture becaus
 
 - **SLAM:** `museum_slam.launch.py` remaps the SLAM node's `scan` input to `/scan_raw`. Odometry and transforms remain central diagnostics.
 - **Known map:** `maps/museum_map.yaml` and `.pgm` exist and are used by `museum_navigation.launch.py`.
-- **Navigation:** Nav2/AMCL/DWB form the current baseline. The accepted Phase 3 semantic decision path is connected to `/navigate_to_pose` through `semantic_navigation_node`.
+- **Navigation:** Nav2/AMCL/DWB form the current baseline. The accepted Phase 3 semantic decision path is connected to `/navigate_to_pose` through `semantic_navigation_node`. A separate opt-in stack adds only the social local-costmap layer and retains DWB.
 - **Localization:** `/mobile_base_controller/odom` and TF are central to localization and navigation diagnostics. The absence of plain `/odom` should be reflected in launch/config remappings.
 - **Semantic reasoning:** Museum concepts map to poses in YAML, but poses need calibration. Raw coordinates must never come from user language or an LLM.
 - **Ambient-aware behavior:** Scripted ambient updates influence subsequent recommendations. Active-task adaptation is not implemented.

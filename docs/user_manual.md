@@ -327,6 +327,31 @@ started by the museum launch, is not consumed by escort or DWB, and does not
 change robot behavior. Exact schema, frame validation, and the moving visitor
 procedure are in [Phase 5 Simulated People](simulated_people.md).
 
+## Phase 6 Optional Social Costmap
+
+Keep the validated baseline command unchanged:
+
+```bash
+ros2 launch museum_assistant museum_navigation.launch.py
+```
+
+For the opt-in variant, source `/root/social_nav_ws/install/setup.bash` and
+start these in separate terminals:
+
+```bash
+ros2 launch museum_assistant people.launch.py
+ros2 launch museum_assistant social_people_bridge.launch.py
+ros2 launch museum_assistant museum_navigation_social.launch.py
+```
+
+Choose baseline or social Nav2, never both. The social stack remains DWB and
+adds only the UPO layer to the local costmap. `/people` keeps its Phase 5
+message type; `/people_nav2` is third-party compatibility only. The integration
+runs and publishes `/local_costmap/social_grid`, but the final comparison did
+not demonstrate more clearance. Treat it as an acceptance-pending prototype,
+not as validated social behavior. Full evidence is in
+[Phase 6 Human-Aware Navigation](human_aware_navigation.md).
+
 ## Useful Debug Commands
 
 Inside a sourced container terminal:
@@ -400,8 +425,8 @@ killall gzserver gzclient gazebo 2>/dev/null || true
 - Not all arbitrary map coordinates are valid navigation goals.
 - Escort input is Gazebo ground truth for one manually moved static marker.
 - `LOST` has no automatic or dialogue recovery.
-- DWB is unchanged; social navigation and people-aware costmaps are not
-  implemented.
+- Baseline DWB is unchanged. An opt-in social local-costmap variant is
+  implemented, but its behavioral runtime acceptance is still pending.
 - The LLM parser is future work.
 - Real person tracking, general session management, interaction management,
   speech, and role-aware perception are future work.
@@ -417,5 +442,5 @@ Suggested order:
 5. Move the marker near TIAGo and show `escorting` plus the resent goal.
 6. Show `navigation_result=succeeded` followed by `escort_state=arrived`.
 7. Run the separate documented `lost` episode.
-8. Explain that the marker is simulator ground truth and DWB remains the
-   non-social baseline.
+8. Optionally show the separate Phase 6 debug grid, while stating that DWB
+   remains the controller and the behavioral comparison is not yet accepted.
