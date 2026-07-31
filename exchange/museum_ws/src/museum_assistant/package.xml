@@ -17,6 +17,7 @@
   <exec_depend>action_msgs</exec_depend>
   <exec_depend>nav2_msgs</exec_depend>
   <exec_depend>gazebo_msgs</exec_depend>
+  <exec_depend>social_nav_msgs</exec_depend>
   <exec_depend>gazebo_ros</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>slam_toolbox</exec_depend>

@@ -312,6 +312,21 @@ Nav2 `succeeded` only means the robot reached the destination. Phase 4 task
 success requires `/museum/escort_state` to report `arrived` after both robot
 and visitor are within the configured arrival condition.
 
+## Phase 5 Simulated People Stream
+
+Launch the simulation-only publisher explicitly:
+
+```bash
+ros2 launch museum_assistant people.launch.py
+ros2 topic echo /people
+```
+
+It publishes `visitor_1`, `guide_1`, and `staff_1` with map-frame positions and
+finite-difference velocities using `social_nav_msgs/msg/Pedestrians`. It is not
+started by the museum launch, is not consumed by escort or DWB, and does not
+change robot behavior. Exact schema, frame validation, and the moving visitor
+procedure are in [Phase 5 Simulated People](simulated_people.md).
+
 ## Useful Debug Commands
 
 Inside a sourced container terminal:

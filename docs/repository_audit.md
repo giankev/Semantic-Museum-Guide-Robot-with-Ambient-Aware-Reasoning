@@ -23,6 +23,8 @@ Phase 4 updates additionally cover the current Gazebo model-state interfaces,
 manual visitor repositioning, escort pause/resume, terminal loss, joint
 arrival, and a runtime-accepted opt-in deterministic lag-recovery marker
 script.
+Phase 5 adds a runtime-accepted opt-in standard simulation people stream
+without connecting it to escort or navigation.
 
 ## Classification
 
@@ -50,6 +52,7 @@ script.
 | --- | --- | --- |
 | Semantic navigation execution | `semantic_navigation_node` filters executable decisions, sends `NavigateToPose`, and publishes `/museum/navigation_result`. | The complete chain is runtime-accepted for `impressionism_hall`; other poses and repeatability evidence remain. |
 | Minimal social escort | `escort.py`, `/museum/visitor_observation`, and `/museum/escort_state` support one task with intentional Nav2 pause/resume; an opt-in script makes normal lag/recovery reproducible. | Gazebo ground truth and a service-moved static marker only; no real tracking, generic people interface, obstacle-aware visitor motion, or recovery from `LOST`. |
+| Simulated people stream | `simulated_people_node` maps the current visitor, guide, and staff markers to standard `social_nav_msgs/msg/Pedestrians` on `/people`; static, moving, and stopped samples are runtime-validated. | Gazebo ground truth and finite-difference velocity only; no perception, tracking, prediction, or navigation consumer. |
 | Visitor request interface | Strict `StructuredRequest`, optional session correlation, and scripted JSON requests. | No text parser, dialogue, general session policy, STT, or LLM fallback. |
 | Dynamic world model | Room ambient fields update in memory. | No shared authority, persistence, timestamps, provenance, visitor/session/task facts, or task-time re-reasoning. |
 | Navigation poses | Every room has a `nav_pose`; AMCL capture helper exists. | Poses are not all documented as calibrated/free-space tested. |
@@ -69,7 +72,7 @@ There is no runtime implementation for:
 - natural-language parsing or LLM fallback;
 - Interaction Manager;
 - Behavior Executive;
-- people publisher/tracker abstraction;
+- real or generic people tracking source;
 - human-aware/social local navigation;
 - grounded answer generation or TTS;
 - task-time ambient adaptation;
@@ -99,6 +102,7 @@ All executables used by current package launch files are registered in `setup.py
 - `visitor_session_node`
 - `semantic_navigation_node`
 - `scripted_visitor_node`
+- `simulated_people_node`
 - `user_request_simulator`
 
 The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` are also registered.
@@ -113,6 +117,7 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 | `visitor_session.launch.py` | Starts the simulated visitor-session and public distance-observation adapter. | No reasoning, navigation, generic people tracking, or real perception. |
 | `semantic_navigation.launch.py` | Starts the filtered reasoning-to-Nav2 adapter with minimal escort state logic. | No Nav2 bringup, reasoner, task manager, Behavior Executive, or social navigation. |
 | `scripted_visitor.launch.py` | Opt-in bounded movement of `visitor_marker` for one deterministic lag-recovery demo. | No escort decisions, tracking, perception, path planning, obstacle avoidance, or social navigation. |
+| `people.launch.py` | Opt-in standard `/people` publisher for three existing Gazebo markers. | No tracking, perception, costmap integration, controller, or social navigation. |
 | `museum_world.launch.py` | Opens the museum world without TIAGo. | No robot, SLAM, or Nav2. |
 | `tiago_museum_world.launch.py` | Includes the TIAGo Gazebo launch with the museum world. | No SLAM or Nav2 in that launch. |
 | `museum_slam.launch.py` | Starts async SLAM Toolbox with `/scan_raw` remapping. | No robot/world launch and no map saving automation. |
@@ -128,7 +133,9 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 
 ### Package Metadata
 
-The package manifest already declared the Python, message, and Nav2 action dependencies used by source code. This audit added explicit runtime dependencies for the installed launch files and their included systems: `launch`, `launch_ros`, `gazebo_ros`, `nav2_bringup`, `slam_toolbox`, and `tiago_gazebo`.
+The package manifest declares the Python, message, and Nav2 action dependencies
+used by source code. Phase 5 adds only `social_nav_msgs`; the Docker image uses
+the normal `ros-humble-social-nav-msgs` package.
 
 `setup.py` and `package.xml` now use a description that reflects the package's broader current scope instead of describing only the original semantic-map milestone.
 
@@ -136,7 +143,7 @@ The package manifest already declared the Python, message, and Nav2 action depen
 
 | Target layer | Gap |
 | --- | --- |
-| Perception | No tracked-person observation or engagement signal. |
+| Perception | A Gazebo-ground-truth `/people` stream exists, but there is no real tracked-person or engagement signal. |
 | Session | One static visitor-to-session mapping exists; there is no general lifecycle, disappearance, persistence, or multi-visitor policy. |
 | Language | Only already-structured JSON; no natural language or speech. |
 | World model | No shared dynamic authority and no person/session/task state. |
@@ -172,6 +179,9 @@ The repository history can be retained without using milestone numbers that conf
 13. **Automated escort demo visitor:** added one opt-in scripted marker that
     creates a bounded lag-recover episode through the existing Gazebo service
     and public escort state.
+14. **Simulation people stream:** mapped the three existing human markers to
+    standard `/people` positions and finite-difference velocities without
+    changing escort, Nav2, or DWB.
 
 This history records what was achieved while leaving interaction management,
 behavior execution, generic people tracking, language, speech, social
@@ -186,7 +196,7 @@ navigation, and real perception clearly unimplemented.
 | 2 | **Complete:** minimal visitor session and simulated identity | Gazebo identity is converted to `PersonTrack`, then to `Session`, without leaking actor IDs downstream. |
 | 3 | **Complete:** filtered reasoner -> Nav2 adapter | The prepared Impressionism request produces one correlated successful Nav2 goal; plain recommendations remain non-moving. |
 | 4 | **Prototype implemented:** basic escort with simulated ground truth | Escort, wait/cancel, recover/resend, lost/cancel, and joint arrival use the static marker; normal lag/recovery is scripted and manual tests remain available. |
-| 5 | Generic people publisher/tracking abstraction | Escort/session code runs unchanged against the generic interface. |
+| 5 | **Runtime-validated prototype:** standard simulation people stream | `/people` reports the three Gazebo markers with stable public IDs and velocities while escort and DWB remain unchanged. |
 | 6 | Human-aware/social Nav2 controller | Human-aware variant runs beside an unchanged DWB baseline and can be compared. |
 | 7 | Deterministic language parser plus LLM fallback | Text becomes schema-valid JSON; invalid/unsafe model output is rejected. |
 | 8 | faster-whisper STT | Recorded speech produces text within measured latency/resource limits. |
@@ -197,9 +207,8 @@ navigation, and real perception clearly unimplemented.
 
 ## Current Gate
 
-Phase 4 is implemented only at the simulator-ground-truth prototype boundary.
-The automatic lag-recovery demo and the retained manual acceptance procedure
-are documented in `social_escort.md`.
-Remaining semantic poses can be calibrated independently; generic people
-tracking, Interaction Management, Behavior Execution, social navigation,
-language, speech, and vision remain future work.
+Phase 5 establishes only a simulator-ground-truth `/people` boundary. The
+publisher, schema, and frame evidence are documented in `simulated_people.md`;
+Phase 4 escort remains separately documented in `social_escort.md`. Real
+people tracking, Interaction Management, Behavior Execution, social
+navigation, language, speech, and vision remain future work.

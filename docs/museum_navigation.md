@@ -218,6 +218,8 @@ The helper prints whether the goal was accepted, succeeded, aborted, or canceled
   CLI.
 - Escort monitoring is a one-visitor Gazebo-ground-truth prototype with a
   static marker moved manually or by the opt-in lag-recovery script.
+- The standard simulation `/people` stream is available as an opt-in data
+  source, but no Nav2 costmap or controller consumes it.
 - No Interaction Manager, Behavior Executive, real perception, LLM, speech,
   or vision is included.
 - DWB has no people-aware cost or social-navigation behavior.

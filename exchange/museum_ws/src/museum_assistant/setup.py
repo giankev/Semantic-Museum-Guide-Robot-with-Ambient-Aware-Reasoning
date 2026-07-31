@@ -52,6 +52,10 @@ setup(
                 "museum_assistant.scripted_visitor_node:main"
             ),
             (
+                "simulated_people_node = "
+                "museum_assistant.simulated_people_node:main"
+            ),
+            (
                 "user_request_simulator = "
                 "museum_assistant.user_request_simulator_node:main"
             ),

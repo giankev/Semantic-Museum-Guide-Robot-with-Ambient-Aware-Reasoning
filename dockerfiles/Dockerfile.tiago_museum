@@ -46,6 +46,10 @@ RUN apt-get update \
 RUN source /opt/ros/humble/setup.bash \
     && colcon build --symlink-install
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-social-nav-msgs \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN printf '%s\n' \
     'source /opt/ros/humble/setup.bash' \
     'source /root/tiago_public_ws/install/setup.bash' \

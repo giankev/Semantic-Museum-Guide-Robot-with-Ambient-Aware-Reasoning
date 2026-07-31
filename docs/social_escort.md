@@ -33,6 +33,11 @@ This is scripted simulator motion, not visitor autonomy, tracking, perception,
 or social navigation. `EscortSupervisor` remains the authority for wait,
 resume, lost, and arrival decisions.
 
+The optional Phase 5 `/people` publisher runs in parallel but is not part of
+this control path. Escort deliberately continues to consume the validated
+`/museum/visitor_observation` interface; see
+[Simulated People](simulated_people.md).
+
 ## Public Visitor Observation
 
 `/museum/visitor_observation` uses `std_msgs/String` JSON. A present visitor

@@ -31,6 +31,9 @@ social-navigation system.
   joint robot-plus-visitor arrival as escort success.
 - Opt-in bounded scripted visitor motion for a repeatable Phase 4 lag-recovery
   demo; manual marker control remains available.
+- Opt-in Phase 5 `/people` stream using standard
+  `social_nav_msgs/msg/Pedestrians` for the three Gazebo human markers, with
+  finite-difference planar velocities.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
@@ -38,6 +41,8 @@ social-navigation system.
 The validated runtime baseline is documented in [the user manual](docs/user_manual.md).
 The Phase 4 automatic and manual procedures are in
 [Social Escort](docs/social_escort.md).
+The simulation people boundary is in
+[Simulated People](docs/simulated_people.md).
 
 ### Partially Implemented
 
@@ -51,7 +56,8 @@ The Phase 4 automatic and manual procedures are in
 - **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
 - **Roles and people:** roles are represented semantically. The static
   `visitor_marker` is detected through Gazebo ground truth for the Phase 2
-  demo, but there is no real person tracking, engagement perception, or role
+  demo. Phase 5 also exposes the visitor, guide, and staff markers on `/people`,
+  but there is no real person tracking, engagement perception, or role
   perception.
 - **Sessions and downstream modules:** one minimal in-memory session and one
   escort task are supported for the static simulated visitor. There are no
@@ -60,17 +66,18 @@ The Phase 4 automatic and manual procedures are in
 
 ### Current Milestone
 
-Phase 4 is limited to simulator-ground-truth escort supervision. Its normal
-lag-recovery sequence is reproducible with an opt-in marker script, and its
-manual pause, resume, lost, and joint-arrival procedure remains documented.
-Generic people tracking and social navigation remain unimplemented.
+Phase 5 exposes simulator-ground-truth positions and estimated velocities on a
+standard people message. It does not change the validated Phase 4 escort path,
+and no navigation component consumes `/people` yet. Real people tracking and
+social navigation remain unimplemented.
 
 ### Future Work
 
 1. Calibrate the remaining semantic navigation poses used by final demos.
 2. Introduce Interaction Manager and Behavior Executive only when their
    runtime policies are required.
-3. Introduce a generic people publisher/tracking abstraction.
+3. Replace simulation ground truth with real or generic people tracking only
+   after the standard `/people` boundary is validated.
 4. Add human-aware local navigation while preserving DWB as the comparison baseline.
 5. Add deterministic natural-language parsing with a controlled LLM fallback.
 6. Add faster-whisper speech-to-text.
@@ -111,6 +118,9 @@ Optional simulation-only demo path:
 /museum/escort_state + /gazebo/model_states
                  -> scripted_visitor_node
                  -> /gazebo/set_entity_state -> visitor_marker
+
+Optional future-navigation data boundary:
+/gazebo/model_states -> simulated_people_node -> /people
 ```
 
 The target architecture adds real perception, language, interaction
@@ -137,6 +147,8 @@ exchange/museum_ws/src/museum_assistant/
     escort.py             # Minimal Phase 4 escort state machine
     scripted_visitor.py   # Bounded lag-recovery marker motion
     scripted_visitor_node.py
+    simulated_people.py   # Stable IDs and finite-difference velocities
+    simulated_people_node.py
     semantic_navigation.py
     semantic_navigation_node.py
     visitor_session.py    # Minimal in-memory Phase 2 session logic

@@ -48,6 +48,10 @@ Optional demo-only simulation sidecar:
 /museum/escort_state + Gazebo model states
                   -> scripted_visitor_node
                   -> /gazebo/set_entity_state -> visitor_marker
+
+Optional Phase 5 data boundary, not connected to Nav2:
+Gazebo model states -> simulated_people_node
+                    -> /people (social_nav_msgs/Pedestrians)
 ```
 
 Important current properties:
@@ -62,6 +66,10 @@ Important current properties:
   unimplemented.
 - `send_nav_goal` accepts raw coordinates from a developer CLI. It is a test helper, not a semantic navigation executor.
 - Nav2 uses the standard DWB local planner. There is no people layer or human-aware controller.
+- `simulated_people_node` publishes the existing visitor, guide, and staff
+  markers on standard `/people` data with stable public IDs and
+  finite-difference velocities. No current navigation or escort component
+  consumes that topic.
 - The visual visitor, guide, and staff models in `museum.world` remain static
   Gazebo models. The opt-in `scripted_visitor_node` can reposition only
   `visitor_marker` for the lag-recovery demo. It is still simulation ground
@@ -123,7 +131,7 @@ The arrows show the main control flow, not a requirement that every module be a 
 
 | Layer | Responsibility | Current status | Current artifact or future boundary |
 | --- | --- | --- | --- |
-| Perception | Detect/track an engaged person and publish transient robot-centric observations. | Simulation-ground-truth prototype | `visitor_session_node` observes the static visitor and TIAGo through Gazebo model states and publishes presence plus planar distance; no real perception exists. |
+| Perception | Detect/track an engaged person and publish transient robot-centric observations. | Simulation-ground-truth adapters only | `visitor_session_node` publishes visitor presence/distance for escort; `simulated_people_node` publishes three Gazebo markers on standard `/people`. No real perception or tracking exists. |
 | Session | Map a transient track to a visitor interaction session and own session lifecycle. | Minimal runtime implemented | One in-memory active `SessionState` named `session_1` is created and reused for `visitor_1`. |
 | Language | Convert speech/text into a validated structured request. | Contract and structured-topic prototype implemented | `StructuredRequest` validates `/museum/user_request`; no text parser, LLM, or STT exists. |
 | Semantic World Model | Represent persistent museum knowledge and dynamic contextual facts. | Implemented for museum and ambient facts; planned for people/session/task facts | `semantic_map.yaml`, `semantic_graph.py`, in-memory room updates. |
@@ -132,6 +140,20 @@ The arrows show the main control flow, not a requirement that every module be a 
 | Behavior Execution | Validate and dispatch only whitelisted robot skills. | Planned | The reasoner has a small `Skill` enum for its current outputs; no behavior command or executive exists. |
 | Escort | Decide whether a guidance task is socially succeeding and coordinate pause/recovery/cancel behavior. | Minimal simulation-ground-truth prototype | `escort.py` implements `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED`; `semantic_navigation_node` performs intentional pause/resume for one task. The opt-in scripted marker is demo infrastructure, not escort intelligence. |
 | Navigation | Localize, plan, control, and execute a verified goal. | Semantic execution runtime accepted for the Phase 3 goal | `semantic_navigation_node` sends approved deterministic poses to `NavigateToPose`; Nav2/AMCL/NavFn/DWB remain unchanged. |
+
+## Phase 5 Simulation People Boundary
+
+`simulated_people_node` is an opt-in Gazebo adapter. It maps
+`visitor_marker`, `guide_marker`, and `staff_marker` to stable public IDs and
+publishes `social_nav_msgs/msg/Pedestrians` on `/people`. Position is copied
+from the verified world/map-aligned x/y coordinates; velocity is estimated
+from consecutive positions using ROS simulation time.
+
+This establishes only the standard input boundary for later human-aware
+navigation. The existing escort still consumes `/museum/visitor_observation`.
+Nav2 and DWB do not subscribe to `/people`, so robot behavior is unchanged.
+See [Simulated People](simulated_people.md) for the schema, frame evidence, and
+runtime commands.
 
 ## Semantic World Model
 
@@ -337,8 +359,9 @@ complete and Phase 4 is the current constrained prototype:
 4. **Prototype implemented:** supervise one simulated visitor with
    simulator-ground-truth pause/resume/lost/arrival scenarios; the normal
    lag-recovery demo can be scripted, while manual testing remains available.
-5. Generalize people tracking.
-6. Add human-aware local navigation.
+5. **Prototype implemented:** publish the current Gazebo human markers on a
+   standard `/people` stream without changing escort or navigation.
+6. Add human-aware local navigation while preserving DWB as the baseline.
 7. Add natural-language parsing.
 8. Add speech-to-text.
 9. Add grounded answers and speech output.

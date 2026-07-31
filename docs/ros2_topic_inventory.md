@@ -94,6 +94,7 @@ Nav2 actions such as `/navigate_to_pose` are absent from this raw capture becaus
 | `/museum/visitor_observation` | `std_msgs/msg/String` containing JSON | Gazebo-ground-truth visitor presence and planar distance without simulator model names. |
 | `/museum/navigation_result` | `std_msgs/msg/String` containing JSON | Correlated low-level Nav2 acceptance and terminal result. |
 | `/museum/escort_state` | `std_msgs/msg/String` containing JSON | Correlated `escorting`, `waiting`, `lost`, or `arrived` state for one task. |
+| `/people` | `social_nav_msgs/msg/Pedestrians` | Opt-in Gazebo-ground-truth positions and finite-difference velocities for the visitor, guide, and staff markers; intended for future human-aware navigation. |
 | `/map` | `nav_msgs/msg/OccupancyGrid` | SLAM output or saved-map server output. |
 | `/amcl_pose` | `geometry_msgs/msg/PoseWithCovarianceStamped` | Known-map localization and semantic pose capture. |
 | `/navigate_to_pose` | `nav2_msgs/action/NavigateToPose` | Manual tools or the filtered semantic-navigation node; only that node owns escort pause/resume goals. |
@@ -108,6 +109,7 @@ Nav2 actions such as `/navigate_to_pose` are absent from this raw capture becaus
 | Ambient sensors | `/museum/ambient_state` | Provides scripted dynamic semantic state such as crowd level, noise, and closures. |
 | Structured reasoning | `/museum/user_request`, `/museum/assistant_response` | Produces deterministic recommendations and prepared navigation skills. |
 | Simulated escort | `/museum/session_state`, `/museum/visitor_observation`, `/museum/escort_state`, `/museum/navigation_result` | Supervises one static visitor with Gazebo ground truth; not real tracking or social navigation. |
+| Simulated people boundary | `/people` | Publishes three stable public pedestrian IDs from Gazebo ground truth; not consumed by DWB and not real tracking. |
 | Role-aware vision | `/head_front_camera/rgb/image_raw`, `/head_front_camera/depth/image_raw`, camera info topics, point clouds | Future lightweight detection of guide/staff badge or marker cues. |
 | Nav2 baseline | `/navigate_to_pose` plus controller command routing | Executes manual goals and filtered semantic goals while preserving DWB unchanged. |
 | Evaluation/debug | `/ground_truth_odom`, `/performance_metrics`, `/diagnostics`, `/joint_states`, `/tf` | Compare estimated behavior to simulation truth and debug controller/simulation health. |
