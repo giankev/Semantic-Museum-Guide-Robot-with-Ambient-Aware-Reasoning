@@ -194,6 +194,63 @@ Therefore the required functional behavior comparison is **FAIL**, even
 though plugin loading, data conversion, cost generation, navigation success,
 and earlier-phase regression checks are **PASS**.
 
+## Phase 6A DWB Diagnostic
+
+The bounded Phase 6A experiment tested the hypothesis that DWB's generic
+`BaseObstacle` critic was not sufficiently sensitive to the already-verified
+social costs. Only the social Nav2 configuration was changed during each run;
+the social layer, guide pose `(2.2, 0.15)`, robot start pose, semantic request,
+goal, and all other critic weights remained unchanged.
+
+Nav2 Humble declares the exact critic parameter as
+`FollowPath.BaseObstacle.sum_scores`, with a default of `false`. The installed
+implementation updates the trajectory score once per pose as
+`score = sum_scores * score + pose_score`. Consequently, `false` replaces the
+running value and returns the final sampled pose cost, while `true` accumulates
+the cost of every sampled pose along the local trajectory. This behavior was
+verified against the Humble `BaseObstacleCritic` source and the installed
+`ros-humble-dwb-critics` package (`1.1.20-1jammy.20260607.083802`), and the
+runtime controller parameter was confirmed as `true` for the experimental
+runs.
+
+Each candidate had a 120 simulated-second cutoff, more than four times the
+29.820 s baseline. The cutoff distinguishes a usable navigation result from
+the repeated no-progress and recovery loop observed during the experiment.
+The values below are fresh controlled runs; an intermediate `0.20` run that
+did not start at the exact original robot pose was discarded and repeated.
+
+| Variant | `sum_scores` | `BaseObstacle.scale` | Result | Simulated time | Minimum guide distance |
+| --- | ---: | ---: | --- | ---: | ---: |
+| Recorded baseline DWB | false | 0.04 | succeeded | 29.820 s | 0.603 m |
+| Recorded social run before Phase 6A | false | 0.04 | succeeded | 28.835 s | 0.604 m |
+| Phase 6A social | true | 0.04 | timeout, no progress | 120.055 s | 2.206 m |
+| Phase 6A social | true | 0.10 | timeout, no progress | 120.025 s | 2.205 m |
+| Phase 6A social | true | 0.20 | timeout, no progress | 120.060 s | 2.205 m |
+| Phase 6A social | true | 0.50 | timeout, no progress | 120.025 s | 2.205 m |
+
+The approximately 2.205 m readings are the initial robot-to-guide distance,
+not improved passing clearance: TIAGo remained effectively at the start pose.
+The lowest tested scale already caused failure to make progress and repeated
+recoveries; increasing the weight produced the same behavior rather than a
+monotonic trajectory change. A likely explanation is that accumulating the
+broad social costs over every local-trajectory pose penalizes all usable DWB
+samples, including samples near the visitor at the robot, instead of creating
+a discriminating lateral preference around the guide. This is an inference
+from the observed controller behavior, not a separately proven plugin defect.
+
+No experimental setting was selected. The social configuration was restored
+to its pre-experiment state (`BaseObstacle.scale: 0.04`, implicit default
+`sum_scores: false`). No post-selection regression run was applicable. The
+validated baseline files were not modified, and the prior Phase 3, Phase 4,
+Phase 5, and baseline Nav2 results remain the regression reference. During the
+Phase 6A runs, the Phase 3 reasoning/semantic dispatch chain and Phase 5 people
+stream continued to operate; navigation itself failed only under the rejected
+experimental social settings.
+
+Phase 6 behavioral acceptance therefore remains **FAIL**. The bounded tuning
+experiment is closed; a dedicated social critic or Social MPC requires a
+separate reviewed milestone and was not started here.
+
 ## Regression Result
 
 - Original baseline launch works without people publisher, bridge, or social
