@@ -230,7 +230,7 @@ On 2026-08-03, Phase 7 passed functional live acceptance with default model
 `openai/gpt-oss-20b`, strict Groq Structured Outputs, and OpenAI SDK `2.46.0`.
 The Docker image and both selected package builds passed. The fresh suite
 reported 83 tests, 0 errors, 0 failures, and 0 skipped tests. The measured
-language-node API latency was 0.809 seconds.
+language-node API latency was 0.866 seconds.
 
 Validated candidate:
 
@@ -274,7 +274,8 @@ Reasoner decision:
 With the key removed, deterministic parsing still published the expected
 correlated request and reached the reasoner. The unresolved Groq sentence
 published nothing, logged that fallback was unavailable, and left both nodes
-alive.
+alive. The no-key language process group then stopped cleanly; repeated stop
+and final cleanup calls remained successful after it had already exited.
 
 The direct-control diagnostic published no `/museum/user_request`, but the
 provider path returned `api_error` rather than an accepted diagnostic status.

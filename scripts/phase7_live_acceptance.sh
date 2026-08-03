@@ -23,6 +23,7 @@ KEY_SOURCE="inherited"
 PROMPT_INJECTION_DIAGNOSTIC="DEFERRED"
 PROMPT_INJECTION_LANGUAGE_STATUS="unavailable"
 ROS_PIDS=()
+ROS_DESCRIPTIONS=()
 LAST_PID=""
 
 cleanup() {
@@ -31,13 +32,11 @@ cleanup() {
   set +e
 
   if [[ "${CONTAINER_STARTED}" == true ]]; then
-    local pid
-    for pid in "${ROS_PIDS[@]:-}"; do
-      if [[ "${pid}" =~ ^[0-9]+$ ]]; then
-        docker exec "${CONTAINER_NAME}" \
-          bash -lc "kill -TERM -- -${pid} >/dev/null 2>&1 || true" \
-          >/dev/null 2>&1 || true
-      fi
+    local index pid description
+    for ((index = ${#ROS_PIDS[@]} - 1; index >= 0; index--)); do
+      pid=${ROS_PIDS[index]}
+      description=${ROS_DESCRIPTIONS[index]:-"process group ${pid}"}
+      stop_process_group "${pid}" "${description}" || true
     done
     docker container rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
   fi
@@ -272,35 +271,68 @@ protected_digest() {
 start_process() {
   local log_name=$1
   local command=$2
+  local description=${3:-${command}}
   local log_path="${CONTAINER_RESULT_DIR}/${log_name}"
 
   LAST_PID="$(container_bash \
     "nohup setsid bash -lc '${ROS_SETUP} && exec ${command}' > '${log_path}' 2>&1 < /dev/null & echo \$!")"
   [[ "${LAST_PID}" =~ ^[0-9]+$ ]] || die "Could not start ${command}."
   ROS_PIDS+=("${LAST_PID}")
+  ROS_DESCRIPTIONS+=("${description}")
+}
+
+process_group_active() {
+  local leader_pid=${1:-}
+  [[ "${leader_pid}" =~ ^[0-9]+$ ]] || return 1
+  container_bash "ps -eo pgid=,stat= | awk -v target='${leader_pid}' \
+    '\$1 == target && \$2 !~ /^Z/ { found=1 } \
+    END { exit(found ? 0 : 1) }'" >/dev/null 2>&1
 }
 
 process_alive() {
-  local pid=$1
-  docker exec "${CONTAINER_NAME}" kill -0 "${pid}" >/dev/null 2>&1
+  process_group_active "$1"
 }
 
-stop_process() {
-  local pid=$1
-  if [[ "${pid}" =~ ^[0-9]+$ ]]; then
-    container_bash "kill -TERM -- -${pid} >/dev/null 2>&1 || true"
-    local deadline=$((SECONDS + 10))
-    while process_alive "${pid}" && ((SECONDS < deadline)); do
-      sleep 0.2
-    done
-    if process_alive "${pid}"; then
-      container_bash "kill -KILL -- -${pid} >/dev/null 2>&1 || true"
-      sleep 0.5
-    fi
-    if process_alive "${pid}"; then
-      die "Could not stop process group ${pid}."
-    fi
+stop_process_group() {
+  local leader_pid=${1:-}
+  local description=${2:-process}
+  local attempt
+
+  if [[ ! "${leader_pid}" =~ ^[0-9]+$ ]] \
+    || ! process_group_active "${leader_pid}"; then
+    echo "${description}: already stopped"
+    return 0
   fi
+
+  container_bash \
+    "kill -TERM -- -${leader_pid} >/dev/null 2>&1 || true" >/dev/null 2>&1 \
+    || true
+  for attempt in {1..20}; do
+    if ! process_group_active "${leader_pid}"; then
+      echo "${description}: stopped"
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  container_bash \
+    "kill -KILL -- -${leader_pid} >/dev/null 2>&1 || true" >/dev/null 2>&1 \
+    || true
+  for attempt in {1..8}; do
+    if ! process_group_active "${leader_pid}"; then
+      echo "${description}: force-stopped"
+      return 0
+    fi
+    sleep 0.25
+  done
+
+  if process_group_active "${leader_pid}"; then
+    echo "ERROR: ${description} is still alive" >&2
+    return 1
+  fi
+
+  echo "${description}: force-stopped"
+  return 0
 }
 
 message_count() {
@@ -834,6 +866,7 @@ echo "Starting dedicated headless acceptance container..."
 CONTAINER_STARTED=true
 docker run -d \
   --name "${CONTAINER_NAME}" \
+  --init \
   --net=host \
   "${DOCKER_ENV_ARGS[@]}" \
   -v "${REPO_ROOT}:/root/exchange" \
@@ -985,9 +1018,11 @@ print('Configured model available: PASS')
 PY" | tee "${RESULT_DIR}/model_check.log"
 
 echo "Starting minimal ROS graph..."
-start_process "reasoning.log" "ros2 run museum_assistant reasoning_node"
+start_process "reasoning.log" "ros2 run museum_assistant reasoning_node" \
+  "reasoning_node"
 REASONING_PID="${LAST_PID}"
-start_process "language.log" "ros2 launch museum_assistant language.launch.py"
+start_process "language.log" "ros2 launch museum_assistant language.launch.py" \
+  "key-enabled language_node"
 LANGUAGE_PID="${LAST_PID}"
 
 sleep 2
@@ -996,10 +1031,12 @@ process_alive "${LANGUAGE_PID}" || die "language_node exited during startup."
 wait_for_topics || die "Required Phase 7 topics did not appear."
 
 start_process "user_requests.txt" \
-  "env PYTHONUNBUFFERED=1 timeout 240 ros2 topic echo /museum/user_request --field data"
+  "env PYTHONUNBUFFERED=1 timeout 240 ros2 topic echo /museum/user_request --field data" \
+  "user-request topic capture"
 REQUEST_CAPTURE_PID="${LAST_PID}"
 start_process "assistant_responses.txt" \
-  "env PYTHONUNBUFFERED=1 timeout 240 ros2 topic echo /museum/assistant_response --field data"
+  "env PYTHONUNBUFFERED=1 timeout 240 ros2 topic echo /museum/assistant_response --field data" \
+  "assistant-response topic capture"
 RESPONSE_CAPTURE_PID="${LAST_PID}"
 sleep 1
 
@@ -1073,9 +1110,11 @@ echo "Prompt-injection language status: ${PROMPT_INJECTION_LANGUAGE_STATUS}"
 echo "Prompt-injection request count before/after: ${REQUESTS_BEFORE_INJECTION}/${REQUESTS_AFTER_INJECTION}"
 
 echo "Running missing-key behavior test..."
-stop_process "${LANGUAGE_PID}"
+stop_process_group "${LANGUAGE_PID}" "key-enabled language_node" \
+  || die "Could not stop the key-enabled language_node process group."
 start_process "language_no_key.log" \
-  "env -u GROQ_API_KEY ros2 launch museum_assistant language.launch.py"
+  "env -u GROQ_API_KEY ros2 launch museum_assistant language.launch.py" \
+  "no-key language_node"
 NO_KEY_LANGUAGE_PID="${LAST_PID}"
 sleep 2
 process_alive "${NO_KEY_LANGUAGE_PID}" || die "No-key language_node failed to start."
@@ -1106,7 +1145,8 @@ grep -Fq 'Groq fallback unavailable' "${RESULT_DIR}/language_no_key.log" \
 process_alive "${NO_KEY_LANGUAGE_PID}" || die "No-key language_node exited."
 process_alive "${REASONING_PID}" || die "reasoning_node exited during acceptance."
 echo "Missing-key result: deterministic path passed; unresolved path published nothing."
-stop_process "${NO_KEY_LANGUAGE_PID}"
+stop_process_group "${NO_KEY_LANGUAGE_PID}" "no-key language_node" \
+  || die "Could not stop the no-key language_node process group."
 
 [[ "${FUNCTIONAL_FAILURE}" == false ]] \
   || die "A functional node-stability criterion failed."
