@@ -226,11 +226,12 @@ remaining compatible with ROS Humble's bundled pytest 6.2.5 plugin workflow.
 <!-- phase7-live-acceptance:start -->
 ## Recorded Live Groq Acceptance
 
-On 2026-08-03, Phase 7 passed functional live acceptance with default model
-`openai/gpt-oss-20b`, strict Groq Structured Outputs, and OpenAI SDK `2.46.0`.
-The Docker image and both selected package builds passed. The fresh suite
-reported 83 tests, 0 errors, 0 failures, and 0 skipped tests. The measured
-language-node API latency was 0.866 seconds.
+On 2026-08-03, Phase 7 passed its bounded live acceptance with model
+`openai/gpt-oss-20b` and OpenAI SDK `2.46.0`. The Docker image and selected-package
+workspace builds both passed. The two selected packages reported 83
+tests, 0 errors, 0 failures, and 0
+skipped tests. The measured language-node API latency was
+1.108 seconds.
 
 Validated candidate:
 
@@ -271,25 +272,18 @@ Reasoner decision:
 }
 ```
 
-With the key removed, deterministic parsing still published the expected
-correlated request and reached the reasoner. The unresolved Groq sentence
-published nothing, logged that fallback was unavailable, and left both nodes
-alive. The no-key language process group then stopped cleanly; repeated stop
-and final cleanup calls remained successful after it had already exited.
-
-The direct-control diagnostic published no `/museum/user_request`, but the
-provider path returned `api_error` rather than an accepted diagnostic status.
-Adversarial prompt-injection evaluation is therefore deferred and is not a
-Phase 7 functional gate. This does not establish robust prompt-injection
-security.
+The prompt-injection diagnostic status was `DEFERRED`.
+Adversarial prompt-injection evaluation remains deferred and is not a Phase 7
+functional gate; this result does not establish robust prompt-injection
+security. With the key removed, deterministic parsing still reached the
+reasoner while unresolved text published nothing and logged that fallback was
+unavailable. No Nav2 or robot-control process was started.
 
 Before the strict schema migration, `llama-3.1-8b-instant` returned `intents`
 instead of `intent` in two bounded live attempts. Both candidates were safely
-rejected by the unchanged local validator; no field-renaming workaround was
-added.
+rejected by the unchanged local validator.
 
-This remains a bounded text-language prototype, not general language
-understanding, dialogue, speech interaction, production security, or direct
-LLM robot control. No Nav2 or robot-control process was started during this
-acceptance.
+This is a bounded text-language prototype, not general language understanding,
+dialogue, speech interaction, production security, or direct LLM robot control.
 <!-- phase7-live-acceptance:end -->
+
