@@ -1,10 +1,15 @@
 import json
+import sys
+from types import SimpleNamespace
 
 import pytest
 
 from museum_assistant.contracts import StructuredRequest
 from museum_assistant.language_parser import (
     CandidateValidationError,
+    DEFAULT_GROQ_MODEL,
+    GROQ_RESPONSE_FORMAT,
+    GroqLanguageClient,
     parse_deterministic,
     route_text,
     validate_candidate,
@@ -268,3 +273,139 @@ def test_direct_control_text_cannot_be_resolved_by_llm(text):
 
     assert result.request is None
     assert result.status == "forbidden_direct_movement"
+
+
+def test_groq_client_requests_strict_json_schema(monkeypatch):
+    calls = []
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content=json.dumps(
+                                {
+                                    "resolved": False,
+                                    "intent": None,
+                                    "constraints": {
+                                        "style": None,
+                                        "avoid_crowd": None,
+                                        "child_friendly": None,
+                                        "wheelchair_accessible": None,
+                                    },
+                                }
+                            )
+                        )
+                    )
+                ]
+            )
+
+    class FakeOpenAI:
+        def __init__(self, **_kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI))
+
+    client = GroqLanguageClient(api_key="unit-test-key")
+    client.translate("unsupported museum request")
+
+    assert client.model == "openai/gpt-oss-20b"
+    assert DEFAULT_GROQ_MODEL == "openai/gpt-oss-20b"
+    assert len(calls) == 1
+    response_format = calls[0]["response_format"]
+    assert response_format == GROQ_RESPONSE_FORMAT
+    assert response_format["type"] == "json_schema"
+    json_schema = response_format["json_schema"]
+    assert json_schema["strict"] is True
+
+    schema = json_schema["schema"]
+    assert schema["additionalProperties"] is False
+    assert set(schema["properties"]) == {
+        "resolved",
+        "intent",
+        "constraints",
+    }
+    assert set(schema["required"]) == set(schema["properties"])
+    assert schema["properties"]["intent"] == {
+        "type": ["string", "null"],
+        "enum": [
+            "recommend",
+            "recommend_and_prepare_navigation",
+            None,
+        ],
+    }
+
+    constraints = schema["properties"]["constraints"]
+    assert constraints["additionalProperties"] is False
+    assert set(constraints["properties"]) == {
+        "style",
+        "avoid_crowd",
+        "child_friendly",
+        "wheelchair_accessible",
+    }
+    assert set(constraints["required"]) == set(constraints["properties"])
+    assert constraints["properties"]["style"] == {
+        "type": ["string", "null"]
+    }
+    for name in (
+        "avoid_crowd",
+        "child_friendly",
+        "wheelchair_accessible",
+    ):
+        assert constraints["properties"][name] == {
+            "type": ["boolean", "null"]
+        }
+
+
+def test_null_constraints_are_removed_after_local_validation():
+    result = route_text(
+        "I am visiting with a young relative",
+        request_id="text_nullable_constraints",
+        session_id="session_1",
+        llm_callable=lambda _text: json.dumps(
+            {
+                "resolved": True,
+                "intent": "recommend",
+                "constraints": {
+                    "style": None,
+                    "avoid_crowd": True,
+                    "child_friendly": True,
+                    "wheelchair_accessible": None,
+                },
+            }
+        ),
+    )
+
+    assert result.status == "resolved"
+    assert result.candidate["constraints"] == {
+        "avoid_crowd": True,
+        "child_friendly": True,
+    }
+    assert result.request.constraints == {
+        "avoid_crowd": True,
+        "child_friendly": True,
+    }
+
+
+def test_plural_intents_field_is_not_renamed():
+    result = route_text(
+        "I would like a recommendation",
+        request_id="text_plural_intents",
+        llm_callable=lambda _text: json.dumps(
+            {
+                "resolved": True,
+                "intents": "recommend",
+                "constraints": {
+                    "style": None,
+                    "avoid_crowd": None,
+                    "child_friendly": None,
+                    "wheelchair_accessible": None,
+                },
+            }
+        ),
+    )
+
+    assert result.request is None
+    assert result.status == "invalid_candidate:unsupported_top_level_field"

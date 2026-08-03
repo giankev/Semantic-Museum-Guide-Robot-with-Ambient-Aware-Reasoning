@@ -19,7 +19,7 @@ conversation memory, or TTS.
 /museum/user_text (std_msgs/msg/String)
   -> deterministic Italian/English parser
   -> unresolved text only: one Groq chat request
-  -> JSON Object Mode response
+  -> strict Groq Structured Outputs response
   -> strict local candidate validation
   -> existing StructuredRequest validation
   -> /museum/user_request (std_msgs/msg/String containing JSON)
@@ -69,18 +69,22 @@ OpenAI-compatible endpoint. The Docker image pins `openai==2.46.0`. The client
 uses one synchronous Chat Completions request from a daemon worker thread:
 
 ```text
-response_format = {"type": "json_object"}
+response_format.type = "json_schema"
+response_format.json_schema.strict = true
 max_completion_tokens = 200
 temperature = 0.0
 timeout = 10 seconds
 max_retries = 0
 ```
 
-This is JSON Object Mode. It guarantees JSON syntax but is not strict
-Structured Outputs and does not guarantee adherence to the local schema.
-There is no tool calling, semantic-map context, provider abstraction,
-automatic model fallback, retry scheduler, request queue, conversation
-history, or agent.
+The provider schema requires exactly `resolved`, `intent`, and `constraints`,
+sets `additionalProperties=false` on both objects, and requires all four
+supported constraint fields. Optional intent and constraint values use JSON
+`null`; locally validated null constraint values are removed before the
+existing `StructuredRequest` is constructed. The strict local candidate and
+`StructuredRequest` validators remain authoritative. There is no tool calling,
+semantic-map context, provider abstraction, automatic model fallback, retry
+scheduler, request queue, conversation history, or agent.
 
 Only one Groq call may be active. A second unresolved input received during an
 active call is ignored with a warning. The prompt is short, the user content is
@@ -88,12 +92,9 @@ only the received sentence, and the small completion cap limits Free Plan
 usage. Groq Free Plan access is rate-limited; a rate-limit response produces no
 publication and the node continues running.
 
-The initially tested model is `llama-3.1-8b-instant`. It is a default only:
-`GROQ_MODEL` selects its replacement without code changes. Groq has scheduled
-this model's removal from Free and Developer tiers for **2026-08-16**. There is
-no automatic migration; the operator must test and configure a replacement
-model before that date. See the
-[Groq deprecation notice](https://console.groq.com/docs/deprecations).
+The default model is `openai/gpt-oss-20b`. `GROQ_MODEL` can still select a
+different compatible model without code changes; there is no automatic model
+fallback.
 
 ## Strict Local Validation
 
@@ -135,7 +136,7 @@ Use only a newly rotated key supplied at runtime:
 ```bash
 export GROQ_API_KEY="NEW_ROTATED_KEY"
 export GROQ_BASE_URL="https://api.groq.com/openai/v1"
-export GROQ_MODEL="llama-3.1-8b-instant"
+export GROQ_MODEL="openai/gpt-oss-20b"
 ./start_museum_tiago.sh
 ```
 
