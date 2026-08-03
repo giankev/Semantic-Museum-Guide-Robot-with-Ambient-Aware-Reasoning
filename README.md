@@ -4,8 +4,8 @@ This university HRAI project develops a TIAGo museum assistant in ROS 2 Humble a
 
 The repository contains a validated semantic-navigation chain, a minimal
 simulation-ground-truth escort prototype, and an opt-in first social-costmap
-integration. It is not a real-perception system, and the social variant has
-not yet passed its behavioral runtime acceptance.
+experiment plus a separate runtime-validated bounded proxemic DWB critic. It
+is not a real-perception system or a broad social-navigation evaluation.
 
 ## Status At A Glance
 
@@ -48,12 +48,15 @@ The Phase 4 automatic and manual procedures are in
 [Social Escort](docs/social_escort.md).
 The simulation people boundary is in
 [Simulated People](docs/simulated_people.md).
-The Phase 6 integration and its non-passing behavioral comparison are in
+The Phase 6 experiments and accepted bounded custom-critic result are in
 [Human-Aware Navigation](docs/human_aware_navigation.md).
 
 ### Partially Implemented
 
-- **Natural-language interaction:** `/museum/user_request` accepts validated JSON, but there is no natural-language parser, LLM, speech-to-text, or dialogue input.
+- **Natural-language interaction:** `/museum/user_text` now has deterministic
+  Italian/English parsing and a strict Groq fallback for unresolved text.
+  Offline ROS acceptance passes; live Groq acceptance, speech-to-text, and
+  dialogue remain pending.
 - **Semantic-to-navigation bridge:** `semantic_navigation_node` consumes only
   successful `recommend_and_prepare_navigation` decisions and sends their
   deterministic `nav_pose` to Nav2. The complete chain has passed runtime
@@ -73,12 +76,11 @@ The Phase 6 integration and its non-passing behavioral comparison are in
 
 ### Current Milestone
 
-Phase 6 now converts the Phase 5 people stream for an opt-in third-party local
-costmap layer while retaining DWB. Plugin loading, bridge data, social costs,
-navigation success, and earlier-phase regressions pass. The final controlled
-comparison measured `0.603 m` baseline versus `0.604 m` social minimum
-bystander distance, so Phase 6 is not runtime-accepted and the roadmap has not
-been advanced.
+Phase 6 is a runtime-validated bounded prototype through the separate
+`museum_social_critic::ProxemicForceCritic` at scale 32. The accepted run
+increased controlled minimum guide clearance from `0.603 m` to `0.665 m` while
+preserving navigation and escort completion. Phase 7 text-language code and
+its offline ROS path now pass; live Groq acceptance remains pending.
 
 ### Future Work
 
@@ -87,14 +89,13 @@ been advanced.
    runtime policies are required.
 3. Replace simulation ground truth with real or generic people tracking only
    after the standard `/people` boundary is validated.
-4. Make the existing social-costmap variant produce a repeatable clearance or
-   local-trajectory change while preserving DWB as the comparison baseline.
-5. Add deterministic natural-language parsing with a controlled LLM fallback.
-6. Add faster-whisper speech-to-text.
-7. Add grounded response generation and text-to-speech.
-8. Re-reason when relevant ambient state changes during an active task.
-9. Optionally add lightweight role/context perception without identifying people.
-10. Evaluate baseline, semantic/ambient-aware, and social variants.
+4. Complete live acceptance of the implemented deterministic text parser and
+   Groq fallback.
+5. Add faster-whisper speech-to-text.
+6. Add grounded response generation and text-to-speech.
+7. Re-reason when relevant ambient state changes during an active task.
+8. Optionally add lightweight role/context perception without identifying people.
+9. Evaluate baseline, semantic/ambient-aware, and social variants.
 
 See [Architecture](docs/architecture.md) for module boundaries and [Repository Audit](docs/repository_audit.md) for the evidence behind these classifications.
 

@@ -397,4 +397,5 @@ by its focused unit test, and no additional moving-human framework was added.
   upper failure boundary and must not be selected.
 - People positions are Gazebo ground truth, not perception or tracking.
 - One comparison is functional evidence only, not a quantitative evaluation.
-- Social MPC and Phase 7 were not started.
+- Social MPC was not started. Phase 7 text-language code is separate from this
+  stack; its offline ROS path passed and live Groq acceptance remains pending.

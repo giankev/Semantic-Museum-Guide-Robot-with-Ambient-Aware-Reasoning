@@ -74,6 +74,10 @@ RUN source /opt/ros/humble/setup.bash \
         --packages-select people_msgs nav2_social_costmap_plugin \
         --cmake-args -DBUILD_TESTING=OFF
 
+RUN pip3 install --no-cache-dir \
+    openai==2.46.0 \
+    anyio==3.7.1
+
 RUN printf '%s\n' \
     'source /opt/ros/humble/setup.bash' \
     'source /root/tiago_public_ws/install/setup.bash' \

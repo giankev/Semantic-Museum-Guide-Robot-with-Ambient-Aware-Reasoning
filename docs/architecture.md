@@ -19,7 +19,11 @@ structured reasoning, semantic navigation, and minimal escort supervision.
 visitor_marker -> Gazebo model states -> visitor_session_node
                                       -> /museum/session_state
                                       -> /museum/visitor_observation
-                                      -> user_request_simulator
+                                      -> language_node session correlation
+                                                   |
+/museum/user_text -> deterministic parser -> optional Groq fallback
+                                                   |
+                                      -> /museum/user_request
                                                   |
 semantic_map.yaml --------------------+           |
                                       |           v
@@ -142,7 +146,7 @@ The arrows show the main control flow, not a requirement that every module be a 
 | --- | --- | --- | --- |
 | Perception | Detect/track an engaged person and publish transient robot-centric observations. | Simulation-ground-truth adapters only | `visitor_session_node` publishes visitor presence/distance for escort; `simulated_people_node` publishes three Gazebo markers on standard `/people`. No real perception or tracking exists. |
 | Session | Map a transient track to a visitor interaction session and own session lifecycle. | Minimal runtime implemented | One in-memory active `SessionState` named `session_1` is created and reused for `visitor_1`. |
-| Language | Convert speech/text into a validated structured request. | Contract and structured-topic prototype implemented | `StructuredRequest` validates `/museum/user_request`; no text parser, LLM, or STT exists. |
+| Language | Convert speech/text into a validated structured request. | Text prototype implemented; offline accepted, live Groq pending | `language_node` parses `/museum/user_text` deterministically, uses Groq only for unresolved text, validates locally, then constructs `StructuredRequest`. No STT exists. |
 | Semantic World Model | Represent persistent museum knowledge and dynamic contextual facts. | Implemented for museum and ambient facts; planned for people/session/task facts | `semantic_map.yaml`, `semantic_graph.py`, in-memory room updates. |
 | Reasoning | Select a destination/alternative from validated constraints and explain the choice. | Implemented deterministic baseline and typed boundary | `reasoning.py` consumes `StructuredRequest` and produces `ReasoningDecision`. |
 | Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Planned | No manager, dialogue policy, or command contract exists. |
@@ -390,7 +394,8 @@ runtime-validated through the bounded custom-critic result:
    from `/people` using the custom proxemic critic while preserving the
    baseline and the independent escort supervisor. The earlier generic
    SocialLayer and Phase 6A tuning results remain documented failures.
-7. Add natural-language parsing.
+7. **Implemented; offline accepted and live Groq pending:** add deterministic
+   text parsing with a strict Groq fallback boundary.
 8. Add speech-to-text.
 9. Add grounded answers and speech output.
 10. Add active-task ambient adaptation.

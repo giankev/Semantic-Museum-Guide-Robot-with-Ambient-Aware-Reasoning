@@ -39,6 +39,7 @@ setup(
                 "museum_assistant.ambient_sensor_simulator_node:main"
             ),
             "reasoning_node = museum_assistant.reasoning_node:main",
+            "language_node = museum_assistant.language_node:main",
             (
                 "semantic_navigation_node = "
                 "museum_assistant.semantic_navigation_node:main"
