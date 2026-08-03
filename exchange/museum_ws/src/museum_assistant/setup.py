@@ -20,6 +20,10 @@ setup(
             + glob("maps/*.png"),
         ),
         (f"share/{package_name}/worlds", glob("worlds/*.world")),
+        (
+            f"share/{package_name}/worlds/supplied_museum",
+            glob("worlds/supplied_museum/*"),
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
