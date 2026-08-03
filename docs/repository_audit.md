@@ -47,6 +47,7 @@ leakage or node exit, but full runtime validation is not yet claimed.
 | TIAGo Docker/Gazebo baseline | `Dockerfile.tiago_museum`, `start_museum_tiago.sh`, validated project baseline | ROS 2/Gazebo dependencies remain in Docker. |
 | Manual TIAGo movement | teleop dependency, documented command and validated baseline | Direct velocity/teleop only. |
 | Custom museum scene | `worlds/museum.world`, `museum_world.launch.py` | Lightweight static geometry and visual markers. |
+| Packaged supplied museum scene | `worlds/supplied_museum/`, `tiago_supplied_museum_world.launch.py` | Portable assets and a bounded collision repair are Gazebo/TIAGo runtime-validated; no accepted aligned map or supplied-world Nav2 chain exists. |
 | TIAGo in museum world | `tiago_museum_world.launch.py`, validated milestone documentation | World launch does not itself start Nav2. |
 | Semantic museum graph | `semantic_map.yaml`, `semantic_graph.py`, `semantic_graph_node.py` | YAML validation, NetworkX graph, room/artwork queries. |
 | Ambient updates | `ambient_sensor_simulator_node.py`, graph update handlers | Scripted JSON and process-local memory. |
@@ -136,6 +137,7 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 | `social_people_bridge.launch.py` | Opt-in minimal `/people` to `/people_nav2` compatibility bridge. | No tracking, prediction, identity, session, escort, or navigation logic. |
 | `museum_world.launch.py` | Opens the museum world without TIAGo. | No robot, SLAM, or Nav2. |
 | `tiago_museum_world.launch.py` | Includes the TIAGo Gazebo launch with the museum world. | No SLAM or Nav2 in that launch. |
+| `tiago_supplied_museum_world.launch.py` | Includes TIAGo Gazebo with the installed supplied museum, state plugin, and three visual markers. | No SLAM, map server, Nav2, reasoning, escort, people publisher, or social navigation. |
 | `museum_slam.launch.py` | Starts async SLAM Toolbox with `/scan_raw` remapping. | No robot/world launch and no map saving automation. |
 | `museum_navigation.launch.py` | Includes Nav2 bringup with saved map and museum parameters. | No robot/world launch or semantic adapter in the same launch. |
 | `museum_navigation_social.launch.py` | Includes the same Nav2/DWB stack with the opt-in UPO layer in the local costmap. | No people publisher, bridge, reasoner, semantic adapter, escort script, or Social MPC. |
@@ -144,6 +146,10 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 ### Configuration And Assets
 
 - `setup.py` installs all current YAML, launch, map, and world assets.
+- The supplied museum world, original DAE and textures, and the bounded
+  collision derivative are installed from `worlds/supplied_museum/`. This
+  variant has no accepted occupancy map; the existing PGM/YAML remains tied to
+  the lightweight world.
 - The saved PGM is a 300 by 220 occupancy image referenced by `museum_map.yaml`.
 - `nav2_museum.yaml` uses AMCL, NavFn, DWB, standard recovery behaviors, and the saved map launch.
 - `nav2_museum_social.yaml` preserves the baseline global costmap and DWB
@@ -246,6 +252,15 @@ evaluation, and real perception clearly incomplete or unimplemented.
 | 12 | Experimental evaluation | Repeatable metrics compare baseline and semantic/social variants. |
 
 ## Current Gate
+
+The supplied-museum integration is PARTIAL at its occupancy-map gate. Portable
+asset loading, TIAGo spawn, sensors/TF, and physical north/east traversal pass,
+but five SLAM attempts failed world/map alignment or inflated-clearance checks.
+Consequently AMCL, Nav2, semantic navigation, session/escort, `/people`, social
+critic, and deterministic text integration are not claimed for that world.
+The original environment remains the documented default; full evidence and
+reverted experiments are in
+[`supplied_museum_integration.md`](supplied_museum_integration.md).
 
 The roadmap has passed the bounded Phase 6 gate through the custom critic. The
 public people boundary is documented in `simulated_people.md`; the accepted

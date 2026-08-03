@@ -106,6 +106,23 @@ ros2 launch museum_assistant tiago_museum_world.launch.py
 
 This opens Gazebo with TIAGo inside the custom museum world.
 
+### Opt-In Supplied Museum Variant
+
+The packaged supplied scene can be launched separately for Gazebo, TIAGo,
+sensor, TF, and physical-motion inspection:
+
+```bash
+ros2 launch museum_assistant tiago_supplied_museum_world.launch.py gzclient:=false
+```
+
+Its original DAE and textures resolve from the installed package and no host
+path is required. Do not launch the legacy map or navigation stack against
+this scene: five runtime SLAM attempts did not produce a sufficiently aligned,
+clear occupancy map. The previous `tiago_museum_world.launch.py` remains the
+default full-demo environment. See
+[Supplied Museum Integration](supplied_museum_integration.md) for the accepted
+checks, collision repair, failed maps, and cleanup evidence.
+
 ## Manual Teleoperation
 
 Terminal 2, from the host:
@@ -420,6 +437,10 @@ killall gzserver gzclient gazebo 2>/dev/null || true
 
 ## Current Limitations
 
+- The opt-in supplied museum has passed its asset/Gazebo/TIAGo/sensor and
+  corridor-motion checks, but not its occupancy-map gate. AMCL, Nav2,
+  semantic/session/escort/people/social, and Phase 7 results in this manual
+  apply only to the lightweight baseline world unless explicitly stated.
 - The accepted Impressionism semantic goal works, but not every configured room
   pose has completed runtime acceptance.
 - Not all arbitrary map coordinates are valid navigation goals.

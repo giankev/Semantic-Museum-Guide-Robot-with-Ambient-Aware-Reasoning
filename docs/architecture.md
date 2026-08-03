@@ -14,6 +14,11 @@ Status labels used below:
 
 The current repository correlates one simulated visitor session through
 structured reasoning, semantic navigation, and minimal escort supervision.
+That accepted chain uses the lightweight museum world and its matching saved
+map. A separate packaged supplied-museum launch has passed asset, Gazebo,
+TIAGo, sensor, TF, and physical-corridor checks, but has no accepted aligned
+occupancy map. It therefore does not yet feed AMCL, Nav2, or the downstream
+chain shown below. See [Supplied Museum Integration](supplied_museum_integration.md).
 
 ```text
 visitor_marker -> Gazebo model states -> visitor_session_node
@@ -101,6 +106,10 @@ Important current properties:
 - `escort.py` provides four states for one task. It can request an intentional
   cancel/resend through the existing semantic-navigation node, but it does not
   control local motion or alter DWB.
+- `tiago_supplied_museum_world.launch.py` is an opt-in world-only variant. It
+  resolves the supplied asset tree from the installed package and deliberately
+  leaves the existing world/map/navigation default unchanged while mapping is
+  unresolved.
 
 ## Target Architecture
 

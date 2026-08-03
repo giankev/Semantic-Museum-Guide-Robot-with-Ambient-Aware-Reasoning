@@ -13,6 +13,9 @@ is not a real-perception system or a broad social-navigation evaluation.
 
 - Docker image and launcher for the public TIAGo ROS 2 Humble simulation.
 - Gazebo launch with TIAGo in a lightweight custom museum world.
+- Separate opt-in launch for the packaged supplied museum assets, with a
+  runtime-validated minimal collision repair. Its occupancy-map/Nav2 gate is
+  still incomplete, so it is not the default environment.
 - Manual keyboard teleoperation.
 - ROS 2 topic and sensor inventory for the TIAGo simulation baseline.
 - YAML semantic map with rooms, artworks, roles, sensors, relations, and room navigation poses.
@@ -52,9 +55,17 @@ The Phase 6 experiments and accepted bounded custom-critic result are in
 [Human-Aware Navigation](docs/human_aware_navigation.md).
 The bounded Phase 8 file interface and its cloud-audio privacy boundary are in
 [Speech Interface](docs/speech_interface.md).
+The supplied-world asset, Gazebo, collision, and rejected-map evidence is in
+[Supplied Museum Integration](docs/supplied_museum_integration.md).
 
 ### Partially Implemented
 
+- **Supplied museum environment:** the original DAE and textures are packaged
+  without host-specific paths, TIAGo and its sensors run in the dedicated
+  world, and physical north/east routes were exercised. Repeated SLAM attempts
+  did not yield a map with sufficient aligned clearance, so supplied-world
+  AMCL, Nav2, semantic, escort, people, social, and Phase 7 regressions remain
+  unaccepted. The previous world remains the default.
 - **Natural-language interaction:** Phase 7 is a runtime-validated bounded
   text-language prototype with deterministic Italian/English parsing, strict
   Groq Structured Outputs, and unchanged local validation. Phase 8 now adds a
@@ -86,6 +97,9 @@ preserving navigation and escort completion. Phase 7 is now a
 runtime-validated bounded text-language prototype. Phase 8 file-based
 speech-to-text is implemented and passes the selected automated suite; it is
 not marked runtime-validated until the live audio acceptance succeeds.
+The supplied museum is separately integrated through the Gazebo/sensor gate,
+but remains PARTIAL at the occupancy-map gate and has not replaced the
+validated lightweight-world baseline.
 
 ### Future Work
 
@@ -172,7 +186,8 @@ exchange/museum_ws/src/museum_assistant/
     visitor_session.py    # Minimal in-memory Phase 2 session logic
     visitor_session_node.py
   test/                   # Contract, session, escort, and reasoning tests
-  worlds/                 # Lightweight Gazebo museum world
+  worlds/                 # Lightweight baseline and packaged supplied museum
+    supplied_museum/      # Original visual assets plus bounded collision DAE
   package.xml
   setup.py
 
@@ -216,6 +231,17 @@ Launch TIAGo in the museum:
 ```bash
 ros2 launch museum_assistant tiago_museum_world.launch.py
 ```
+
+Launch the separate supplied-museum Gazebo variant (currently asset and
+physical-motion validation only):
+
+```bash
+ros2 launch museum_assistant tiago_supplied_museum_world.launch.py gzclient:=false
+```
+
+Do not pair this variant with the legacy saved map. Its mapping/Nav2 gate is
+documented as PARTIAL in
+[Supplied Museum Integration](docs/supplied_museum_integration.md).
 
 Launch the deterministic reasoning demo in another sourced terminal:
 

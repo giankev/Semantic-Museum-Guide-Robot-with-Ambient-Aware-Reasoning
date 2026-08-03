@@ -391,6 +391,9 @@ by its focused unit test, and no additional moving-human framework was added.
 
 ## Remaining Limitations
 
+- All accepted baseline/social measurements in this document use the
+  lightweight baseline museum. The supplied environment has no accepted
+  aligned map yet, so the custom critic was not loaded or compared there.
 - Phase 6B is a one-scenario functional acceptance result, not a broad
   quantitative evaluation or general social-navigation guarantee.
 - Only the selected scale-32 setting is accepted. Scale 64 demonstrated the
