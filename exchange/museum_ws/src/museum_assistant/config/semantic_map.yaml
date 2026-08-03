@@ -1,0 +1,260 @@
+semantic_map:
+  name: Semantic Museum Baseline
+  frame_id: map
+  description: First semantic predicate layer for the TIAGo museum guide project.
+
+rooms:
+  - id: entrance
+    display_name: Entrance Hall
+    type: public_area
+    status: open
+    crowd_level: medium
+    noise_level: medium
+    child_friendly: true
+    wheelchair_accessible: true
+    nav_pose: {x: 0.0, y: 0.0, yaw: 0.0}
+    description: Visitor entry point with orientation panels and ticket checks.
+
+  - id: main_corridor
+    display_name: Main Corridor
+    type: circulation
+    status: open
+    crowd_level: low
+    noise_level: low
+    child_friendly: true
+    wheelchair_accessible: true
+    nav_pose: {x: 2.0, y: 0.0, yaw: 0.0}
+    description: Central accessible route connecting the main museum areas.
+
+  - id: impressionism_hall
+    display_name: Impressionism Hall
+    type: exhibition_room
+    status: open
+    crowd_level: medium
+    noise_level: low
+    child_friendly: false
+    wheelchair_accessible: true
+    nav_pose: {x: 5.0, y: 1.5, yaw: 1.57}
+    description: Gallery focused on late nineteenth-century painting.
+
+  - id: ancient_art_hall
+    display_name: Ancient Art Hall
+    type: exhibition_room
+    status: open
+    crowd_level: low
+    noise_level: low
+    child_friendly: false
+    wheelchair_accessible: true
+    nav_pose: {x: 5.0, y: -1.5, yaw: -1.57}
+    description: Gallery containing Roman and Egyptian artifacts.
+
+  - id: kids_hall
+    display_name: Kids Discovery Hall
+    type: interactive_room
+    status: open
+    crowd_level: high
+    noise_level: high
+    child_friendly: true
+    wheelchair_accessible: true
+    nav_pose: {x: 3.0, y: -4.0, yaw: -1.57}
+    description: Interactive learning area designed for families and children.
+
+  - id: temporary_exhibition
+    display_name: Temporary Exhibition
+    type: exhibition_room
+    status: closed
+    crowd_level: low
+    noise_level: low
+    child_friendly: true
+    wheelchair_accessible: true
+    nav_pose: {x: 8.0, y: 0.0, yaw: 0.0}
+    description: Rotating exhibition area; currently unavailable in the semantic state.
+
+  - id: exit
+    display_name: Exit
+    type: public_area
+    status: open
+    crowd_level: low
+    noise_level: low
+    child_friendly: true
+    wheelchair_accessible: true
+    nav_pose: {x: -1.0, y: 2.5, yaw: 3.14}
+    description: Exit area near visitor services and the museum shop.
+
+artworks:
+  - id: monet_water_lilies
+    title: Water Lilies
+    artist: Claude Monet
+    style: impressionism
+    period: late_19th_century
+    located_in: impressionism_hall
+    tags: [painting, nature, color, quiet_visit]
+    description: Impressionist painting study centered on water, light, and reflection.
+
+  - id: van_gogh_starry_night
+    title: Starry Night Study
+    artist: Vincent van Gogh
+    style: post_impressionism
+    period: late_19th_century
+    located_in: impressionism_hall
+    tags: [painting, night, expressive_brushwork]
+    description: Expressive painting study useful for discussing color and movement.
+
+  - id: roman_statue
+    title: Roman Marble Statue
+    culture: Roman
+    style: classical
+    period: ancient_rome
+    located_in: ancient_art_hall
+    tags: [sculpture, marble, mythology]
+    description: Marble figure representing classical sculptural conventions.
+
+  - id: egyptian_vase
+    title: Egyptian Funerary Vase
+    culture: Egyptian
+    style: ancient_egyptian
+    period: new_kingdom
+    located_in: ancient_art_hall
+    tags: [ceramic, ritual, archaeology]
+    description: Decorated vessel connected to ancient Egyptian ritual practice.
+
+  - id: interactive_light_installation
+    title: Interactive Light Installation
+    artist: Museum Education Lab
+    style: interactive
+    period: contemporary
+    located_in: kids_hall
+    tags: [interactive, family, light, sound]
+    description: Hands-on installation that reacts to visitor movement and sound.
+
+roles:
+  - id: visitor
+    display_name: Visitor
+    can_update: []
+    description: Default museum visitor role.
+
+  - id: guide
+    display_name: Museum Guide
+    can_update: [room_status, crowd_level, noise_level]
+    description: Authorized role that may update room state during a guided visit.
+
+  - id: staff
+    display_name: Museum Staff
+    can_update: [room_status, crowd_level, noise_level]
+    description: Authorized role for operational updates.
+
+concepts:
+  - id: room_status
+    description: Whether a room is open or closed.
+  - id: crowd_level
+    description: Qualitative crowd estimate for a room.
+  - id: noise_level
+    description: Qualitative ambient noise estimate for a room.
+
+sensors:
+  - id: entrance_crowd_sensor
+    type: crowd
+    room: entrance
+    observes: crowd_level
+    description: Simulated crowd estimate for the entrance area.
+
+  - id: corridor_noise_sensor
+    type: noise
+    room: main_corridor
+    observes: noise_level
+    description: Simulated noise estimate for the main corridor.
+
+  - id: impressionism_crowd_sensor
+    type: crowd
+    room: impressionism_hall
+    observes: crowd_level
+    description: Simulated crowd estimate for the impressionism hall.
+
+  - id: ancient_art_noise_sensor
+    type: noise
+    room: ancient_art_hall
+    observes: noise_level
+    description: Simulated noise estimate for the ancient art hall.
+
+  - id: kids_crowd_sensor
+    type: crowd
+    room: kids_hall
+    observes: crowd_level
+    description: Simulated crowd estimate for the children's interactive area.
+
+  - id: temporary_status_sensor
+    type: status
+    room: temporary_exhibition
+    observes: room_status
+    description: Simulated status signal for the temporary exhibition.
+
+relations:
+  - source: monet_water_lilies
+    relation: located_in
+    target: impressionism_hall
+  - source: van_gogh_starry_night
+    relation: located_in
+    target: impressionism_hall
+  - source: roman_statue
+    relation: located_in
+    target: ancient_art_hall
+  - source: egyptian_vase
+    relation: located_in
+    target: ancient_art_hall
+  - source: interactive_light_installation
+    relation: located_in
+    target: kids_hall
+  - source: entrance
+    relation: connected_to
+    target: main_corridor
+  - source: main_corridor
+    relation: connected_to
+    target: impressionism_hall
+  - source: main_corridor
+    relation: connected_to
+    target: ancient_art_hall
+  - source: main_corridor
+    relation: connected_to
+    target: kids_hall
+  - source: main_corridor
+    relation: connected_to
+    target: temporary_exhibition
+  - source: main_corridor
+    relation: connected_to
+    target: exit
+  - source: entrance
+    relation: has_sensor
+    target: entrance_crowd_sensor
+  - source: main_corridor
+    relation: has_sensor
+    target: corridor_noise_sensor
+  - source: impressionism_hall
+    relation: has_sensor
+    target: impressionism_crowd_sensor
+  - source: ancient_art_hall
+    relation: has_sensor
+    target: ancient_art_noise_sensor
+  - source: kids_hall
+    relation: has_sensor
+    target: kids_crowd_sensor
+  - source: temporary_exhibition
+    relation: has_sensor
+    target: temporary_status_sensor
+  - source: guide
+    relation: can_update
+    target: room_status
+  - source: guide
+    relation: can_update
+    target: crowd_level
+  - source: guide
+    relation: can_update
+    target: noise_level
+  - source: staff
+    relation: can_update
+    target: room_status
+  - source: staff
+    relation: can_update
+    target: crowd_level
+  - source: staff
+    relation: can_update
+    target: noise_level

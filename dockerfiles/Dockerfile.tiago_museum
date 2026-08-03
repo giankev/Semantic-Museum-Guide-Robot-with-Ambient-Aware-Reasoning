@@ -1,0 +1,89 @@
+FROM ros:humble
+
+SHELL ["/bin/bash", "-c"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ENV TIAGO_WS=/root/tiago_public_ws
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    curl \
+    ca-certificates \
+    build-essential \
+    python3-pip \
+    python3-vcstool \
+    python3-rosdep \
+    python3-colcon-common-extensions \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-slam-toolbox \
+    ros-humble-xacro \
+    ros-humble-robot-state-publisher \
+    ros-humble-joint-state-publisher-gui \
+    ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-image-view \
+    ros-humble-teleop-twist-keyboard \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir \
+    networkx \
+    pyyaml \
+    numpy
+
+RUN rosdep update
+
+RUN mkdir -p ${TIAGO_WS}/src
+WORKDIR ${TIAGO_WS}
+
+RUN vcs import --input https://raw.githubusercontent.com/pal-robotics/tiago_tutorials/humble-devel/tiago_public.repos src
+
+RUN apt-get update \
+    && rosdep install --from-paths src --ignore-src --rosdistro humble -r -y \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN source /opt/ros/humble/setup.bash \
+    && colcon build --symlink-install
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-social-nav-msgs \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG PEOPLE_REPOSITORY=https://github.com/wg-perception/people.git
+ARG PEOPLE_REVISION=0ae47f6e0208cedd84d19d066743fdc1d05fcafa
+ARG SOCIAL_LAYER_REPOSITORY=https://github.com/robotics-upo/nav2_social_costmap_plugin.git
+ARG SOCIAL_LAYER_REVISION=398a7e5e9937189a5a4b19000bc30a025421e103
+
+ENV SOCIAL_NAV_WS=/root/social_nav_ws
+
+RUN mkdir -p ${SOCIAL_NAV_WS}/src \
+    && git clone --branch ros2 --single-branch --filter=blob:none --no-checkout \
+        ${PEOPLE_REPOSITORY} ${SOCIAL_NAV_WS}/src/people \
+    && git -C ${SOCIAL_NAV_WS}/src/people sparse-checkout set people_msgs \
+    && git -C ${SOCIAL_NAV_WS}/src/people checkout ${PEOPLE_REVISION} \
+    && git clone --branch humble --single-branch \
+        ${SOCIAL_LAYER_REPOSITORY} \
+        ${SOCIAL_NAV_WS}/src/nav2_social_costmap_plugin \
+    && git -C ${SOCIAL_NAV_WS}/src/nav2_social_costmap_plugin \
+        checkout ${SOCIAL_LAYER_REVISION}
+
+RUN source /opt/ros/humble/setup.bash \
+    && cd ${SOCIAL_NAV_WS} \
+    && colcon build \
+        --packages-select people_msgs nav2_social_costmap_plugin \
+        --cmake-args -DBUILD_TESTING=OFF
+
+RUN pip3 install --no-cache-dir \
+    openai==2.46.0 \
+    anyio==3.7.1
+
+RUN printf '%s\n' \
+    'source /opt/ros/humble/setup.bash' \
+    'source /root/tiago_public_ws/install/setup.bash' \
+    'source /root/social_nav_ws/install/setup.bash' \
+    'export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp' \
+    >> /root/.bashrc
+
+WORKDIR /root/exchange
+CMD ["bash"]

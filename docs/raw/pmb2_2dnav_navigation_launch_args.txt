@@ -1,0 +1,5 @@
+Arguments (pass arguments as '<name>:=<value>'):
+
+    'namespace':
+        Define namespace of the robot.
+        (default: '')

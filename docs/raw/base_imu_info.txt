@@ -1,0 +1,3 @@
+Type: sensor_msgs/msg/Imu
+Publisher count: 1
+Subscription count: 0

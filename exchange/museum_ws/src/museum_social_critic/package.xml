@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>museum_social_critic</name>
+  <version>0.1.0</version>
+  <description>Minimal proxemic trajectory critic for the TIAGo museum guide.</description>
+  <maintainer email="museum@example.com">Museum Robotics Team</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>dwb_core</depend>
+  <depend>dwb_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_2d_msgs</depend>
+  <depend>nav2_costmap_2d</depend>
+  <depend>nav2_util</depend>
+  <depend>pluginlib</depend>
+  <depend>rclcpp</depend>
+  <depend>social_nav_msgs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_geometry_msgs</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+    <dwb_core plugin="${prefix}/critics.xml"/>
+  </export>
+</package>

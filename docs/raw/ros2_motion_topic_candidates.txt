@@ -1,0 +1,37 @@
+==============================
+/odom
+NOT FOUND
+==============================
+/mobile_base_controller/odom
+Type: nav_msgs/msg/Odometry
+Publisher count: 1
+Subscription count: 0
+==============================
+/base_controller/odom
+NOT FOUND
+==============================
+/diff_drive_controller/odom
+NOT FOUND
+==============================
+/wheel_odom
+NOT FOUND
+==============================
+/tf
+Type: tf2_msgs/msg/TFMessage
+Publisher count: 2
+Subscription count: 2
+==============================
+/tf_static
+Type: tf2_msgs/msg/TFMessage
+Publisher count: 1
+Subscription count: 2
+==============================
+/joint_states
+Type: sensor_msgs/msg/JointState
+Publisher count: 1
+Subscription count: 3
+==============================
+/mobile_base_controller/cmd_vel_unstamped
+Type: geometry_msgs/msg/Twist
+Publisher count: 1
+Subscription count: 2

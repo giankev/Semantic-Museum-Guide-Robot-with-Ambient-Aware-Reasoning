@@ -1,0 +1,12 @@
+<class_libraries>
+  <library path="museum_social_critic">
+    <class
+      type="museum_social_critic::ProxemicForceCritic"
+      base_class_type="dwb_core::TrajectoryCritic">
+      <description>
+        Scores the closest predicted robot-pedestrian encounter with a bounded
+        proxemic repulsive potential.
+      </description>
+    </class>
+  </library>
+</class_libraries>

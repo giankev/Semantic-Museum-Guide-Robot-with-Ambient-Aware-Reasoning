@@ -1,0 +1,26 @@
+==============================
+/mobile_base_controller/cmd_vel_unstamped
+Type: geometry_msgs/msg/Twist
+Publisher count: 1
+Subscription count: 2
+==============================
+/cmd_vel
+Type: geometry_msgs/msg/Twist
+Publisher count: 0
+Subscription count: 1
+==============================
+/odom
+NOT FOUND
+==============================
+/scan
+NOT FOUND
+==============================
+/tf
+Type: tf2_msgs/msg/TFMessage
+Publisher count: 2
+Subscription count: 2
+==============================
+/joint_states
+Type: sensor_msgs/msg/JointState
+Publisher count: 1
+Subscription count: 3

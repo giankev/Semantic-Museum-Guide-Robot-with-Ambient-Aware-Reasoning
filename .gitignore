@@ -1,0 +1,8 @@
+build/
+install/
+log/
+__pycache__/
+*.pyc
+build.log
+.colcon/
+.phase7_acceptance_tmp/
