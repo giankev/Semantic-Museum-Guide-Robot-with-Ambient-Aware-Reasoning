@@ -53,10 +53,10 @@ The Phase 6 experiments and accepted bounded custom-critic result are in
 
 ### Partially Implemented
 
-- **Natural-language interaction:** `/museum/user_text` now has deterministic
-  Italian/English parsing and a strict Groq fallback for unresolved text.
-  Offline ROS acceptance passes; live Groq acceptance, speech-to-text, and
-  dialogue remain pending.
+- **Natural-language interaction:** Phase 7 is a runtime-validated bounded
+  text-language prototype with deterministic Italian/English parsing, strict
+  Groq Structured Outputs, and unchanged local validation. Adversarial
+  prompt-injection evaluation, speech-to-text, and dialogue remain pending.
 - **Semantic-to-navigation bridge:** `semantic_navigation_node` consumes only
   successful `recommend_and_prepare_navigation` decisions and sends their
   deterministic `nav_pose` to Nav2. The complete chain has passed runtime
@@ -79,8 +79,8 @@ The Phase 6 experiments and accepted bounded custom-critic result are in
 Phase 6 is a runtime-validated bounded prototype through the separate
 `museum_social_critic::ProxemicForceCritic` at scale 32. The accepted run
 increased controlled minimum guide clearance from `0.603 m` to `0.665 m` while
-preserving navigation and escort completion. Phase 7 text-language code and
-its offline ROS path now pass; live Groq acceptance remains pending.
+preserving navigation and escort completion. Phase 7 is now a
+runtime-validated bounded text-language prototype.
 
 ### Future Work
 
@@ -89,13 +89,11 @@ its offline ROS path now pass; live Groq acceptance remains pending.
    runtime policies are required.
 3. Replace simulation ground truth with real or generic people tracking only
    after the standard `/people` boundary is validated.
-4. Complete live acceptance of the implemented deterministic text parser and
-   Groq fallback.
-5. Add faster-whisper speech-to-text.
-6. Add grounded response generation and text-to-speech.
-7. Re-reason when relevant ambient state changes during an active task.
-8. Optionally add lightweight role/context perception without identifying people.
-9. Evaluate baseline, semantic/ambient-aware, and social variants.
+4. Add faster-whisper speech-to-text.
+5. Add grounded response generation and text-to-speech.
+6. Re-reason when relevant ambient state changes during an active task.
+7. Optionally add lightweight role/context perception without identifying people.
+8. Evaluate baseline, semantic/ambient-aware, and social variants.
 
 See [Architecture](docs/architecture.md) for module boundaries and [Repository Audit](docs/repository_audit.md) for the evidence behind these classifications.
 

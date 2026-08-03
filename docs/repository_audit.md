@@ -30,8 +30,9 @@ that variant's wiring passed but its behavioral comparison failed. Phase 6B
 then added a separate custom proxemic DWB critic which passed the controlled
 clearance, stability, and escort acceptance checks while retaining DWB.
 Phase 7 adds deterministic text parsing plus a strict, one-at-a-time Groq
-fallback boundary; its offline tests and ROS flow pass, while live Groq
-acceptance remains pending.
+fallback boundary. Offline and live functional acceptance pass as a bounded
+runtime-validated text-language prototype; adversarial prompt-injection
+evaluation remains deferred.
 
 ## Classification
 
@@ -61,7 +62,7 @@ acceptance remains pending.
 | Minimal social escort | `escort.py`, `/museum/visitor_observation`, and `/museum/escort_state` support one task with intentional Nav2 pause/resume; an opt-in script makes normal lag/recovery reproducible. | Gazebo ground truth and a service-moved static marker only; no real tracking, generic people interface, obstacle-aware visitor motion, or recovery from `LOST`. |
 | Simulated people stream | `simulated_people_node` maps the current visitor, guide, and staff markers to standard `social_nav_msgs/msg/Pedestrians` on `/people`; static, moving, and stopped samples are runtime-validated. | Gazebo ground truth and finite-difference velocity only; no perception, tracking, or prediction. The social consumer is opt-in. |
 | Human-aware Nav2 variants | The earlier bridge/UPO-layer variant remains intact as a behavior-failed experiment. The separate `museum_social_critic` package, `nav2_museum_social_force.yaml`, and `museum_navigation_social_force.launch.py` add an accepted custom trajectory critic while retaining DWB and the baseline local costmap. | Phase 6B is accepted only for the controlled scenario: 0.665 m minimum clearance versus 0.603 m baseline at scale 32. It is not a general social-navigation evaluation, perception system, Social MPC, or learned predictor. |
-| Visitor request interface | `/museum/user_text`, deterministic Italian/English parsing, optional Groq strict Structured Outputs fallback, strict local validation, existing `StructuredRequest`, and active-session correlation. | Live Groq runtime acceptance remains; no dialogue, general session policy, or STT. |
+| Visitor request interface | `/museum/user_text`, deterministic Italian/English parsing, optional Groq strict Structured Outputs fallback, strict local validation, existing `StructuredRequest`, and active-session correlation. | Runtime-validated only as a bounded text-language prototype; adversarial prompt-injection evaluation, dialogue, general session policy, and STT remain pending. |
 | Dynamic world model | Room ambient fields update in memory. | No shared authority, persistence, timestamps, provenance, visitor/session/task facts, or task-time re-reasoning. |
 | Navigation poses | Every room has a `nav_pose`; AMCL capture helper exists. | Poses are not all documented as calibrated/free-space tested. |
 | Museum topology | `connected_to` relations are stored. | No route-level semantic traversal uses them; edges are directed unless reverse relations are added. |
@@ -167,7 +168,7 @@ Nav2.
 | --- | --- |
 | Perception | A Gazebo-ground-truth `/people` stream exists, but there is no real tracked-person or engagement signal. |
 | Session | One static visitor-to-session mapping exists; there is no general lifecycle, disappearance, persistence, or multi-visitor policy. |
-| Language | Text parsing and strict cloud fallback are implemented; offline ROS passed, while live cloud acceptance and all speech input/output remain pending. |
+| Language | The bounded deterministic-first text and strict cloud-fallback prototype passed offline and live functional acceptance; adversarial evaluation and all speech input/output remain pending. |
 | World model | No shared dynamic authority and no person/session/task state. |
 | Reasoning | No session-aware constraints, active-task re-reasoning, or downstream orchestration. |
 | Interaction | The manager, dialogue policy, and command contract are planned. |
@@ -229,7 +230,7 @@ evaluation, and real perception clearly incomplete or unimplemented.
 | 4 | **Prototype implemented:** basic escort with simulated ground truth | Escort, wait/cancel, recover/resend, lost/cancel, and joint arrival use the static marker; normal lag/recovery is scripted and manual tests remain available. |
 | 5 | **Runtime-validated prototype:** standard simulation people stream | `/people` reports the three Gazebo markers with stable public IDs and velocities while escort and DWB remain unchanged. |
 | 6 | **Runtime-validated bounded prototype:** human-aware DWB trajectory critic | The custom critic runs beside an unchanged baseline, increases controlled guide clearance from 0.603 m to 0.665 m without destabilizing navigation, and preserves escort completion. |
-| 7 | **Implemented; offline accepted, live pending:** deterministic language parser plus Groq fallback | Offline tests and ROS flow show that text becomes schema-valid JSON and invalid/unsafe output is rejected; live Groq acceptance remains. |
+| 7 | **Runtime-validated bounded prototype:** deterministic language parser plus Groq fallback | Offline and live functional tests pass with strict Structured Outputs and local validation; adversarial prompt-injection evaluation remains deferred. |
 | 8 | faster-whisper STT | Recorded speech produces text within measured latency/resource limits. |
 | 9 | Grounded answer generation and TTS | Spoken answers cite only current request/world/task facts. |
 | 10 | Active-task ambient adaptation | A relevant closure/crowd update triggers controlled re-reasoning and behavior change. |
@@ -242,8 +243,8 @@ The roadmap has passed the bounded Phase 6 gate through the custom critic. The
 public people boundary is documented in `simulated_people.md`; the accepted
 critic and the two earlier failed experiments are documented in
 `human_aware_navigation.md`; and Phase 4 escort remains separately documented
-in `social_escort.md`. Phase 7 implementation, tests, and offline ROS flow
-pass, but it is not runtime-validated until live Groq acceptance also passes.
+in `social_escort.md`. Phase 7 is a runtime-validated bounded text-language
+prototype; its adversarial prompt-injection evaluation remains deferred.
 Real people tracking,
 Interaction Management, Behavior Execution, broader human-aware evaluation,
 speech, and vision remain future work.
