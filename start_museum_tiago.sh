@@ -8,7 +8,7 @@ xhost +local:docker >/dev/null 2>&1 || true
 GPU_ARGS=()
 RENDER_ENV=()
 GROQ_ENV=()
-for variable_name in GROQ_API_KEY GROQ_BASE_URL GROQ_MODEL; do
+for variable_name in GROQ_API_KEY GROQ_BASE_URL GROQ_MODEL GROQ_STT_MODEL; do
   if [[ -n "${!variable_name:-}" ]]; then
     GROQ_ENV+=(-e "${variable_name}")
   fi

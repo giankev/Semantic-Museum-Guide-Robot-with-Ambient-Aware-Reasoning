@@ -50,13 +50,16 @@ The simulation people boundary is in
 [Simulated People](docs/simulated_people.md).
 The Phase 6 experiments and accepted bounded custom-critic result are in
 [Human-Aware Navigation](docs/human_aware_navigation.md).
+The bounded Phase 8 file interface and its cloud-audio privacy boundary are in
+[Speech Interface](docs/speech_interface.md).
 
 ### Partially Implemented
 
 - **Natural-language interaction:** Phase 7 is a runtime-validated bounded
   text-language prototype with deterministic Italian/English parsing, strict
-  Groq Structured Outputs, and unchanged local validation. Adversarial
-  prompt-injection evaluation, speech-to-text, and dialogue remain pending.
+  Groq Structured Outputs, and unchanged local validation. Phase 8 now adds a
+  bounded file-based Groq transcription input with offline tests passing; its
+  operator-supplied live audio acceptance and dialogue remain pending.
 - **Semantic-to-navigation bridge:** `semantic_navigation_node` consumes only
   successful `recommend_and_prepare_navigation` decisions and sends their
   deterministic `nav_pose` to Nav2. The complete chain has passed runtime
@@ -80,7 +83,9 @@ Phase 6 is a runtime-validated bounded prototype through the separate
 `museum_social_critic::ProxemicForceCritic` at scale 32. The accepted run
 increased controlled minimum guide clearance from `0.603 m` to `0.665 m` while
 preserving navigation and escort completion. Phase 7 is now a
-runtime-validated bounded text-language prototype.
+runtime-validated bounded text-language prototype. Phase 8 file-based
+speech-to-text is implemented and passes the selected automated suite; it is
+not marked runtime-validated until the live audio acceptance succeeds.
 
 ### Future Work
 
@@ -89,7 +94,7 @@ runtime-validated bounded text-language prototype.
    runtime policies are required.
 3. Replace simulation ground truth with real or generic people tracking only
    after the standard `/people` boundary is validated.
-4. Add faster-whisper speech-to-text.
+4. Complete the Phase 8 operator-supplied live audio acceptance.
 5. Add grounded response generation and text-to-speech.
 6. Re-reason when relevant ambient state changes during an active task.
 7. Optionally add lightweight role/context perception without identifying people.

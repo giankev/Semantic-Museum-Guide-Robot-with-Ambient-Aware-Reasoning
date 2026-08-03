@@ -21,6 +21,9 @@ visitor_marker -> Gazebo model states -> visitor_session_node
                                       -> /museum/visitor_observation
                                       -> language_node session correlation
                                                    |
+/museum/audio_file -> speech_to_text_node -> Groq Whisper transcription
+                                           |
+                                           v
 /museum/user_text -> deterministic parser -> optional Groq fallback
                                                    |
                                       -> /museum/user_request
@@ -66,6 +69,9 @@ Gazebo model states -> simulated_people_node
 Important current properties:
 
 - `reasoning_node` owns its own in-memory `MuseumSemanticGraph`.
+- `speech_to_text_node` accepts only a container-visible audio file path,
+  validates it locally, and publishes text only after successful bounded cloud
+  transcription. It does not own semantic or robot behavior.
 - `semantic_graph_node` also owns a separate in-memory graph when launched. The two processes do not share state.
 - `ambient_reasoning.launch.py` demonstrates ambient updates with `semantic_graph_node`.
 - `reasoning_demo.launch.py` demonstrates ambient updates and requests with `reasoning_node`.
@@ -146,7 +152,7 @@ The arrows show the main control flow, not a requirement that every module be a 
 | --- | --- | --- | --- |
 | Perception | Detect/track an engaged person and publish transient robot-centric observations. | Simulation-ground-truth adapters only | `visitor_session_node` publishes visitor presence/distance for escort; `simulated_people_node` publishes three Gazebo markers on standard `/people`. No real perception or tracking exists. |
 | Session | Map a transient track to a visitor interaction session and own session lifecycle. | Minimal runtime implemented | One in-memory active `SessionState` named `session_1` is created and reused for `visitor_1`. |
-| Language | Convert speech/text into a validated structured request. | Text prototype implemented; offline accepted, live Groq pending | `language_node` parses `/museum/user_text` deterministically, uses Groq only for unresolved text, validates locally, then constructs `StructuredRequest`. No STT exists. |
+| Language | Convert speech/text into a validated structured request. | Phase 7 text runtime-validated; Phase 8 file STT implemented with live audio pending | `speech_to_text_node` publishes successful Groq Whisper transcripts on `/museum/user_text`; `language_node` then parses deterministically or uses its separate Groq text fallback. |
 | Semantic World Model | Represent persistent museum knowledge and dynamic contextual facts. | Implemented for museum and ambient facts; planned for people/session/task facts | `semantic_map.yaml`, `semantic_graph.py`, in-memory room updates. |
 | Reasoning | Select a destination/alternative from validated constraints and explain the choice. | Implemented deterministic baseline and typed boundary | `reasoning.py` consumes `StructuredRequest` and produces `ReasoningDecision`. |
 | Interaction Management | Own dialogue and task progression, clarification, confirmation, and visitor-facing responses. | Planned | No manager, dialogue policy, or command contract exists. |
@@ -369,6 +375,8 @@ critic, not the full Helbing model, Social MPC, or learned prediction.
 ## Language And Robot-Control Safety
 
 - Speech/text parsing ends in a schema-validated request.
+- Speech transcription is file-based, one-at-a-time, and cannot select skills,
+  coordinates, or ROS commands.
 - Deterministic code selects actions from a fixed skill set.
 - Neither an LLM nor user text may produce executable ROS commands, shell commands, Python, or raw navigation coordinates.
 - Unknown intents, constraints, locations, sessions, or skills must fail closed with clarification or a safe no-op.
@@ -394,9 +402,10 @@ runtime-validated through the bounded custom-critic result:
    from `/people` using the custom proxemic critic while preserving the
    baseline and the independent escort supervisor. The earlier generic
    SocialLayer and Phase 6A tuning results remain documented failures.
-7. **Implemented; offline accepted and live Groq pending:** add deterministic
-   text parsing with a strict Groq fallback boundary.
-8. Add speech-to-text.
+7. **Runtime-validated bounded prototype:** add deterministic text parsing
+   with a strict Groq fallback boundary.
+8. **Implemented; automated acceptance passed and live audio pending:** add
+   bounded file-based Groq speech-to-text without microphone streaming or TTS.
 9. Add grounded answers and speech output.
 10. Add active-task ambient adaptation.
 11. Optionally add lightweight perception.

@@ -41,6 +41,10 @@ setup(
             "reasoning_node = museum_assistant.reasoning_node:main",
             "language_node = museum_assistant.language_node:main",
             (
+                "speech_to_text_node = "
+                "museum_assistant.speech_to_text_node:main"
+            ),
+            (
                 "semantic_navigation_node = "
                 "museum_assistant.semantic_navigation_node:main"
             ),
