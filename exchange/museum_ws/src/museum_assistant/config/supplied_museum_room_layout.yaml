@@ -1,0 +1,147 @@
+schema_version: 1
+source_geometry: worlds/supplied_museum/model.dae
+
+crop:
+  x_min: -17.5
+  x_max: 22.2
+  y_min: -24.5
+  y_max: 22.0
+
+map:
+  resolution: 0.05
+  occupied_value: 0
+  free_value: 254
+  unknown_value: 205
+
+clearance_assumptions:
+  robot_radius: 0.28
+  inflation_radius: 0.40
+  edge_allowance: 0.68
+
+candidate_poses:
+  candidate_start:
+    area: entrance_area
+    x: 0.0
+    y: 0.0
+    yaw: 0.0
+    demo_gallery: false
+  candidate_central_gallery:
+    area: central_area
+    x: -3.5
+    y: 3.0
+    yaw: 0.0
+    demo_gallery: true
+  candidate_north:
+    area: north_gallery
+    x: 0.0
+    y: 16.0
+    yaw: 1.5708
+    demo_gallery: true
+  candidate_south_west:
+    area: south_west_gallery
+    x: -10.0
+    y: -21.5
+    yaw: 1.5708
+    demo_gallery: true
+  candidate_south_east:
+    area: south_east_gallery
+    x: 10.0
+    y: -21.5
+    yaw: 1.5708
+    demo_gallery: true
+
+physical_areas:
+  entrance_area:
+    validated_free_regions:
+      - type: axis_aligned_rectangle
+        bounds: {x_min: -4.5, x_max: 4.5, y_min: -7.2, y_max: 1.0}
+    candidate_nav_pose: candidate_start
+    connected_door_ids: [door_entrance_central]
+    minimum_measured_doorway_width: 6.0
+    validation_status: static_geometry_validated
+  central_area:
+    validated_free_regions:
+      - type: axis_aligned_rectangle
+        bounds: {x_min: -5.8, x_max: 5.8, y_min: -22.8, y_max: 9.7}
+    candidate_nav_pose: null
+    connected_door_ids:
+      - door_entrance_central
+      - door_central_north
+      - door_central_south_west
+      - door_central_south_east
+    minimum_measured_doorway_width: 3.0
+    validation_status: static_geometry_validated
+  north_gallery:
+    validated_free_regions:
+      - type: axis_aligned_rectangle
+        bounds: {x_min: -6.0, x_max: 6.0, y_min: 10.3, y_max: 21.3}
+    candidate_nav_pose: candidate_north
+    connected_door_ids: [door_central_north]
+    minimum_measured_doorway_width: 6.0
+    validation_status: static_geometry_validated
+  south_west_gallery:
+    validated_free_regions:
+      - type: axis_aligned_rectangle
+        bounds: {x_min: -15.9, x_max: -6.5, y_min: -23.0, y_max: -19.8}
+    candidate_nav_pose: candidate_south_west
+    connected_door_ids: [door_central_south_west]
+    minimum_measured_doorway_width: 3.0
+    validation_status: static_geometry_validated
+  south_east_gallery:
+    validated_free_regions:
+      - type: axis_aligned_rectangle
+        bounds: {x_min: 6.5, x_max: 15.9, y_min: -23.0, y_max: -19.8}
+    candidate_nav_pose: candidate_south_east
+    connected_door_ids: [door_central_south_east]
+    minimum_measured_doorway_width: 3.0
+    validation_status: static_geometry_validated
+
+doors:
+  door_entrance_central:
+    connects: [entrance_area, central_area]
+    center: [0.0, 1.0]
+    orientation_degrees: 0.0
+    opening_axis: x
+    raw_geometric_width: 6.0
+    map_free_region: {x_min: -3.0, x_max: 3.0, y_min: 0.8, y_max: 1.2}
+    source_evidence: open transition inside the visible central atrium
+    validation_status: static_geometry_validated
+  door_central_north:
+    connects: [central_area, north_gallery]
+    center: [0.0, 10.0]
+    orientation_degrees: 0.0
+    opening_axis: x
+    raw_geometric_width: 6.0
+    map_free_region: {x_min: -3.0, x_max: 3.0, y_min: 9.7, y_max: 10.3}
+    source_evidence: accepted opening between the paired wall segments at y=10
+    validation_status: static_geometry_validated
+  door_central_south_west:
+    connects: [central_area, south_west_gallery]
+    center: [-6.15, -21.3]
+    orientation_degrees: 90.0
+    opening_axis: y
+    raw_geometric_width: 3.0
+    map_free_region: {x_min: -6.5, x_max: -5.8, y_min: -22.8, y_max: -19.8}
+    source_evidence: open west side of the central aisle below the visible y=-18.85 panel row
+    validation_status: static_geometry_validated
+  door_central_south_east:
+    connects: [central_area, south_east_gallery]
+    center: [6.15, -21.3]
+    orientation_degrees: 90.0
+    opening_axis: y
+    raw_geometric_width: 3.0
+    map_free_region: {x_min: 5.8, x_max: 6.5, y_min: -22.8, y_max: -19.8}
+    source_evidence: open east side of the central aisle below the visible y=-18.85 panel row
+    validation_status: static_geometry_validated
+
+topology:
+  - {from: entrance_area, connected_to: central_area, door: door_entrance_central}
+  - {from: central_area, connected_to: north_gallery, door: door_central_north}
+  - {from: central_area, connected_to: south_west_gallery, door: door_central_south_west}
+  - {from: central_area, connected_to: south_east_gallery, door: door_central_south_east}
+
+experimental_east_area:
+  bounds: {x_min: 22.2, x_max: 42.0, y_min: -8.0, y_max: 22.0}
+  demo: false
+  validated_navigation: false
+  status: visual_and_experimental_only

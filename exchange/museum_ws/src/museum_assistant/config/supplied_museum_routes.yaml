@@ -1,0 +1,48 @@
+schema_version: 1
+frame_id: map
+source_layout: supplied_museum_room_layout.yaml
+
+route_nodes:
+  south_entry:
+    x: 0.0
+    y: -6.0
+    yaw: -1.5708
+    clearance_m: 6.629
+    derivation: central medial axis immediately before the entrance-area south edge
+  south_junction:
+    x: 0.0
+    y: -16.3
+    yaw: -1.5708
+    clearance_m: 6.530
+    derivation: central medial axis between the south-entry walls and southern panel row
+  south_west_door_approach:
+    x: -5.0
+    y: -21.3
+    yaw: -3.1016
+    clearance_m: 2.316
+    derivation: central-side medial approach to door_central_south_west
+  south_east_door_approach:
+    x: 5.0
+    y: -21.3
+    yaw: -0.0400
+    clearance_m: 2.290
+    derivation: central-side medial approach to door_central_south_east
+
+candidate_poses:
+  candidate_north: {x: 0.0, y: 16.0, yaw: 1.5708}
+  candidate_south_west: {x: -10.0, y: -21.5, yaw: 1.5708}
+  candidate_south_east: {x: 10.0, y: -21.5, yaw: 1.5708}
+
+routes:
+  north_gallery:
+    - candidate_north
+  south_west_gallery:
+    - south_entry
+    - south_junction
+    - south_west_door_approach
+    - candidate_south_west
+  south_east_gallery:
+    - south_entry
+    - south_junction
+    - south_east_door_approach
+    - candidate_south_east

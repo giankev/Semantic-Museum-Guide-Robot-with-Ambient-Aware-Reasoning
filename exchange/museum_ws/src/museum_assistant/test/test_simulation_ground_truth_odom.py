@@ -126,6 +126,7 @@ def test_launch_gate_prevents_duplicate_odom_tf_authority():
 def test_nav2_override_changes_only_odometry_consumers():
     config = yaml.safe_load(NAV2_OVERRIDE.read_text(encoding="utf-8"))
     assert config == {
+        "controller_server": {"ros__parameters": {"odom_topic": "/museum/ground_truth_odom"}},
         "bt_navigator": {"ros__parameters": {"odom_topic": "/museum/ground_truth_odom"}},
         "velocity_smoother": {"ros__parameters": {"odom_topic": "/museum/ground_truth_odom"}},
     }

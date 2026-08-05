@@ -29,7 +29,7 @@ COLLISION_DAE = ASSET_DIR / "collision.dae"
 WORLD_FILE = ASSET_DIR / "museum.world"
 DEFAULT_OUTPUT = REPO_ROOT / ".museum_layout_audit"
 SLICE_Z = (0.15, 1.20)
-DEMO_CROP = {"x_min": -8.0, "x_max": 42.0, "y_min": -8.0, "y_max": 22.0}
+DEMO_CROP = {"x_min": -17.5, "x_max": 22.2, "y_min": -24.5, "y_max": 22.0}
 GRID_RESOLUTION = 0.10
 
 

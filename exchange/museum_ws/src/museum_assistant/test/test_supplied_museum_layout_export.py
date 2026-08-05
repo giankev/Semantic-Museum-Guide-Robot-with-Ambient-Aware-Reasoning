@@ -34,7 +34,7 @@ def test_static_layout_export_output_contract():
     assert report["candidate_connected_navigable_regions"]
     assert len(report["approximate_narrowest_passages"]) == 2
     assert report["recommended_demo_crop_world_m"] == {
-        "x_min": -8.0, "x_max": 42.0, "y_min": -8.0, "y_max": 22.0
+        "x_min": -17.5, "x_max": 22.2, "y_min": -24.5, "y_max": 22.0
     }
     assert report["physically_distinct_room_or_gallery_estimate"]["cautious_range"]
     assert "Runtime:" in result.stdout
