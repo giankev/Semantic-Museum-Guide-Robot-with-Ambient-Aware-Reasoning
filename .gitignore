@@ -7,3 +7,4 @@ build.log
 .colcon/
 .phase7_acceptance_tmp/
 .phase8_acceptance_tmp/
+.museum_layout_audit/
