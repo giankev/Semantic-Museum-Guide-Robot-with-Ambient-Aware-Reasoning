@@ -74,6 +74,10 @@ setup(
             ),
             "send_nav_goal = museum_assistant.send_nav_goal:main",
             "capture_nav_pose = museum_assistant.capture_nav_pose:main",
+            (
+                "simulation_ground_truth_odom = "
+                "museum_assistant.simulation_ground_truth_odom_node:main"
+            ),
             "museum_query = museum_assistant.semantic_query_cli:main",
         ],
     },

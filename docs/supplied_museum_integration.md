@@ -144,6 +144,17 @@ central `main_corridor`, the north gallery route, and the east gallery beyond
 the repaired opening. They are not assigned semantic room IDs until an aligned
 map makes their navigation poses testable.
 
+## Opt-In Simulation Ground-Truth Odometry
+
+The supplied-museum navigation proxy has a separate, opt-in, simulation-only
+mode that disables the mobile-base controller's odometry TF and uses Gazebo
+ground truth for `odom -> base_footprint`. It does not fix wheel odometry and
+is not suitable for deployment on a real robot. Its purpose is to isolate the
+semantic/HRI evaluation from the known simulated wheel/controller odometry
+drift; `/mobile_base_controller/odom` remains available for diagnostics. One
+supplied-museum north Nav2 goal passed in this mode. East navigation has not
+been validated with it.
+
 ## Build And Automated Tests
 
 Inside `museum-tiago:humble`:
