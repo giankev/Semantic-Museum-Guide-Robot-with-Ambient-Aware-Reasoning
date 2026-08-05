@@ -31,6 +31,7 @@ def artifact_hashes():
         MAP_DIR / "supplied_museum_nav.yaml",
         AUDIT_DIR / "nav_proxy_overlay.png",
         AUDIT_DIR / "nav_proxy_report.json",
+        AUDIT_DIR / "east_landmarks_overlay.png",
     )
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
 
@@ -48,6 +49,13 @@ class SuppliedMuseumNavProxyTest(unittest.TestCase):
         cls.boxes = cls.generator.load_boxes()
         cls.report = json.loads((AUDIT_DIR / "nav_proxy_report.json").read_text(encoding="utf-8"))
         cls.pgm = (MAP_DIR / "supplied_museum_nav.pgm").read_bytes()
+        cls.pgm_body = cls.pgm.split(b"255\n", 1)[1]
+
+    def map_value(self, x, y):
+        width, height = 1000, 600
+        column = math.floor((x + 8.0) / 0.05)
+        row = height - 1 - math.floor((y + 8.0) / 0.05)
+        return self.pgm_body[row*width + column]
 
     def test_world_parses_as_xml(self):
         self.assertEqual(self.root.tag, "sdf")
@@ -75,7 +83,42 @@ class SuppliedMuseumNavProxyTest(unittest.TestCase):
             self.assertGreater(box["size_z"], 0)
 
     def test_navigation_box_count_is_bounded(self):
-        self.assertLessEqual(len(self.boxes), 35)
+        self.assertEqual(len(self.boxes), 13)
+        self.assertEqual(self.report["number_of_navigation_boxes"], 13)
+        self.assertEqual(self.report["navigation_box_limit"], 35)
+        self.assertLessEqual(len(self.boxes), self.report["navigation_box_limit"])
+
+    def test_exactly_three_grounded_landmark_boxes_exist(self):
+        landmarks = [
+            box for box in self.boxes
+            if box["name"].startswith("nav_obstacle_landmark_")
+        ]
+        self.assertEqual(len(landmarks), 3)
+        self.assertEqual(self.report["number_of_grounded_landmarks"], 3)
+        self.assertEqual(
+            {box["name"] for box in landmarks},
+            set(self.report["grounded_landmarks"]),
+        )
+
+    def test_landmarks_match_original_visible_feature_bounds(self):
+        boxes = {box["name"]: box for box in self.boxes}
+        for name, grounding in self.report["grounded_landmarks"].items():
+            box = boxes[name]
+            x_min, x_max, y_min, y_max = grounding["source_bounds"]
+            self.assertAlmostEqual(box["x"], (x_min+x_max)/2, delta=0.01)
+            self.assertAlmostEqual(box["y"], (y_min+y_max)/2, delta=0.01)
+            self.assertAlmostEqual(box["size_x"], x_max-x_min, delta=0.07)
+            self.assertAlmostEqual(box["size_y"], y_max-y_min, delta=0.07)
+            self.assertLessEqual(box["z"]-box["size_z"]/2, 0.15)
+            self.assertGreaterEqual(box["z"]+box["size_z"]/2, 1.20)
+
+    def test_each_landmark_is_rasterized_in_occupancy_map(self):
+        landmarks = [
+            box for box in self.boxes
+            if box["name"].startswith("nav_obstacle_landmark_")
+        ]
+        for box in landmarks:
+            self.assertEqual(self.map_value(box["x"], box["y"]), 0)
 
     def test_crop_boundaries_are_closed(self):
         boxes = {box["name"]: box for box in self.boxes}
@@ -114,6 +157,12 @@ class SuppliedMuseumNavProxyTest(unittest.TestCase):
     def test_candidates_have_required_clearance(self):
         for candidate in self.report["candidate_poses"].values():
             self.assertGreaterEqual(candidate["clearance_m"], 0.75)
+        east_goal = {"x": 24.0, "y": 0.0}
+        self.assertEqual(self.map_value(east_goal["x"], east_goal["y"]), 254)
+        self.assertGreaterEqual(
+            self.generator.clearance_from_map(east_goal, 1000, 600, self.pgm_body),
+            0.75,
+        )
 
     def test_candidates_do_not_overlap_markers(self):
         for candidate in self.report["candidate_poses"].values():
@@ -124,20 +173,19 @@ class SuppliedMuseumNavProxyTest(unittest.TestCase):
                 )
 
     def test_pgm_rows_follow_ros_world_y_orientation(self):
-        body = self.pgm.split(b"255\n", 1)[1]
-        width, height = 1000, 600
-        def value_at(x, y):
-            column = math.floor((x + 8.0) / 0.05)
-            row = height - 1 - math.floor((y + 8.0) / 0.05)
-            return body[row*width + column]
-        self.assertEqual(value_at(7.0, 2.0), 0)
-        self.assertEqual(value_at(7.0, -2.0), 254)
+        self.assertEqual(self.map_value(7.0, 2.0), 0)
+        self.assertEqual(self.map_value(7.0, -2.0), 254)
+
+    def test_intended_east_route_preserves_required_clearance(self):
+        self.assertGreaterEqual(self.report["east_route"]["minimum_clearance_m"], 1.5)
+        self.assertEqual(self.report["east_route"]["start"], [0.0, 0.0])
+        self.assertEqual(self.report["east_route"]["goal"], [24.0, 0.0])
 
     def test_central_to_north_opening_is_wide_enough(self):
         self.assertGreaterEqual(self.report["openings"]["central_to_north"]["width_m"], 1.5)
 
     def test_central_to_east_opening_is_wide_enough(self):
-        self.assertGreaterEqual(self.report["openings"]["central_to_east"]["width_m"], 1.5)
+        self.assertGreaterEqual(self.report["openings"]["central_to_east"]["width_m"], 5.0)
 
 
 if __name__ == "__main__":

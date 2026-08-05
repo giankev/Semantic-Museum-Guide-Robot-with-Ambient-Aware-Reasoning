@@ -101,6 +101,20 @@
       <link name="nav_obstacle_central_south"><collision name="nav_obstacle_central_south"><geometry><box><size>1 2.6 2.5</size></box></geometry></collision></link>
     </model>
 
+    <!-- Three laser-visible boxes grounded in asymmetric model.dae exhibits. -->
+    <model name="nav_obstacle_landmark_upper_panel">
+      <static>true</static><pose>13.768 8.950 1.25 0 0 0</pose>
+      <link name="nav_obstacle_landmark_upper_panel"><collision name="nav_obstacle_landmark_upper_panel"><geometry><box><size>6.32 0.20 2.5</size></box></geometry></collision></link>
+    </model>
+    <model name="nav_obstacle_landmark_upper_column">
+      <static>true</static><pose>20.485 3.019 1.25 0 0 0</pose>
+      <link name="nav_obstacle_landmark_upper_column"><collision name="nav_obstacle_landmark_upper_column"><geometry><box><size>1.18 1.18 2.5</size></box></geometry></collision></link>
+    </model>
+    <model name="nav_obstacle_landmark_lower_column">
+      <static>true</static><pose>20.206 -4.523 1.25 0 0 0</pose>
+      <link name="nav_obstacle_landmark_lower_column"><collision name="nav_obstacle_landmark_lower_column"><geometry><box><size>1.25 1.25 2.5</size></box></geometry></collision></link>
+    </model>
+
     <model name="visitor_marker">
       <static>true</static><pose>-1 0 0 0 0 0</pose>
       <link name="visitor_body">
