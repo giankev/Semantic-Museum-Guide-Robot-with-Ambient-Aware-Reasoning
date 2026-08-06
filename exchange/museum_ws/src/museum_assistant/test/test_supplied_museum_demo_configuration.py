@@ -53,7 +53,7 @@ def test_central_gallery_candidate_is_valid_and_unobstructed():
     assert (candidate["x"], candidate["y"], candidate["yaw"]) == (-3.5, 3.0, 0.0)
     assert candidate["area"] == "central_area"
     assert GENERATOR.map_value(candidate["x"], candidate["y"], WIDTH, HEIGHT, CELLS) == 254
-    assert GENERATOR.clearance_from_map(candidate, WIDTH, HEIGHT, CELLS) == 6.9
+    assert GENERATOR.clearance_from_map(candidate, WIDTH, HEIGHT, CELLS) == 3.15
     entrance = LAYOUT["physical_areas"]["entrance_area"]["validated_free_regions"][0]["bounds"]
     assert not (entrance["x_min"] <= candidate["x"] <= entrance["x_max"]
                 and entrance["y_min"] <= candidate["y"] <= entrance["y_max"])
@@ -75,12 +75,22 @@ def test_demo_configuration_has_only_the_bounded_differences():
                for path in before.keys() | after.keys()
                if before.get(path) != after.get(path)}
     assert changed == {
+        ("amcl", "ros__parameters", "alpha1"): (0.2, 0.01),
+        ("amcl", "ros__parameters", "alpha2"): (0.2, 0.01),
+        ("amcl", "ros__parameters", "alpha3"): (0.2, 0.01),
+        ("amcl", "ros__parameters", "alpha4"): (0.2, 0.01),
+        ("amcl", "ros__parameters", "alpha5"): (0.2, 0.01),
         ("controller_server", "ros__parameters", "controller_frequency"): (15.0, 8.0),
         ("controller_server", "ros__parameters", "progress_checker", "required_movement_radius"): (0.10, 0.05),
         ("controller_server", "ros__parameters", "progress_checker", "movement_time_allowance"): (30.0, 90.0),
+        ("controller_server", "ros__parameters", "general_goal_checker", "xy_goal_tolerance"): (0.4, 0.20),
         ("controller_server", "ros__parameters", "FollowPath", "max_vel_x"): (0.35, 0.20),
         ("controller_server", "ros__parameters", "FollowPath", "max_speed_xy"): (0.35, 0.20),
         ("controller_server", "ros__parameters", "FollowPath", "max_vel_theta"): (0.3, 0.25),
+        ("controller_server", "ros__parameters", "FollowPath", "min_speed_xy"): (0.0, 0.05),
+        ("controller_server", "ros__parameters", "FollowPath", "min_speed_theta"): (0.0, 0.20),
+        ("controller_server", "ros__parameters", "FollowPath", "vx_samples"): (12, 3),
+        ("controller_server", "ros__parameters", "FollowPath", "xy_goal_tolerance"): (0.4, 0.20),
         ("bt_navigator", "ros__parameters", "bt_loop_duration"): (10, 100),
         ("velocity_smoother", "ros__parameters", "max_velocity"): ([0.35, 0.0, 0.3], [0.20, 0.0, 0.25]),
         ("velocity_smoother", "ros__parameters", "min_velocity"): ([-0.15, 0.0, -0.3], [-0.15, 0.0, -0.25]),
@@ -95,6 +105,17 @@ def test_demo_keeps_dwb_map_and_corrected_odometry_contract():
     assert DEMO["velocity_smoother"]["ros__parameters"]["odom_topic"] == "/museum/ground_truth_odom"
     assert DEMO["planner_server"]["ros__parameters"]["GridBased"]["allow_unknown"] is False
     assert DEMO["velocity_smoother"]["ros__parameters"]["max_velocity"] == [0.20, 0.0, 0.25]
+    assert DEMO["velocity_smoother"]["ros__parameters"]["feedback"] == "OPEN_LOOP"
+    assert controller["FollowPath"]["min_speed_theta"] == 0.20
+    assert controller["FollowPath"]["min_speed_xy"] == 0.05
+    assert (
+        controller["FollowPath"]["max_vel_x"]
+        / (controller["FollowPath"]["vx_samples"] - 1)
+    ) == 0.10
+    assert {
+        DEMO["amcl"]["ros__parameters"][f"alpha{index}"]
+        for index in range(1, 6)
+    } == {0.01}
 
 
 def test_final_launch_selects_supplied_map_demo_config_and_corrected_odom_world():

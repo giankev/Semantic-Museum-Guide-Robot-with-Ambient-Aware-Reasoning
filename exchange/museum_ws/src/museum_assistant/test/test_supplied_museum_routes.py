@@ -43,7 +43,7 @@ def samples_between(first, second, spacing=0.025):
 
 def test_required_route_nodes_and_routes_exist():
     assert set(ROUTES["route_nodes"]) == {
-        "south_entry", "south_junction",
+        "south_entry", "south_junction", "south_inner_gap",
         "south_west_door_approach", "south_east_door_approach",
     }
     assert set(ROUTES["routes"]) == {
@@ -89,12 +89,18 @@ def test_every_route_segment_stays_in_known_free_cells():
 def test_southern_routes_share_then_branch_in_physical_order():
     west = ROUTES["routes"]["south_west_gallery"]
     east = ROUTES["routes"]["south_east_gallery"]
-    assert west[:2] == east[:2] == ["south_entry", "south_junction"]
-    assert west[2:] != east[2:]
+    assert west[:3] == east[:3] == [
+        "south_entry", "south_junction", "south_inner_gap"
+    ]
+    assert west[3:] != east[3:]
     entry, junction = pose("south_entry"), pose("south_junction")
+    inner_gap = pose("south_inner_gap")
     west_approach = pose("south_west_door_approach")
     east_approach = pose("south_east_door_approach")
-    assert START["y"] > entry["y"] > junction["y"] > west_approach["y"]
+    assert (
+        START["y"] > entry["y"] > junction["y"]
+        > inner_gap["y"] > west_approach["y"]
+    )
     assert west_approach["y"] == east_approach["y"]
     assert west_approach["x"] < junction["x"] < east_approach["x"]
 
@@ -111,6 +117,7 @@ def test_route_yaws_follow_the_centerline_and_door_segments():
     expected = {
         "south_entry": -1.5708,
         "south_junction": -1.5708,
+        "south_inner_gap": -1.5708,
         "south_west_door_approach": -3.1016,
         "south_east_door_approach": -0.0400,
     }

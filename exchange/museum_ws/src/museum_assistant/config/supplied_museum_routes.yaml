@@ -13,8 +13,14 @@ route_nodes:
     x: 0.0
     y: -16.3
     yaw: -1.5708
-    clearance_m: 6.530
+    clearance_m: 2.358
     derivation: central medial axis between the south-entry walls and southern panel row
+  south_inner_gap:
+    x: 0.0
+    y: -20.0
+    yaw: -1.5708
+    clearance_m: 1.433
+    derivation: centerline through the grounded gap between the paired original inner panels
   south_west_door_approach:
     x: -5.0
     y: -21.3
@@ -39,10 +45,12 @@ routes:
   south_west_gallery:
     - south_entry
     - south_junction
+    - south_inner_gap
     - south_west_door_approach
     - candidate_south_west
   south_east_gallery:
     - south_entry
     - south_junction
+    - south_inner_gap
     - south_east_door_approach
     - candidate_south_east

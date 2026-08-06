@@ -1,11 +1,14 @@
 amcl:
   ros__parameters:
     use_sim_time: true
-    alpha1: 0.2
-    alpha2: 0.2
-    alpha3: 0.2
-    alpha4: 0.2
-    alpha5: 0.2
+    # The accepted simulation odometry stays within 0.10 m of Gazebo.  Keep a
+    # conservative nonzero motion uncertainty without injecting the wheel-
+    # odometry noise that caused particle diffusion in feature-poor passages.
+    alpha1: 0.01
+    alpha2: 0.01
+    alpha3: 0.01
+    alpha4: 0.01
+    alpha5: 0.01
     base_frame_id: base_footprint
     odom_frame_id: odom
     global_frame_id: map
@@ -51,7 +54,9 @@ controller_server:
 
     general_goal_checker:
       plugin: nav2_controller::SimpleGoalChecker
-      xy_goal_tolerance: 0.40
+      # Keep AMCL success inside the physical 0.50 m acceptance envelope even
+      # with the observed bounded localization offset.
+      xy_goal_tolerance: 0.20
       yaw_goal_tolerance: 0.35
       stateful: true
 
@@ -63,23 +68,28 @@ controller_server:
       max_vel_x: 0.20
       max_vel_y: 0.0
       max_vel_theta: 0.25
-      min_speed_xy: 0.0
+      # DWB applies the XY/theta minimum as a combined OR constraint.  A
+      # nonzero XY floor is required for min_speed_theta to reject rotations
+      # that do not overcome TIAGo's simulated drivetrain friction.
+      min_speed_xy: 0.05
       max_speed_xy: 0.20
-      min_speed_theta: 0.0
+      min_speed_theta: 0.20
       acc_lim_x: 0.6
       acc_lim_y: 0.0
       acc_lim_theta: 1.2
       decel_lim_x: -0.6
       decel_lim_y: 0.0
       decel_lim_theta: -1.2
-      vx_samples: 12
+      # With 0.20 m/s maximum, three inclusive samples keep every nonzero
+      # curved trajectory at or above the observed 0.10 m/s physical floor.
+      vx_samples: 3
       vy_samples: 1
       vtheta_samples: 20
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.5
-      xy_goal_tolerance: 0.40
+      xy_goal_tolerance: 0.20
       trans_stopped_velocity: 0.05
       short_circuit_trajectory_evaluation: true
       stateful: true

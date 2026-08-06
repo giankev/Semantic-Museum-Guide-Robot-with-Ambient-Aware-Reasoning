@@ -118,8 +118,27 @@
       <static>true</static><pose>9.925 -18.85 1.25 0 0 0</pose>
       <link name="nav_obstacle_south_east_panel"><collision name="nav_obstacle_south_east_panel"><geometry><box><size>7.40 1.0 2.5</size></box></geometry></collision></link>
     </model>
+    <!-- Original DAE inner panels: x=+-1.25..+-3.773, y=-19.30..-18.30.
+         The GPU lidar renders these visual faces, so they must also exist in
+         the deterministic collision proxy and occupancy map. -->
+    <model name="nav_obstacle_south_west_inner_panel">
+      <static>true</static><pose>-2.5115 -18.80 1.25 0 0 0</pose>
+      <link name="nav_obstacle_south_west_inner_panel"><collision name="nav_obstacle_south_west_inner_panel"><geometry><box><size>2.523 1.0 2.5</size></box></geometry></collision></link>
+    </model>
+    <model name="nav_obstacle_south_east_inner_panel">
+      <static>true</static><pose>2.5115 -18.80 1.25 0 0 0</pose>
+      <link name="nav_obstacle_south_east_inner_panel"><collision name="nav_obstacle_south_east_inner_panel"><geometry><box><size>2.523 1.0 2.5</size></box></geometry></collision></link>
+    </model>
 
-    <!-- Two large central panels retained as representative blocking obstacles. -->
+    <!-- Four laser-visible central panels grounded in the model.dae slice. -->
+    <model name="nav_obstacle_central_west_north_panel">
+      <static>true</static><pose>-7.225 3.475 1.25 0 0 0</pose>
+      <link name="nav_obstacle_central_west_north_panel"><collision name="nav_obstacle_central_west_north_panel"><geometry><box><size>1.15 3.15 2.5</size></box></geometry></collision></link>
+    </model>
+    <model name="nav_obstacle_central_west_south_panel">
+      <static>true</static><pose>-7.225 -2.525 1.25 0 0 0</pose>
+      <link name="nav_obstacle_central_west_south_panel"><collision name="nav_obstacle_central_west_south_panel"><geometry><box><size>1.15 3.15 2.5</size></box></geometry></collision></link>
+    </model>
     <model name="nav_obstacle_central_north">
       <static>true</static><pose>7 3.25 1.25 0 0 0</pose>
       <link name="nav_obstacle_central_north"><collision name="nav_obstacle_central_north"><geometry><box><size>1 3 2.5</size></box></geometry></collision></link>

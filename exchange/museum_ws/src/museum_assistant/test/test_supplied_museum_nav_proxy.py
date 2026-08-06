@@ -74,11 +74,24 @@ class SuppliedMuseumNavProxyTest(unittest.TestCase):
                     self.assertEqual(self.generator.pose_values(element)[3:], [0.0, 0.0, 0.0])
 
     def test_proxy_box_count_is_bounded_and_southern_geometry_exists(self):
-        self.assertEqual(len(self.boxes), 19)
-        self.assertEqual(self.report["number_of_navigation_boxes"], 19)
+        self.assertEqual(len(self.boxes), 23)
+        self.assertEqual(self.report["number_of_navigation_boxes"], 23)
         self.assertLessEqual(len(self.boxes), 40)
         south = [box for box in self.boxes if box["name"].startswith(("nav_wall_south_", "nav_obstacle_south_"))]
-        self.assertEqual(len(south), 8)
+        self.assertEqual(len(south), 10)
+
+    def test_original_inner_panels_are_laser_visible_proxy_boxes(self):
+        boxes = {box["name"]: box for box in self.boxes}
+        expected = {
+            "nav_obstacle_south_west_inner_panel": -2.5115,
+            "nav_obstacle_south_east_inner_panel": 2.5115,
+        }
+        for name, center_x in expected.items():
+            box = boxes[name]
+            self.assertEqual(box["x"], center_x)
+            self.assertEqual(box["y"], -18.8)
+            self.assertEqual(box["size_x"], 2.523)
+            self.assertEqual(box["size_y"], 1.0)
 
     def test_existing_three_grounded_landmarks_are_preserved(self):
         landmarks = [box for box in self.boxes if box["name"].startswith("nav_obstacle_landmark_")]
@@ -86,6 +99,20 @@ class SuppliedMuseumNavProxyTest(unittest.TestCase):
         for box in landmarks:
             self.assertLessEqual(box["z"] - box["size_z"] / 2, 0.15)
             self.assertGreaterEqual(box["z"] + box["size_z"] / 2, 1.20)
+
+    def test_original_west_central_panels_are_laser_visible_proxy_boxes(self):
+        boxes = {box["name"]: box for box in self.boxes}
+        expected = {
+            "nav_obstacle_central_west_north_panel": 3.475,
+            "nav_obstacle_central_west_south_panel": -2.525,
+        }
+        for name, center_y in expected.items():
+            box = boxes[name]
+            self.assertEqual(box["x"], -7.225)
+            self.assertEqual(box["y"], center_y)
+            self.assertEqual(box["size_x"], 1.15)
+            self.assertEqual(box["size_y"], 3.15)
+            self.assertEqual(self.map_value(box["x"], box["y"]), 0)
 
     def test_crop_boundaries_match_compact_region(self):
         boxes = {box["name"]: box for box in self.boxes}

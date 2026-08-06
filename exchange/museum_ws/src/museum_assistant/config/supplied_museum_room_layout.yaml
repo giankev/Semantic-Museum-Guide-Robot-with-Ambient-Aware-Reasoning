@@ -62,7 +62,11 @@ physical_areas:
   central_area:
     validated_free_regions:
       - type: axis_aligned_rectangle
-        bounds: {x_min: -5.8, x_max: 5.8, y_min: -22.8, y_max: 9.7}
+        bounds: {x_min: -5.8, x_max: 5.8, y_min: -18.0, y_max: 9.7}
+      - type: axis_aligned_rectangle
+        bounds: {x_min: -1.0, x_max: 1.0, y_min: -19.5, y_max: -18.0}
+      - type: axis_aligned_rectangle
+        bounds: {x_min: -5.8, x_max: 5.8, y_min: -22.8, y_max: -19.5}
     candidate_nav_pose: null
     connected_door_ids:
       - door_entrance_central

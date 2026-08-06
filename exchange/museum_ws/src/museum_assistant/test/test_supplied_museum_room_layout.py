@@ -178,7 +178,7 @@ def test_no_marker_intersects_a_wall_or_candidate():
 
 
 def test_total_proxy_box_count_is_bounded():
-    assert REPORT["number_of_navigation_boxes"] == 19
+    assert REPORT["number_of_navigation_boxes"] == 23
     assert REPORT["number_of_navigation_boxes"] <= REPORT["navigation_box_limit"] == 40
 
 
