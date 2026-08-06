@@ -163,6 +163,10 @@ added.
 
 ## Limitations
 
+- The accepted samples in this document use the lightweight baseline museum.
+  Marker names and public IDs are preserved in the supplied scene, but
+  supplied-world `/people` runtime acceptance is blocked behind its unresolved
+  occupancy-map/navigation gate.
 - All data is Gazebo ground truth from three marker models.
 - Velocity is a finite difference at the model-state observation rate.
 - There is no confidence, covariance, prediction, re-identification, or

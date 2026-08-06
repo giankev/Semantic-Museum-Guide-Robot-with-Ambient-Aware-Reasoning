@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     build-essential \
     python3-pip \
+    python3-pil \
     python3-vcstool \
     python3-rosdep \
     python3-colcon-common-extensions \

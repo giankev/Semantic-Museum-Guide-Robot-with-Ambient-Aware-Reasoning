@@ -12,6 +12,7 @@ setup(
         (f"share/{package_name}", ["package.xml"]),
         (f"share/{package_name}/config", glob("config/*.yaml")),
         (f"share/{package_name}/launch", glob("launch/*.launch.py")),
+        (f"share/{package_name}/behavior_trees", glob("behavior_trees/*.xml")),
         (
             f"share/{package_name}/maps",
             ["maps/.gitkeep"]
@@ -20,6 +21,10 @@ setup(
             + glob("maps/*.png"),
         ),
         (f"share/{package_name}/worlds", glob("worlds/*.world")),
+        (
+            f"share/{package_name}/worlds/supplied_museum",
+            glob("worlds/supplied_museum/*"),
+        ),
     ],
     install_requires=["setuptools"],
     zip_safe=True,
@@ -40,6 +45,10 @@ setup(
             ),
             "reasoning_node = museum_assistant.reasoning_node:main",
             "language_node = museum_assistant.language_node:main",
+            (
+                "speech_to_text_node = "
+                "museum_assistant.speech_to_text_node:main"
+            ),
             (
                 "semantic_navigation_node = "
                 "museum_assistant.semantic_navigation_node:main"
@@ -66,6 +75,14 @@ setup(
             ),
             "send_nav_goal = museum_assistant.send_nav_goal:main",
             "capture_nav_pose = museum_assistant.capture_nav_pose:main",
+            (
+                "simulation_ground_truth_odom = "
+                "museum_assistant.simulation_ground_truth_odom_node:main"
+            ),
+            (
+                "supplied_museum_route_runner = "
+                "museum_assistant.supplied_museum_route_runner:main"
+            ),
             "museum_query = museum_assistant.semantic_query_cli:main",
         ],
     },

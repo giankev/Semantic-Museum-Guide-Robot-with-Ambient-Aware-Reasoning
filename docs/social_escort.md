@@ -346,6 +346,9 @@ appears without a new `accepted` navigation result.
 
 ## Limitations
 
+- The runtime results in this document use the lightweight baseline museum and
+  its aligned map. They have not been repeated in the supplied-museum variant,
+  whose occupancy-map gate remains incomplete.
 - Observations use Gazebo ground truth, not perception.
 - `visitor_marker` is a static Gazebo model moved by service calls, either by
   the opt-in script or manually; there is no autonomous person or

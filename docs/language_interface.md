@@ -7,11 +7,11 @@ handled deterministically first; only unresolved sentences may be sent to
 Groq. Every successful path constructs the existing `StructuredRequest` and
 publishes it on the existing `/museum/user_request` topic.
 
-The implementation, offline unit tests, package build, and offline ROS flow
-are validated. Live Groq Free Plan acceptance must still be recorded before
-Phase 7 is described as a runtime-validated prototype. Speech interaction is
-not complete: there is no Whisper, microphone capture, dialogue manager,
-conversation memory, or TTS.
+Phase 7 is a runtime-validated bounded text-language prototype. Its offline
+and live Groq functional acceptance paths pass within the documented narrow
+scope. Adversarial prompt-injection evaluation remains deferred. Speech
+interaction is not complete: there is no Whisper, microphone capture, dialogue
+manager, conversation memory, or TTS.
 
 ## Data Flow
 
@@ -217,8 +217,73 @@ if fallback returns a schema-valid prepared-navigation candidate.
 
 The rebuilt `museum-tiago:humble` image contains `openai==2.46.0`; the SDK
 exposes the used `model`, `messages`, `response_format`,
-`max_completion_tokens`, and `temperature` parameters. No live API test or API
-latency is recorded because no rotated `GROQ_API_KEY` was present.
+`max_completion_tokens`, and `temperature` parameters. That offline run did
+not use a Groq key; the later live result is recorded below.
 
 The image also pins `anyio==3.7.1`, which satisfies the SDK dependency while
 remaining compatible with ROS Humble's bundled pytest 6.2.5 plugin workflow.
+
+<!-- phase7-live-acceptance:start -->
+## Recorded Live Groq Acceptance
+
+On 2026-08-03, Phase 7 passed its bounded live acceptance with model
+`openai/gpt-oss-20b` and OpenAI SDK `2.46.0`. The Docker image and selected-package
+workspace builds both passed. The two selected packages reported 83
+tests, 0 errors, 0 failures, and 0
+skipped tests. The measured language-node API latency was
+1.108 seconds.
+
+Validated candidate:
+
+```json
+{
+  "constraints": {
+    "avoid_crowd": true,
+    "child_friendly": true
+  },
+  "intent": "recommend",
+  "resolved": true
+}
+```
+
+Final `StructuredRequest`:
+
+```json
+{
+  "constraints": {
+    "avoid_crowd": true,
+    "child_friendly": true
+  },
+  "intent": "recommend",
+  "request_id": "text_2",
+  "session_id": "session_1"
+}
+```
+
+Reasoner decision:
+
+```json
+{
+  "request_id": "text_2",
+  "selected_room": "main_corridor",
+  "session_id": "session_1",
+  "skill": "navigate_to",
+  "status": "success"
+}
+```
+
+The prompt-injection diagnostic status was `DEFERRED`.
+Adversarial prompt-injection evaluation remains deferred and is not a Phase 7
+functional gate; this result does not establish robust prompt-injection
+security. With the key removed, deterministic parsing still reached the
+reasoner while unresolved text published nothing and logged that fallback was
+unavailable. No Nav2 or robot-control process was started.
+
+Before the strict schema migration, `llama-3.1-8b-instant` returned `intents`
+instead of `intent` in two bounded live attempts. Both candidates were safely
+rejected by the unchanged local validator.
+
+This is a bounded text-language prototype, not general language understanding,
+dialogue, speech interaction, production security, or direct LLM robot control.
+<!-- phase7-live-acceptance:end -->
+

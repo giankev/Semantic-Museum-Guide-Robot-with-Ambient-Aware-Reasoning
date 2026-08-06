@@ -30,8 +30,13 @@ that variant's wiring passed but its behavioral comparison failed. Phase 6B
 then added a separate custom proxemic DWB critic which passed the controlled
 clearance, stability, and escort acceptance checks while retaining DWB.
 Phase 7 adds deterministic text parsing plus a strict, one-at-a-time Groq
-fallback boundary; its offline tests and ROS flow pass, while live Groq
-acceptance remains pending.
+fallback boundary. Offline and live functional acceptance pass as a bounded
+runtime-validated text-language prototype; adversarial prompt-injection
+evaluation remains deferred.
+Phase 8 adds a bounded file-validation and cloud-transcription boundary in
+front of `/museum/user_text`. Source and automated tests pass; operator audio
+acceptance is still pending. Negative ROS runtime checks pass without text
+leakage or node exit, but full runtime validation is not yet claimed.
 
 ## Classification
 
@@ -42,6 +47,7 @@ acceptance remains pending.
 | TIAGo Docker/Gazebo baseline | `Dockerfile.tiago_museum`, `start_museum_tiago.sh`, validated project baseline | ROS 2/Gazebo dependencies remain in Docker. |
 | Manual TIAGo movement | teleop dependency, documented command and validated baseline | Direct velocity/teleop only. |
 | Custom museum scene | `worlds/museum.world`, `museum_world.launch.py` | Lightweight static geometry and visual markers. |
+| Packaged supplied museum scene | `worlds/supplied_museum/`, `tiago_supplied_museum_world.launch.py` | Portable assets and a bounded collision repair are Gazebo/TIAGo runtime-validated; no accepted aligned map or supplied-world Nav2 chain exists. |
 | TIAGo in museum world | `tiago_museum_world.launch.py`, validated milestone documentation | World launch does not itself start Nav2. |
 | Semantic museum graph | `semantic_map.yaml`, `semantic_graph.py`, `semantic_graph_node.py` | YAML validation, NetworkX graph, room/artwork queries. |
 | Ambient updates | `ambient_sensor_simulator_node.py`, graph update handlers | Scripted JSON and process-local memory. |
@@ -61,7 +67,7 @@ acceptance remains pending.
 | Minimal social escort | `escort.py`, `/museum/visitor_observation`, and `/museum/escort_state` support one task with intentional Nav2 pause/resume; an opt-in script makes normal lag/recovery reproducible. | Gazebo ground truth and a service-moved static marker only; no real tracking, generic people interface, obstacle-aware visitor motion, or recovery from `LOST`. |
 | Simulated people stream | `simulated_people_node` maps the current visitor, guide, and staff markers to standard `social_nav_msgs/msg/Pedestrians` on `/people`; static, moving, and stopped samples are runtime-validated. | Gazebo ground truth and finite-difference velocity only; no perception, tracking, or prediction. The social consumer is opt-in. |
 | Human-aware Nav2 variants | The earlier bridge/UPO-layer variant remains intact as a behavior-failed experiment. The separate `museum_social_critic` package, `nav2_museum_social_force.yaml`, and `museum_navigation_social_force.launch.py` add an accepted custom trajectory critic while retaining DWB and the baseline local costmap. | Phase 6B is accepted only for the controlled scenario: 0.665 m minimum clearance versus 0.603 m baseline at scale 32. It is not a general social-navigation evaluation, perception system, Social MPC, or learned predictor. |
-| Visitor request interface | `/museum/user_text`, deterministic Italian/English parsing, optional Groq strict Structured Outputs fallback, strict local validation, existing `StructuredRequest`, and active-session correlation. | Live Groq runtime acceptance remains; no dialogue, general session policy, or STT. |
+| Visitor request interface | `/museum/audio_file`, bounded Groq Whisper file transcription, `/museum/user_text`, deterministic Italian/English parsing, optional strict Groq text fallback, local validation, `StructuredRequest`, and session correlation. | Phase 7 text is runtime-validated. Phase 8 file STT passes automated tests but still needs operator audio acceptance; no streaming, dialogue, or TTS. |
 | Dynamic world model | Room ambient fields update in memory. | No shared authority, persistence, timestamps, provenance, visitor/session/task facts, or task-time re-reasoning. |
 | Navigation poses | Every room has a `nav_pose`; AMCL capture helper exists. | Poses are not all documented as calibrated/free-space tested. |
 | Museum topology | `connected_to` relations are stored. | No route-level semantic traversal uses them; edges are directed unless reverse relations are added. |
@@ -76,7 +82,6 @@ There is no runtime implementation for:
 - person or engagement perception;
 - real producer of tracked-person observations;
 - general multi-visitor Session Manager;
-- speech-to-text;
 - Interaction Manager;
 - Behavior Executive;
 - real or generic people tracking source;
@@ -106,6 +111,7 @@ All executables used by current package launch files are registered in `setup.py
 - `ambient_sensor_simulator`
 - `reasoning_node`
 - `language_node`
+- `speech_to_text_node`
 - `visitor_session_node`
 - `semantic_navigation_node`
 - `scripted_visitor_node`
@@ -123,6 +129,7 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 | `ambient_reasoning.launch.py` | Starts graph demo plus scripted ambient updates. | No request reasoning or Nav2. |
 | `reasoning_demo.launch.py` | Starts deterministic reasoner, ambient simulator, and request simulator. | No interaction manager or navigation execution. |
 | `language.launch.py` | Starts only the deterministic-first text parser and optional Groq fallback node. | No reasoner, Nav2, visitor session, escort, people publisher, STT, or TTS. |
+| `speech_to_text.launch.py` | Starts only the bounded file-based transcription node. | No language node, reasoner, Gazebo, Nav2, escort, people publisher, social navigation, microphone, or TTS. |
 | `visitor_session.launch.py` | Starts the simulated visitor-session and public distance-observation adapter. | No reasoning, navigation, generic people tracking, or real perception. |
 | `semantic_navigation.launch.py` | Starts the filtered reasoning-to-Nav2 adapter with minimal escort state logic. | No Nav2 bringup, reasoner, task manager, Behavior Executive, or social navigation. |
 | `scripted_visitor.launch.py` | Opt-in bounded movement of `visitor_marker` for one deterministic lag-recovery demo. | No escort decisions, tracking, perception, path planning, obstacle avoidance, or social navigation. |
@@ -130,6 +137,7 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 | `social_people_bridge.launch.py` | Opt-in minimal `/people` to `/people_nav2` compatibility bridge. | No tracking, prediction, identity, session, escort, or navigation logic. |
 | `museum_world.launch.py` | Opens the museum world without TIAGo. | No robot, SLAM, or Nav2. |
 | `tiago_museum_world.launch.py` | Includes the TIAGo Gazebo launch with the museum world. | No SLAM or Nav2 in that launch. |
+| `tiago_supplied_museum_world.launch.py` | Includes TIAGo Gazebo with the installed supplied museum, state plugin, and three visual markers. | No SLAM, map server, Nav2, reasoning, escort, people publisher, or social navigation. |
 | `museum_slam.launch.py` | Starts async SLAM Toolbox with `/scan_raw` remapping. | No robot/world launch and no map saving automation. |
 | `museum_navigation.launch.py` | Includes Nav2 bringup with saved map and museum parameters. | No robot/world launch or semantic adapter in the same launch. |
 | `museum_navigation_social.launch.py` | Includes the same Nav2/DWB stack with the opt-in UPO layer in the local costmap. | No people publisher, bridge, reasoner, semantic adapter, escort script, or Social MPC. |
@@ -138,6 +146,10 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 ### Configuration And Assets
 
 - `setup.py` installs all current YAML, launch, map, and world assets.
+- The supplied museum world, original DAE and textures, and the bounded
+  collision derivative are installed from `worlds/supplied_museum/`. This
+  variant has no accepted occupancy map; the existing PGM/YAML remains tied to
+  the lightweight world.
 - The saved PGM is a 300 by 220 occupancy image referenced by `museum_map.yaml`.
 - `nav2_museum.yaml` uses AMCL, NavFn, DWB, standard recovery behaviors, and the saved map launch.
 - `nav2_museum_social.yaml` preserves the baseline global costmap and DWB
@@ -151,7 +163,7 @@ The developer helpers `museum_query`, `capture_nav_pose`, and `send_nav_goal` ar
 
 The Python package manifest declares the message and Nav2 action dependencies
 used by its source. The Docker image pins the official OpenAI Python SDK used
-for the Groq-compatible Phase 7 request. Phase 5 adds `social_nav_msgs` from
+for the Groq-compatible Phase 7 text and Phase 8 audio requests. Phase 5 adds `social_nav_msgs` from
 apt. The earlier Phase 6
 experiment builds pinned `people_msgs` and `nav2_social_costmap_plugin` in a
 separate overlay because `ros-humble-people-msgs` was unavailable. The new
@@ -167,7 +179,7 @@ Nav2.
 | --- | --- |
 | Perception | A Gazebo-ground-truth `/people` stream exists, but there is no real tracked-person or engagement signal. |
 | Session | One static visitor-to-session mapping exists; there is no general lifecycle, disappearance, persistence, or multi-visitor policy. |
-| Language | Text parsing and strict cloud fallback are implemented; offline ROS passed, while live cloud acceptance and all speech input/output remain pending. |
+| Language | Phase 7 text passed offline and live functional acceptance. Phase 8 file-based cloud transcription passes automated tests but awaits operator audio acceptance; streaming, dialogue, TTS, and offline ASR remain absent. |
 | World model | No shared dynamic authority and no person/session/task state. |
 | Reasoning | No session-aware constraints, active-task re-reasoning, or downstream orchestration. |
 | Interaction | The manager, dialogue policy, and command contract are planned. |
@@ -213,6 +225,9 @@ The repository history can be retained without using milestone numbers that conf
 17. **Text language boundary:** added deterministic Italian/English parsing,
     one-at-a-time Groq JSON translation for unresolved text, strict local
     candidate rejection, and final `StructuredRequest` validation.
+18. **File speech boundary:** added strict local audio-file validation,
+    one-at-a-time Groq Whisper transcription, status reporting, and a
+    privacy-cleaning headless acceptance runner.
 
 This history records what was achieved while leaving interaction management,
 behavior execution, generic people tracking, speech, broader social-navigation
@@ -229,8 +244,8 @@ evaluation, and real perception clearly incomplete or unimplemented.
 | 4 | **Prototype implemented:** basic escort with simulated ground truth | Escort, wait/cancel, recover/resend, lost/cancel, and joint arrival use the static marker; normal lag/recovery is scripted and manual tests remain available. |
 | 5 | **Runtime-validated prototype:** standard simulation people stream | `/people` reports the three Gazebo markers with stable public IDs and velocities while escort and DWB remain unchanged. |
 | 6 | **Runtime-validated bounded prototype:** human-aware DWB trajectory critic | The custom critic runs beside an unchanged baseline, increases controlled guide clearance from 0.603 m to 0.665 m without destabilizing navigation, and preserves escort completion. |
-| 7 | **Implemented; offline accepted, live pending:** deterministic language parser plus Groq fallback | Offline tests and ROS flow show that text becomes schema-valid JSON and invalid/unsafe output is rejected; live Groq acceptance remains. |
-| 8 | faster-whisper STT | Recorded speech produces text within measured latency/resource limits. |
+| 7 | **Runtime-validated bounded prototype:** deterministic language parser plus Groq fallback | Offline and live functional tests pass with strict Structured Outputs and local validation; adversarial prompt-injection evaluation remains deferred. |
+| 8 | **Implemented; live acceptance pending:** bounded Groq file STT | Operator audio must produce exactly one text, deterministic request, and successful Impressionism reasoner result with measured latency. |
 | 9 | Grounded answer generation and TTS | Spoken answers cite only current request/world/task facts. |
 | 10 | Active-task ambient adaptation | A relevant closure/crowd update triggers controlled re-reasoning and behavior change. |
 | 11 | Optional lightweight perception | Role/context cues are inferred without personal identity recognition. |
@@ -238,12 +253,22 @@ evaluation, and real perception clearly incomplete or unimplemented.
 
 ## Current Gate
 
+The supplied-museum integration is PARTIAL at its occupancy-map gate. Portable
+asset loading, TIAGo spawn, sensors/TF, and physical north/east traversal pass,
+but five SLAM attempts failed world/map alignment or inflated-clearance checks.
+Consequently AMCL, Nav2, semantic navigation, session/escort, `/people`, social
+critic, and deterministic text integration are not claimed for that world.
+The original environment remains the documented default; full evidence and
+reverted experiments are in
+[`supplied_museum_integration.md`](supplied_museum_integration.md).
+
 The roadmap has passed the bounded Phase 6 gate through the custom critic. The
 public people boundary is documented in `simulated_people.md`; the accepted
 critic and the two earlier failed experiments are documented in
 `human_aware_navigation.md`; and Phase 4 escort remains separately documented
-in `social_escort.md`. Phase 7 implementation, tests, and offline ROS flow
-pass, but it is not runtime-validated until live Groq acceptance also passes.
-Real people tracking,
+in `social_escort.md`. Phase 7 is a runtime-validated bounded text-language
+prototype; its adversarial prompt-injection evaluation remains deferred.
+Phase 8 file-based speech input is implemented and automated-test accepted,
+but remains at the live-audio gate. Real people tracking,
 Interaction Management, Behavior Execution, broader human-aware evaluation,
-speech, and vision remain future work.
+streaming speech/dialogue, and vision remain future work.
