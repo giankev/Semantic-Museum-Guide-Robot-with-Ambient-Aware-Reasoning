@@ -10,7 +10,11 @@ LAYOUT_PATH = PACKAGE / "config/supplied_museum_room_layout.yaml"
 BASE_PATH = PACKAGE / "config/nav2_museum.yaml"
 ODOM_OVERRIDE_PATH = PACKAGE / "config/nav2_ground_truth_odom_override.yaml"
 DEMO_PATH = PACKAGE / "config/nav2_supplied_demo.yaml"
+SOCIAL_PATH = PACKAGE / "config/nav2_supplied_social_force.yaml"
 LAUNCH_PATH = PACKAGE / "launch/supplied_museum_demo_navigation.launch.py"
+REASONING_LAUNCH_PATH = (
+    PACKAGE / "launch/supplied_museum_reasoning_navigation.launch.py"
+)
 GENERATOR_PATH = REPO_ROOT / "scripts/generate_map_from_sdf_boxes.py"
 
 
@@ -36,6 +40,7 @@ LAYOUT = yaml.safe_load(LAYOUT_PATH.read_text(encoding="utf-8"))
 BASE = yaml.safe_load(BASE_PATH.read_text(encoding="utf-8"))
 OVERRIDE = yaml.safe_load(ODOM_OVERRIDE_PATH.read_text(encoding="utf-8"))
 DEMO = yaml.safe_load(DEMO_PATH.read_text(encoding="utf-8"))
+SOCIAL = yaml.safe_load(SOCIAL_PATH.read_text(encoding="utf-8"))
 GENERATOR = load_generator()
 WIDTH, HEIGHT, CELLS = GENERATOR.rasterize(GENERATOR.load_boxes())
 
@@ -125,3 +130,61 @@ def test_final_launch_selects_supplied_map_demo_config_and_corrected_odom_world(
     assert "nav2_supplied_demo.yaml" in source
     assert '"slam": "False"' in source
     assert "social" not in source
+
+
+def test_supplied_social_force_config_only_adds_the_existing_critic():
+    before, after = flattened(DEMO), flattened(SOCIAL)
+    changed = {
+        path: (before.get(path), after.get(path))
+        for path in before.keys() | after.keys()
+        if before.get(path) != after.get(path)
+    }
+    prefix = ("controller_server", "ros__parameters", "FollowPath")
+    assert changed == {
+        prefix + ("critics",): (
+            [
+                "RotateToGoal", "Oscillation", "BaseObstacle", "GoalAlign",
+                "PathAlign", "PathDist", "GoalDist",
+            ],
+            [
+                "RotateToGoal", "Oscillation", "BaseObstacle",
+                "ProxemicForce", "GoalAlign", "PathAlign", "PathDist",
+                "GoalDist",
+            ],
+        ),
+        prefix + ("ProxemicForce.class",): (
+            None, "museum_social_critic::ProxemicForceCritic",
+        ),
+        prefix + ("ProxemicForce.scale",): (None, 32.0),
+        prefix + ("ProxemicForce.comfort_distance",): (None, 1.0),
+        prefix + ("ProxemicForce.sigma",): (None, 0.4),
+        prefix + ("ProxemicForce.people_topic",): (None, "/people"),
+        prefix + ("ProxemicForce.people_timeout",): (None, 1.0),
+        prefix + ("ProxemicForce.ignored_identifiers",): (
+            None, ["visitor_1"],
+        ),
+    }
+
+
+def test_supplied_social_force_preserves_critical_navigation_parameters():
+    assert "ProxemicForce" not in DEMO["controller_server"][
+        "ros__parameters"
+    ]["FollowPath"]["critics"]
+    assert SOCIAL["controller_server"]["ros__parameters"]["FollowPath"][
+        "plugin"
+    ] == "dwb_core::DWBLocalPlanner"
+    assert SOCIAL["planner_server"]["ros__parameters"]["GridBased"][
+        "allow_unknown"
+    ] is False
+    for node in ("amcl", "local_costmap", "global_costmap", "velocity_smoother"):
+        assert SOCIAL[node] == DEMO[node]
+
+
+def test_reasoning_launch_keeps_social_force_support_opt_in():
+    navigation_source = LAUNCH_PATH.read_text(encoding="utf-8")
+    reasoning_source = REASONING_LAUNCH_PATH.read_text(encoding="utf-8")
+    assert 'LaunchConfiguration("nav2_params_file")' in navigation_source
+    assert "nav2_supplied_demo.yaml" in navigation_source
+    assert 'default_value="False"' in reasoning_source
+    assert 'executable="simulated_people_node"' in reasoning_source
+    assert 'LaunchConfiguration("publish_people")' in reasoning_source

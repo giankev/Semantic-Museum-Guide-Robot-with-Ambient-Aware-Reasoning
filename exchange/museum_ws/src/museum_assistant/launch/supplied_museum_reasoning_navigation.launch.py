@@ -2,6 +2,7 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -24,10 +25,24 @@ def generate_launch_description():
                 default_value="False",
                 choices=["True", "False"],
             ),
+            DeclareLaunchArgument(
+                "nav2_params_file",
+                default_value=PathJoinSubstitution(
+                    [museum_share, "config", "nav2_supplied_demo.yaml"]
+                ),
+            ),
+            DeclareLaunchArgument(
+                "publish_people",
+                default_value="False",
+                choices=["True", "False"],
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(navigation_launch),
                 launch_arguments={
-                    "gzclient": LaunchConfiguration("gzclient")
+                    "gzclient": LaunchConfiguration("gzclient"),
+                    "nav2_params_file": LaunchConfiguration(
+                        "nav2_params_file"
+                    ),
                 }.items(),
             ),
             Node(
@@ -62,6 +77,14 @@ def generate_launch_description():
                 executable="scripted_visitor_node",
                 name="scripted_visitor_node",
                 output="screen",
+                parameters=[{"use_sim_time": True}],
+            ),
+            Node(
+                package="museum_assistant",
+                executable="simulated_people_node",
+                name="simulated_people_node",
+                output="screen",
+                condition=IfCondition(LaunchConfiguration("publish_people")),
                 parameters=[{"use_sim_time": True}],
             ),
         ]

@@ -18,9 +18,7 @@ def generate_launch_description():
     map_file = PathJoinSubstitution(
         [museum_share, "maps", "supplied_museum_nav.yaml"]
     )
-    params_file = PathJoinSubstitution(
-        [museum_share, "config", "nav2_supplied_demo.yaml"]
-    )
+    params_file = LaunchConfiguration("nav2_params_file")
 
     navigation = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(nav2_launch),
@@ -41,6 +39,13 @@ def generate_launch_description():
                 default_value="False",
                 choices=["True", "False"],
                 description="Start the Gazebo Classic graphical client.",
+            ),
+            DeclareLaunchArgument(
+                "nav2_params_file",
+                default_value=PathJoinSubstitution(
+                    [museum_share, "config", "nav2_supplied_demo.yaml"]
+                ),
+                description="Opt-in Nav2 parameter file; defaults to baseline.",
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(world_launch),

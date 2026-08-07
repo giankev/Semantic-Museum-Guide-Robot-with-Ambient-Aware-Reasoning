@@ -374,6 +374,79 @@ Phase 6B behavioral acceptance is therefore **PASS**. The optional moving
 bystander runtime check was not needed; constant-velocity prediction is covered
 by its focused unit test, and no additional moving-human framework was added.
 
+## Supplied-Museum Opt-In Variant
+
+The supplied baseline remains `config/nav2_supplied_demo.yaml`. Its default
+launch behavior is unchanged and its critic list does not contain
+`ProxemicForce`. The opt-in variant is:
+
+```text
+config/nav2_supplied_social_force.yaml
+```
+
+This file is structurally identical to the supplied baseline except for adding
+`ProxemicForce` to `FollowPath.critics` and the seven accepted Phase 6B
+parameters. DWB, corrected simulation odometry, AMCL, speed samples, goal
+tolerance, `allow_unknown=false`, both costmaps, and the velocity smoother are
+unchanged. The critic still consumes `/people` directly, ignores `visitor_1`,
+and considers `guide_1` and `staff_1`; the compatibility bridge is not used.
+
+The existing reasoning launch accepts two opt-in arguments. The baseline
+defaults remain the same. For a controlled comparison, both variants publish
+the same people stream:
+
+```bash
+# Baseline supplied DWB
+ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
+  gzclient:=False publish_people:=True
+
+# Supplied DWB plus the existing ProxemicForceCritic
+ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
+  gzclient:=False publish_people:=True \
+  nav2_params_file:=$(ros2 pkg prefix museum_assistant)/share/museum_assistant/config/nav2_supplied_social_force.yaml
+```
+
+The comparison probe publishes only `/museum/user_request`; it does not bypass
+reasoning or the supplied route runner:
+
+```bash
+python3 scripts/compare_supplied_museum_social_force.py record \
+  --variant baseline --request-id supplied_social_baseline \
+  --output /tmp/baseline.json
+python3 scripts/compare_supplied_museum_social_force.py record \
+  --variant social --request-id supplied_social_force \
+  --output /tmp/social.json
+python3 scripts/compare_supplied_museum_social_force.py compare \
+  --baseline /tmp/baseline.json --social /tmp/social.json \
+  --output /tmp/comparison.json
+```
+
+Two clean `north_gallery` runs used the unchanged initial pose, route, world,
+and `guide_1` pose `(1.2, 9.0)`. Navigation time is measured from the first
+active `NavigateToPose` status through the correlated terminal result, so it
+includes the intentional escort wait/resume. Path length and guide distance
+are integrated from Gazebo model states over the same interval.
+
+| Variant | Nav2 | Escort | Gazebo error | Sim time | Wall time | Path length | Min guide distance | Recoveries / no-progress | Terminal command |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Baseline supplied | succeeded | arrived | 0.090 m | 143.63 s | 257.34 s | 16.065 m | 1.147 m | 0 / 0 | zero |
+| Supplied social force | succeeded | arrived | 0.092 m | 143.63 s | 254.33 s | 16.064 m | 1.269 m | 0 / 0 | zero |
+
+The social variant increased minimum guide clearance by `0.122 m`. This is a
+centimeter-scale trajectory difference, not the millimeter-scale noise rejected
+in Phase 6A. The controller logged three `/people` inputs as two considered and
+one ignored, and emitted non-zero, trajectory-discriminating proxemic scores
+near the guide. Both runs preserved:
+
+```text
+reasoning:  impressionism_hall -> north_gallery
+navigation: accepted -> intentional wait cancel -> accepted -> succeeded
+escort:     escorting -> waiting -> escorting -> arrived
+```
+
+The supplied technical and behavioral gates therefore both pass at the already
+accepted scale `32.0`; no tuning sweep was performed.
+
 ## Regression Result
 
 - Original baseline launch remains independent of the custom package behavior.
@@ -391,10 +464,7 @@ by its focused unit test, and no additional moving-human framework was added.
 
 ## Remaining Limitations
 
-- All accepted baseline/social measurements in this document use the
-  lightweight baseline museum. The supplied environment has no accepted
-  aligned map yet, so the custom critic was not loaded or compared there.
-- Phase 6B is a one-scenario functional acceptance result, not a broad
+- The supplied result is one controlled `north_gallery` scenario, not a broad
   quantitative evaluation or general social-navigation guarantee.
 - Only the selected scale-32 setting is accepted. Scale 64 demonstrated the
   upper failure boundary and must not be selected.
