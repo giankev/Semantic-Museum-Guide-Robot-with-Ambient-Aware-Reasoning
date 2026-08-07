@@ -1,0 +1,12 @@
+schema_version: 1
+
+semantic_routes:
+  impressionism_hall:
+    physical_room: north_gallery
+    route: north_gallery
+  ancient_art_hall:
+    physical_room: south_west_gallery
+    route: south_west_gallery
+  kids_hall:
+    physical_room: south_east_gallery
+    route: south_east_gallery

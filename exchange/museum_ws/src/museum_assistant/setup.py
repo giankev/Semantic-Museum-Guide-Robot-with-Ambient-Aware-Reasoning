@@ -54,6 +54,10 @@ setup(
                 "museum_assistant.semantic_navigation_node:main"
             ),
             (
+                "semantic_route_dispatcher = "
+                "museum_assistant.semantic_route_dispatcher_node:main"
+            ),
+            (
                 "visitor_session_node = "
                 "museum_assistant.visitor_session_node:main"
             ),
@@ -82,6 +86,10 @@ setup(
             (
                 "supplied_museum_route_runner = "
                 "museum_assistant.supplied_museum_route_runner:main"
+            ),
+            (
+                "supplied_museum_route_runner_node = "
+                "museum_assistant.supplied_museum_route_runner:topic_main"
             ),
             "museum_query = museum_assistant.semantic_query_cli:main",
         ],

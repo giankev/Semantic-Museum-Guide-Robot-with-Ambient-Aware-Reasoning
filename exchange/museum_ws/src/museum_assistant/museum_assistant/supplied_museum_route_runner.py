@@ -27,6 +27,7 @@ from rclpy.signals import SignalHandlerOptions
 from rclpy.time import Time
 from rclpy.utilities import remove_ros_args
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
 from .supplied_museum_navigation import (
@@ -38,7 +39,6 @@ from .supplied_museum_navigation import (
     TrinaryOccupancyMap,
     load_route_plan,
     position_error,
-    route_action_kind,
 )
 
 
@@ -643,6 +643,151 @@ def terminal_localization_is_fresh(waypoint_results: list[dict]) -> bool:
     )
 
 
+def correlated_navigation_result(
+    route_request: dict, report: dict
+) -> dict:
+    """Build a terminal result whose success is tied to the final candidate."""
+
+    final = report.get("final")
+    if not isinstance(final, dict):
+        final = {}
+    target = final.get("target")
+    if not isinstance(target, dict):
+        target = {}
+    expected_candidate = route_request.get("final_candidate")
+    target_error = final.get("gazebo_target_error_m")
+    checks = report.get("checks")
+    if not isinstance(checks, dict):
+        checks = {}
+    candidate_reached = (
+        isinstance(expected_candidate, str)
+        and target.get("name") == expected_candidate
+        and isinstance(target_error, (int, float))
+        and not isinstance(target_error, bool)
+        and math.isfinite(float(target_error))
+        and float(target_error) <= 0.50
+    )
+    nav2_succeeded = checks.get("all_nav2_goals_succeeded") is True
+    succeeded = candidate_reached and nav2_succeeded
+    return {
+        "request_id": route_request.get("request_id"),
+        "session_id": route_request.get("session_id"),
+        "selected_room": route_request.get("selected_room"),
+        "route": route_request.get("route"),
+        "final_candidate": expected_candidate,
+        "status": "succeeded" if succeeded else "failed",
+        "candidate_reached": candidate_reached,
+        "nav2_succeeded": nav2_succeeded,
+        "gazebo_target_error_m": target_error,
+        "nav2_goal_count": len(report.get("goal_uuids", [])),
+        "runner_status": report.get("status", "failed"),
+        "reason": (
+            "final_candidate_reached"
+            if succeeded
+            else report.get("reason", "final_candidate_not_reached")
+        ),
+    }
+
+
+class SuppliedMuseumRouteRequestBridge(Node):
+    """Queue validated route requests and publish correlated final results."""
+
+    def __init__(self, routes_path: Path, layout_path: Path):
+        super().__init__("supplied_museum_route_request_bridge")
+        self.routes_path = routes_path
+        self.layout_path = layout_path
+        self.pending: deque[dict] = deque()
+        self.seen_correlations: set[tuple[object, object]] = set()
+        self.result_publisher = self.create_publisher(
+            String, "/museum/navigation_result", 10
+        )
+        self.create_subscription(
+            String,
+            "/museum/supplied_route_request",
+            self._receive_request,
+            10,
+        )
+        self.get_logger().info(
+            "Waiting for one-shot route requests on "
+            "/museum/supplied_route_request"
+        )
+
+    def _receive_request(self, message: String) -> None:
+        try:
+            request = json.loads(message.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().warning(
+                f"Rejecting malformed supplied-route request: {exc}"
+            )
+            return
+        if not isinstance(request, dict):
+            self.get_logger().warning(
+                "Rejecting supplied-route request that is not an object"
+            )
+            return
+
+        correlation = (request.get("session_id"), request.get("request_id"))
+        if correlation in self.seen_correlations:
+            self._publish_rejection(request, "duplicate_route_request")
+            return
+        route = request.get("route")
+        if not isinstance(route, str):
+            self._publish_rejection(request, "unknown_route")
+            return
+        try:
+            waypoints = load_route_plan(
+                route, self.routes_path, self.layout_path
+            )
+        except (OSError, ValueError) as exc:
+            self._publish_rejection(request, f"unknown_route: {exc}")
+            return
+        configured_names = [waypoint.name for waypoint in waypoints]
+        if request.get("waypoint_names") != configured_names:
+            self._publish_rejection(request, "route_waypoints_mismatch")
+            return
+        if request.get("final_candidate") != configured_names[-1]:
+            self._publish_rejection(request, "final_candidate_mismatch")
+            return
+
+        self.seen_correlations.add(correlation)
+        self.pending.append(request)
+        self.get_logger().info(
+            "Accepted correlated route request: "
+            f"request_id={request.get('request_id')} route={route}"
+        )
+
+    def pop_request(self) -> dict | None:
+        return self.pending.popleft() if self.pending else None
+
+    def publish_result(self, result: dict) -> None:
+        message = String()
+        message.data = json.dumps(result)
+        self.result_publisher.publish(message)
+        self.get_logger().info(
+            "Published correlated terminal navigation result: "
+            f"request_id={result.get('request_id')} "
+            f"status={result.get('status')}"
+        )
+
+    def _publish_rejection(self, request: dict, reason: str) -> None:
+        self.publish_result(
+            {
+                "request_id": request.get("request_id"),
+                "session_id": request.get("session_id"),
+                "selected_room": request.get("selected_room"),
+                "route": request.get("route"),
+                "final_candidate": request.get("final_candidate"),
+                "status": "rejected",
+                "candidate_reached": False,
+                "nav2_succeeded": False,
+                "gazebo_target_error_m": None,
+                "nav2_goal_count": 0,
+                "runner_status": "rejected",
+                "reason": reason,
+            }
+        )
+
+
 def run(args) -> tuple[int, dict]:
     waypoints = load_route_plan(args.destination, args.routes, args.layout)
     occupancy_map = TrinaryOccupancyMap(args.map)
@@ -804,6 +949,52 @@ def main(argv=None) -> None:
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     sys.exit(exit_code)
+
+
+def topic_main(args=None) -> None:
+    """Run the supplied route runner behind its correlated ROS topic API."""
+
+    share = Path(get_package_share_directory("museum_assistant"))
+    routes_path = share / "config/supplied_museum_routes.yaml"
+    layout_path = share / "config/supplied_museum_room_layout.yaml"
+    bridge = None
+    CANCEL_REQUESTED.clear()
+    rclpy.init(args=args)
+    try:
+        bridge = SuppliedMuseumRouteRequestBridge(routes_path, layout_path)
+        while rclpy.ok():
+            rclpy.spin_once(bridge, timeout_sec=0.10)
+            request = bridge.pop_request()
+            if request is None:
+                continue
+            run_args = argparse.Namespace(
+                destination=request["route"],
+                routes=routes_path,
+                layout=layout_path,
+                map=share / "maps/supplied_museum_nav.yaml",
+                intermediate_timeout=240.0,
+                final_timeout=300.0,
+                waypoint_behavior_tree=(
+                    share / "behavior_trees/supplied_museum_to_pose.xml"
+                ),
+            )
+            try:
+                _exit_code, report = run(run_args)
+            except Exception as exc:
+                bridge.get_logger().error(
+                    f"Supplied-museum route execution failed: {exc}"
+                )
+                report = {"status": "failed", "reason": str(exc)}
+            bridge.publish_result(
+                correlated_navigation_result(request, report)
+            )
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if bridge is not None:
+            bridge.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == "__main__":
