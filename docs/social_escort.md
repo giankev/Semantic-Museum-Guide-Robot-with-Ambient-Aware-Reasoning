@@ -29,6 +29,19 @@ through `/gazebo/set_entity_state`. It publishes no robot-facing state:
                            -> /gazebo/set_entity_state -> visitor_marker
 ```
 
+The supplied-museum integration reuses the same observation and state topics,
+but keeps physical route ownership in its validated runner:
+
+```text
+reasoning_node -> semantic_route_dispatcher
+               -> supplied_museum_route_runner -> NavigateToPose
+/museum/visitor_observation ---------------------> EscortSupervisor
+```
+
+`semantic_navigation_node` is not launched in this configuration. The supplied
+runner is therefore the only component that sends, cancels, or resumes Nav2
+goals.
+
 This is scripted simulator motion, not visitor autonomy, tracking, perception,
 or social navigation. `EscortSupervisor` remains the authority for wait,
 resume, lost, and arrival decisions.
@@ -80,8 +93,8 @@ field is published.
 - `arrived`: TIAGo reached the Nav2 destination and the visitor is within the
   arrival distance; terminal success.
 
-The supervisor is inactive outside an escort task. Default ROS parameters on
-`semantic_navigation_node` are:
+The supervisor is inactive outside an escort task. The same defaults are used
+by `semantic_navigation_node` and the supplied-museum route runner:
 
 | Parameter | Default |
 | --- | ---: |
@@ -143,6 +156,27 @@ The same correlation fields are present on terminal success:
 `ARRIVED`, not Nav2 `succeeded`, is Phase 4 task success. When Nav2 succeeds
 with a visitor farther than 2.5 m, the escort stays `waiting`; bringing the
 visitor within 2.5 m changes it to `arrived` without sending another goal.
+
+## Supplied-Museum Escort
+
+Launch the integrated reasoning, escort, and navigation pipeline with:
+
+```bash
+ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
+  gzclient:=False
+```
+
+The launch reuses `visitor_session_node` and `scripted_visitor_node`. A route
+request starts `EscortSupervisor` in `escorting`. If the visitor lags, the
+runner cancels the active goal intentionally, retains the active waypoint, and
+waits with zero velocity. Recovery resends only that waypoint with a new goal
+UUID; completed waypoints are not repeated.
+
+The final `/museum/navigation_result` remains the physical route result and
+includes the accepted/canceled/resumed goal evidence. `/museum/escort_state`
+remains the independent social result. After physical success, a distant
+visitor leaves escort state at `waiting`; a later near observation produces
+`arrived` without another Nav2 goal.
 
 ## Verified Gazebo Interface
 
@@ -346,9 +380,10 @@ appears without a new `accepted` navigation result.
 
 ## Limitations
 
-- The runtime results in this document use the lightweight baseline museum and
-  its aligned map. They have not been repeated in the supplied-museum variant,
-  whose occupancy-map gate remains incomplete.
+- Supplied-museum scripted acceptance is limited to `north_gallery`. The
+  scripted marker moves directly toward TIAGo and is not a path planner, so it
+  is not used to validate southern routes where direct motion could cross
+  walls.
 - Observations use Gazebo ground truth, not perception.
 - `visitor_marker` is a static Gazebo model moved by service calls, either by
   the opt-in script or manually; there is no autonomous person or

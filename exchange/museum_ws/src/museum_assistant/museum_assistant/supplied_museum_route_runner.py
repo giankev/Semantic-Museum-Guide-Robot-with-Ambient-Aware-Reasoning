@@ -30,6 +30,7 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
+from .escort import EscortState, EscortSupervisor
 from .supplied_museum_navigation import (
     DESTINATION_ROUTES,
     GoalSequence,
@@ -71,9 +72,14 @@ def _pose_dict(pose: TimedPose | None) -> dict | None:
 class SuppliedMuseumRouteRunner(Node):
     """Monitor three pose sources while serializing goals."""
 
-    def __init__(self, occupancy_map: TrinaryOccupancyMap):
+    def __init__(
+        self,
+        occupancy_map: TrinaryOccupancyMap,
+        route_request: dict | None = None,
+    ):
         super().__init__("supplied_museum_route_runner")
         self.occupancy_map = occupancy_map
+        self.route_request = route_request
         self.client = ActionClient(self, NavigateToPose, "navigate_to_pose")
         self.route_client = ActionClient(
             self, NavigateThroughPoses, "navigate_through_poses"
@@ -108,6 +114,9 @@ class SuppliedMuseumRouteRunner(Node):
         self.active_route_targets: tuple[Pose2D, ...] = ()
         self.minimum_route_distances: dict[str, float] = {}
         self.remaining_poses: int | None = None
+        self.escort: EscortSupervisor | None = None
+        self.escort_state_history: list[dict] = []
+        self._escort_cancel_reason: str | None = None
 
         self.create_subscription(
             ModelStates, "/gazebo/model_states", self._gazebo, 10
@@ -128,6 +137,32 @@ class SuppliedMuseumRouteRunner(Node):
             self._command,
             20,
         )
+        if route_request is not None:
+            escort_defaults = {
+                "resume_distance": 2.0,
+                "wait_distance": 3.0,
+                "lost_distance": 8.0,
+                "arrival_distance": 2.5,
+                "wait_delay": 3.0,
+                "absence_timeout": 3.0,
+            }
+            for name, value in escort_defaults.items():
+                self.declare_parameter(name, value)
+            self.escort = EscortSupervisor(
+                **{
+                    name: float(self.get_parameter(name).value)
+                    for name in escort_defaults
+                }
+            )
+            self.escort_publisher = self.create_publisher(
+                String, "/museum/escort_state", 10
+            )
+            self.create_subscription(
+                String,
+                "/museum/visitor_observation",
+                self._handle_visitor_observation,
+                10,
+            )
 
     @property
     def gazebo(self) -> TimedPose | None:
@@ -191,6 +226,96 @@ class SuppliedMuseumRouteRunner(Node):
             or abs(self.latest_cmd[1]) > 1.0e-3
         ):
             self.nonzero_cmd_count += 1
+
+    def start_escort(self) -> None:
+        if self.escort is not None:
+            self.escort.start()
+            self._publish_escort_state()
+
+    def _handle_visitor_observation(self, message: String) -> None:
+        if self.escort is None or self.route_request is None:
+            return
+        try:
+            observation = json.loads(message.data)
+        except json.JSONDecodeError as exc:
+            self.get_logger().warning(
+                f"Ignoring malformed visitor-observation JSON: {exc}"
+            )
+            return
+        if not isinstance(observation, dict):
+            return
+        if observation.get("session_id") != self.route_request.get(
+            "session_id"
+        ):
+            return
+
+        previous = self.escort.state
+        try:
+            current = self.escort.observe(
+                present=observation.get("present"),
+                distance_to_robot=observation.get("distance_to_robot"),
+                now=self.get_clock().now().nanoseconds / 1e9,
+            )
+        except ValueError as exc:
+            self.get_logger().warning(
+                f"Ignoring invalid visitor observation: {exc}"
+            )
+            return
+        self._publish_escort_state()
+        if current is previous:
+            return
+
+        if (
+            current is EscortState.WAITING
+            and not self.escort.navigation_reached_destination
+        ):
+            self._escort_cancel_reason = "escort_wait"
+        elif current is EscortState.LOST:
+            self._escort_cancel_reason = "escort_lost"
+        self.get_logger().info(f"Escort state changed to {current.value}")
+
+    def _publish_escort_state(self) -> None:
+        if (
+            self.escort is None
+            or self.escort.state is None
+            or self.route_request is None
+        ):
+            return
+        payload = {
+            field: self.route_request.get(field)
+            for field in ("request_id", "session_id", "selected_room")
+        }
+        payload["state"] = self.escort.state.value
+        if self.escort.distance_to_robot is not None:
+            payload["distance_to_robot"] = self.escort.distance_to_robot
+        if (
+            not self.escort_state_history
+            or self.escort_state_history[-1]["state"] != payload["state"]
+        ):
+            self.escort_state_history.append(dict(payload))
+        message = String()
+        message.data = json.dumps(payload)
+        self.escort_publisher.publish(message)
+
+    def wait_for_escort_resume(self) -> bool:
+        if self.escort is None:
+            return True
+        while rclpy.ok() and self.escort.state is EscortState.WAITING:
+            self.spin_sample()
+        return self.escort.state is EscortState.ESCORTING
+
+    def finish_escort_navigation(self) -> None:
+        if self.escort is None:
+            return
+        previous = self.escort.state
+        current = self.escort.navigation_succeeded()
+        self._publish_escort_state()
+        if current is not previous and current is not None:
+            self.get_logger().info(
+                f"Escort state changed to {current.value}"
+            )
+        while rclpy.ok() and self.escort.state is EscortState.WAITING:
+            self.spin_sample()
 
     @staticmethod
     def _closest(
@@ -417,7 +542,9 @@ class SuppliedMuseumRouteRunner(Node):
             elapsed_sim = (
                 self.get_clock().now().nanoseconds - start_sim_ns
             ) / 1.0e9
-            if self.monitor.cancellation_required:
+            if self._escort_cancel_reason is not None:
+                cancellation_reason = self._escort_cancel_reason
+            elif self.monitor.cancellation_required:
                 cancellation_reason = "localization_divergence"
             elif CANCEL_REQUESTED.is_set():
                 cancellation_reason = "external_cancel"
@@ -446,6 +573,8 @@ class SuppliedMuseumRouteRunner(Node):
         }.get(status_code, "failed")
         if cancellation_reason is not None:
             status_name = "cancelled"
+        if cancellation_reason == self._escort_cancel_reason:
+            self._escort_cancel_reason = None
         self.action_state = status_name
         self.active_waypoint = None
         return {
@@ -667,17 +796,45 @@ def correlated_navigation_result(
     )
     nav2_succeeded = checks.get("all_nav2_goals_succeeded") is True
     succeeded = candidate_reached and nav2_succeeded
+    navigation_events = []
+    for waypoint in report.get("waypoints", []):
+        if waypoint.get("accepted") is True:
+            event = {
+                "status": "accepted",
+                "waypoint": waypoint.get("name"),
+                "goal_uuid": waypoint.get("uuid"),
+            }
+            navigation_events.append(event)
+        cancellation_reason = waypoint.get("cancellation_reason")
+        terminal_status = waypoint.get("status")
+        if cancellation_reason == "escort_wait":
+            terminal_status = "intentionally_canceled_for_escort_wait"
+        elif cancellation_reason == "escort_lost":
+            terminal_status = "canceled_for_escort_lost"
+        navigation_events.append(
+            {
+                "status": terminal_status,
+                "waypoint": waypoint.get("name"),
+                "goal_uuid": waypoint.get("uuid"),
+            }
+        )
+    result_status = "succeeded" if succeeded else "failed"
+    if report.get("status") == "cancelled":
+        result_status = "canceled"
     return {
         "request_id": route_request.get("request_id"),
         "session_id": route_request.get("session_id"),
         "selected_room": route_request.get("selected_room"),
         "route": route_request.get("route"),
         "final_candidate": final_candidate,
-        "status": "succeeded" if succeeded else "failed",
+        "status": result_status,
         "candidate_reached": candidate_reached,
         "nav2_succeeded": nav2_succeeded,
         "gazebo_target_error_m": target_error,
         "nav2_goal_count": len(report.get("goal_uuids", [])),
+        "goal_uuids": list(report.get("goal_uuids", [])),
+        "navigation_events": navigation_events,
+        "escort_states": list(report.get("escort_states", [])),
         "runner_status": report.get("status", "failed"),
         "reason": (
             "final_candidate_reached"
@@ -778,17 +935,18 @@ class SuppliedMuseumRouteRequestBridge(Node):
         )
 
 
-def run(args) -> tuple[int, dict]:
+def run(args, route_request: dict | None = None) -> tuple[int, dict]:
     waypoints = load_route_plan(args.destination, args.routes, args.layout)
     occupancy_map = TrinaryOccupancyMap(args.map)
     sequence = GoalSequence(waypoints)
-    node = SuppliedMuseumRouteRunner(occupancy_map)
+    node = SuppliedMuseumRouteRunner(occupancy_map, route_request)
     report = {
         "destination": args.destination,
         "route": [pose.name for pose in waypoints],
         "waypoints": [],
         "goal_uuids": node.goal_uuids,
         "samples": node.samples,
+        "escort_states": node.escort_state_history,
     }
     try:
         if not node.wait_until_ready():
@@ -803,40 +961,58 @@ def run(args) -> tuple[int, dict]:
         initial = _final_metrics(node, waypoints[-1])
         report["initial"] = initial
         report["initial_localization_ready_via_tf"] = True
+        node.start_escort()
         while sequence.state not in {"succeeded", "failed", "cancelled"}:
+            if node.escort is not None and node.escort.state is EscortState.LOST:
+                sequence.cancel()
+                break
             waypoint = sequence.claim_next()
             is_final = sequence.index == len(waypoints) - 1
             timeout = (
                 args.final_timeout if is_final else args.intermediate_timeout
             )
-            result = node.execute_waypoint(
-                waypoint, timeout, args.waypoint_behavior_tree
-            )
-            report["waypoints"].append(result)
-            if result.get("status") == "succeeded":
-                sequence.finish_active("succeeded")
-            elif result.get("status") == "cancelled":
-                sequence.finish_active("cancelled")
-            else:
-                sequence.finish_active("failed")
+            while sequence.state == "active":
+                result = node.execute_waypoint(
+                    waypoint, timeout, args.waypoint_behavior_tree
+                )
+                report["waypoints"].append(result)
+                if result.get("status") == "succeeded":
+                    sequence.finish_active("succeeded")
+                elif result.get("cancellation_reason") == "escort_wait":
+                    sequence.pause_active()
+                    if not node.wait_for_escort_resume():
+                        sequence.cancel()
+                        break
+                    waypoint = sequence.resume_active()
+                elif result.get("status") == "cancelled":
+                    sequence.finish_active("cancelled")
+                else:
+                    sequence.finish_active("failed")
         route_state = sequence.state
+        if route_state == "succeeded":
+            node.finish_escort_navigation()
 
         final = _final_metrics(node, waypoints[-1])
         report["final"] = final
         physical_waypoints_passed = True
         if len(waypoints) > 1:
+            successful_results = [
+                result
+                for result in report["waypoints"]
+                if result.get("status") == "succeeded"
+            ]
             physical_waypoints_passed = all(
                 result.get("gazebo_pose") is not None
                 and math.hypot(
                     result["gazebo_pose"]["x"] - waypoint.x,
                     result["gazebo_pose"]["y"] - waypoint.y,
                 ) <= 0.50
-                for result, waypoint in zip(report["waypoints"], waypoints)
+                for result, waypoint in zip(successful_results, waypoints)
             )
         checks = {
             "all_nav2_goals_succeeded": route_state == "succeeded",
-            "one_action_per_waypoint": (
-                len(node.goal_uuids) == len(waypoints)
+            "unique_goal_uuid_per_attempt": (
+                len(node.goal_uuids) == len(report["waypoints"])
                 and len(node.goal_uuids) == len(set(node.goal_uuids))
             ),
             "global_path_each_waypoint": all(
@@ -868,7 +1044,15 @@ def run(args) -> tuple[int, dict]:
             ),
         }
         report["checks"] = checks
-        report["status"] = "passed" if all(checks.values()) else "failed"
+        if (
+            route_state == "cancelled"
+            and node.escort is not None
+            and node.escort.state is EscortState.LOST
+        ):
+            report["status"] = "cancelled"
+            report["reason"] = "escort_lost"
+        else:
+            report["status"] = "passed" if all(checks.values()) else "failed"
         return (0 if report["status"] == "passed" else 3), report
     except KeyboardInterrupt:
         if node.active_goal_handle is not None:
@@ -970,7 +1154,7 @@ def topic_main(args=None) -> None:
                 ),
             )
             try:
-                _exit_code, report = run(run_args)
+                _exit_code, report = run(run_args, route_request=request)
             except Exception as exc:
                 bridge.get_logger().error(
                     f"Supplied-museum route execution failed: {exc}"

@@ -78,6 +78,22 @@ def test_goal_sequence_never_dispatches_a_duplicate_active_goal():
     assert first == route[0]
 
 
+def test_paused_sequence_resumes_only_the_same_active_waypoint():
+    route = load_route_plan("south_west_gallery", ROUTES_PATH, LAYOUT_PATH)
+    sequence = GoalSequence(route)
+    sequence.claim_next()
+    sequence.finish_active("succeeded")
+    current = sequence.claim_next()
+
+    sequence.pause_active()
+    assert sequence.resume_active() is current
+    sequence.finish_active("succeeded")
+
+    assert current is route[1]
+    assert sequence.index == 2
+    assert sequence.claim_next() is route[2]
+
+
 def test_all_routes_use_serialized_to_pose_actions():
     assert route_action_kind(
         load_route_plan("central_gallery", ROUTES_PATH, LAYOUT_PATH)

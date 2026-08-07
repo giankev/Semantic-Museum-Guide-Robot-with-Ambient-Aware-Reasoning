@@ -17,6 +17,7 @@ class EpisodeProbe(Node):
         self.request_id = request_id
         self.decision = None
         self.route_requests = []
+        self.escort_states = []
         self.navigation_result = None
         self.request_publisher = self.create_publisher(
             String, "/museum/user_request", 10
@@ -32,6 +33,9 @@ class EpisodeProbe(Node):
         )
         self.create_subscription(
             String, "/museum/navigation_result", self._result, 10
+        )
+        self.create_subscription(
+            String, "/museum/escort_state", self._escort_state, 10
         )
 
     def _matching_payload(self, message: String):
@@ -58,6 +62,16 @@ class EpisodeProbe(Node):
         if payload is not None:
             self.navigation_result = payload
 
+    def _escort_state(self, message: String) -> None:
+        payload = self._matching_payload(message)
+        if payload is None:
+            return
+        if (
+            not self.escort_states
+            or self.escort_states[-1].get("state") != payload.get("state")
+        ):
+            self.escort_states.append(payload)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -67,6 +81,8 @@ def parse_args():
     parser.add_argument("--expected-room", required=True)
     parser.add_argument("--expected-route", required=True)
     parser.add_argument("--expected-candidate", required=True)
+    parser.add_argument("--expected-escort-sequence", nargs="+")
+    parser.add_argument("--expected-navigation-sequence", nargs="+")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=1500.0)
     return parser.parse_args()
@@ -109,6 +125,7 @@ def main() -> None:
             "request": request,
             "assistant_response": probe.decision,
             "route_requests": probe.route_requests,
+            "escort_states": probe.escort_states,
             "navigation_result": probe.navigation_result,
         }
         checks = {
@@ -151,6 +168,19 @@ def main() -> None:
                 and probe.navigation_result["gazebo_target_error_m"] <= 0.50
             ),
         }
+        if args.expected_escort_sequence is not None:
+            checks["escort_sequence"] = [
+                payload.get("state") for payload in probe.escort_states
+            ] == args.expected_escort_sequence
+        if args.expected_navigation_sequence is not None:
+            events = probe.navigation_result.get("navigation_events", [])
+            checks["navigation_sequence"] = [
+                event.get("status") for event in events
+            ] == args.expected_navigation_sequence
+            goal_uuids = probe.navigation_result.get("goal_uuids", [])
+            checks["unique_goal_uuids"] = (
+                len(goal_uuids) == len(set(goal_uuids))
+            )
         report["checks"] = checks
         report["status"] = "passed" if all(checks.values()) else "failed"
         args.output.parent.mkdir(parents=True, exist_ok=True)

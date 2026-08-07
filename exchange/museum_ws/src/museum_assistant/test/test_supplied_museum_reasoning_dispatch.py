@@ -138,6 +138,8 @@ def test_dispatch_layer_has_no_nav2_action_client_and_launch_has_one_runner():
     assert "NavigateToPose" not in dispatch_source
     assert "semantic_navigation_node" not in launch_source
     assert launch_source.count('executable="supplied_museum_route_runner_node"') == 1
+    assert launch_source.count('executable="visitor_session_node"') == 1
+    assert launch_source.count('executable="scripted_visitor_node"') == 1
 
 
 def test_terminal_result_is_correlated_and_requires_the_final_candidate():
@@ -149,7 +151,29 @@ def test_terminal_result_is_correlated_and_requires_the_final_candidate():
     }
     report = {
         "status": "passed",
-        "goal_uuids": ["goal_1"],
+        "goal_uuids": ["goal_1", "goal_2"],
+        "escort_states": [
+            {"state": "escorting"},
+            {"state": "waiting"},
+            {"state": "escorting"},
+            {"state": "arrived"},
+        ],
+        "waypoints": [
+            {
+                "name": "candidate_north",
+                "uuid": "goal_1",
+                "accepted": True,
+                "status": "cancelled",
+                "cancellation_reason": "escort_wait",
+            },
+            {
+                "name": "candidate_north",
+                "uuid": "goal_2",
+                "accepted": True,
+                "status": "succeeded",
+                "cancellation_reason": None,
+            },
+        ],
         "checks": {"all_nav2_goals_succeeded": True},
         "final": {
             "target": {"name": "candidate_north"},
@@ -164,6 +188,23 @@ def test_terminal_result_is_correlated_and_requires_the_final_candidate():
     assert result["request_id"] == "request_1"
     assert result["session_id"] == "session_1"
     assert result["selected_room"] == "impressionism_hall"
+    assert result["goal_uuids"] == ["goal_1", "goal_2"]
+    assert len(set(result["goal_uuids"])) == 2
+    assert [event["status"] for event in result["navigation_events"]] == [
+        "accepted",
+        "intentionally_canceled_for_escort_wait",
+        "accepted",
+        "succeeded",
+    ]
+    assert {
+        event["waypoint"] for event in result["navigation_events"]
+    } == {"candidate_north"}
+    assert [state["state"] for state in result["escort_states"]] == [
+        "escorting",
+        "waiting",
+        "escorting",
+        "arrived",
+    ]
 
     report["final"]["target"]["name"] = "south_inner_gap"
     assert correlated_navigation_result(

@@ -50,5 +50,19 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{"use_sim_time": True}],
             ),
+            Node(
+                package="museum_assistant",
+                executable="visitor_session_node",
+                name="visitor_session_node",
+                output="screen",
+                parameters=[{"use_sim_time": True}],
+            ),
+            Node(
+                package="museum_assistant",
+                executable="scripted_visitor_node",
+                name="scripted_visitor_node",
+                output="screen",
+                parameters=[{"use_sim_time": True}],
+            ),
         ]
     )
