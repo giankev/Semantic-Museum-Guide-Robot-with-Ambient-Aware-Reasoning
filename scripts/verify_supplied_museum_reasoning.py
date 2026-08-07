@@ -45,17 +45,17 @@ def main() -> None:
             "constraints": constraints,
         }
         decision = reasoner.handle_request(request)
-        dispatch = dispatcher.prepare(decision)
-        if not dispatch.dispatched:
+        route_request, reason = dispatcher.prepare(decision)
+        if route_request is None:
             raise RuntimeError(
                 f"Offline decision {request_id} was not dispatched: "
-                f"{dispatch.reason}"
+                f"{reason}"
             )
         results.append(
             {
                 "request": request,
                 "decision": decision,
-                "route_request": dispatch.route_request,
+                "route_request": route_request,
             }
         )
     print(json.dumps(results, indent=2, sort_keys=True))

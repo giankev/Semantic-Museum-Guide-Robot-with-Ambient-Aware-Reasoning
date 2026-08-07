@@ -124,8 +124,6 @@ def main() -> None:
                 len(probe.route_requests) == 1
                 and probe.route_requests[0].get("route")
                 == args.expected_route
-                and probe.route_requests[0].get("final_candidate")
-                == args.expected_candidate
             ),
             "correlation_preserved": all(
                 payload is not None

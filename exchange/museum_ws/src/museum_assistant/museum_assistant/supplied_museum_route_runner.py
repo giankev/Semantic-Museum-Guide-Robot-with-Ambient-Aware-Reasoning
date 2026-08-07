@@ -644,7 +644,7 @@ def terminal_localization_is_fresh(waypoint_results: list[dict]) -> bool:
 
 
 def correlated_navigation_result(
-    route_request: dict, report: dict
+    route_request: dict, final_candidate: str, report: dict
 ) -> dict:
     """Build a terminal result whose success is tied to the final candidate."""
 
@@ -654,14 +654,12 @@ def correlated_navigation_result(
     target = final.get("target")
     if not isinstance(target, dict):
         target = {}
-    expected_candidate = route_request.get("final_candidate")
     target_error = final.get("gazebo_target_error_m")
     checks = report.get("checks")
     if not isinstance(checks, dict):
         checks = {}
     candidate_reached = (
-        isinstance(expected_candidate, str)
-        and target.get("name") == expected_candidate
+        target.get("name") == final_candidate
         and isinstance(target_error, (int, float))
         and not isinstance(target_error, bool)
         and math.isfinite(float(target_error))
@@ -674,7 +672,7 @@ def correlated_navigation_result(
         "session_id": route_request.get("session_id"),
         "selected_room": route_request.get("selected_room"),
         "route": route_request.get("route"),
-        "final_candidate": expected_candidate,
+        "final_candidate": final_candidate,
         "status": "succeeded" if succeeded else "failed",
         "candidate_reached": candidate_reached,
         "nav2_succeeded": nav2_succeeded,
@@ -696,7 +694,7 @@ class SuppliedMuseumRouteRequestBridge(Node):
         super().__init__("supplied_museum_route_request_bridge")
         self.routes_path = routes_path
         self.layout_path = layout_path
-        self.pending: deque[dict] = deque()
+        self.pending: deque[tuple[dict, str]] = deque()
         self.seen_correlations: set[tuple[object, object]] = set()
         self.result_publisher = self.create_publisher(
             String, "/museum/navigation_result", 10
@@ -741,22 +739,14 @@ class SuppliedMuseumRouteRequestBridge(Node):
         except (OSError, ValueError) as exc:
             self._publish_rejection(request, f"unknown_route: {exc}")
             return
-        configured_names = [waypoint.name for waypoint in waypoints]
-        if request.get("waypoint_names") != configured_names:
-            self._publish_rejection(request, "route_waypoints_mismatch")
-            return
-        if request.get("final_candidate") != configured_names[-1]:
-            self._publish_rejection(request, "final_candidate_mismatch")
-            return
-
         self.seen_correlations.add(correlation)
-        self.pending.append(request)
+        self.pending.append((request, waypoints[-1].name))
         self.get_logger().info(
             "Accepted correlated route request: "
             f"request_id={request.get('request_id')} route={route}"
         )
 
-    def pop_request(self) -> dict | None:
+    def pop_request(self) -> tuple[dict, str] | None:
         return self.pending.popleft() if self.pending else None
 
     def publish_result(self, result: dict) -> None:
@@ -776,7 +766,7 @@ class SuppliedMuseumRouteRequestBridge(Node):
                 "session_id": request.get("session_id"),
                 "selected_room": request.get("selected_room"),
                 "route": request.get("route"),
-                "final_candidate": request.get("final_candidate"),
+                "final_candidate": None,
                 "status": "rejected",
                 "candidate_reached": False,
                 "nav2_succeeded": False,
@@ -964,9 +954,10 @@ def topic_main(args=None) -> None:
         bridge = SuppliedMuseumRouteRequestBridge(routes_path, layout_path)
         while rclpy.ok():
             rclpy.spin_once(bridge, timeout_sec=0.10)
-            request = bridge.pop_request()
-            if request is None:
+            pending = bridge.pop_request()
+            if pending is None:
                 continue
+            request, final_candidate = pending
             run_args = argparse.Namespace(
                 destination=request["route"],
                 routes=routes_path,
@@ -986,7 +977,7 @@ def topic_main(args=None) -> None:
                 )
                 report = {"status": "failed", "reason": str(exc)}
             bridge.publish_result(
-                correlated_navigation_result(request, report)
+                correlated_navigation_result(request, final_candidate, report)
             )
     except KeyboardInterrupt:
         pass

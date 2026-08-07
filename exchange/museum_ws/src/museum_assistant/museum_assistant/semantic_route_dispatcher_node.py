@@ -51,7 +51,7 @@ class SemanticRouteDispatcherNode(Node):
             10,
         )
         mapping_text = ", ".join(
-            f"{room}->{route.route}"
+            f"{room}->{route}"
             for room, route in resolver.mappings().items()
         )
         self.get_logger().info(
@@ -67,24 +67,23 @@ class SemanticRouteDispatcherNode(Node):
             )
             return
 
-        outcome = self.dispatcher.prepare(decision)
-        if not outcome.dispatched:
+        route_request, reason = self.dispatcher.prepare(decision)
+        if route_request is None:
             self.get_logger().warning(
                 "Did not dispatch assistant response: "
                 f"request_id={decision.get('request_id') if isinstance(decision, dict) else None} "
-                f"reason={outcome.reason}"
+                f"reason={reason}"
             )
             return
 
         route_msg = String()
-        route_msg.data = json.dumps(outcome.route_request)
+        route_msg.data = json.dumps(route_request)
         self.route_publisher.publish(route_msg)
-        request = outcome.route_request
         self.get_logger().info(
             "Dispatched exactly one supplied-museum route request: "
-            f"request_id={request['request_id']} "
-            f"selected_room={request['selected_room']} "
-            f"route={request['route']}"
+            f"request_id={route_request['request_id']} "
+            f"selected_room={route_request['selected_room']} "
+            f"route={route_request['route']}"
         )
 
 

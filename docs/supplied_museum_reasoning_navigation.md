@@ -18,19 +18,19 @@ The runtime chain is:
   -> /museum/navigation_result
 ```
 
-`config/supplied_museum_semantic_routes.yaml` is the only semantic-to-physical
-mapping. The resolver validates it at dispatcher startup against the semantic
-graph, the supplied route YAML, and the supplied room-layout YAML. Python code
-contains no copied route coordinates. The old-museum `nav_pose` values remain
-in `semantic_map.yaml` for the older demo, but this supplied-museum chain ignores
-them and resolves only `selected_room`.
+`config/supplied_museum_semantic_routes.yaml` is the only semantic-to-route
+mapping. The request sent to the runner contains only `request_id`, `session_id`,
+`selected_room`, and `route`. The runner loads waypoint names, poses, and the
+final candidate from `supplied_museum_routes.yaml`; they are not copied into the
+request. The old-museum `nav_pose` values remain in `semantic_map.yaml` for the
+older demo, but this supplied-museum chain ignores them.
 
 The physical mapping is:
 
 ```text
-impressionism_hall -> north_gallery      -> candidate_north
-ancient_art_hall   -> south_west_gallery -> candidate_south_west
-kids_hall          -> south_east_gallery -> candidate_south_east
+impressionism_hall -> north_gallery
+ancient_art_hall   -> south_west_gallery
+kids_hall          -> south_east_gallery
 ```
 
 Only `supplied_museum_route_runner` creates Nav2 action clients in this launch.
