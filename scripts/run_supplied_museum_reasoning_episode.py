@@ -16,11 +16,18 @@ class EpisodeProbe(Node):
         super().__init__("supplied_museum_reasoning_episode_probe")
         self.request_id = request_id
         self.decision = None
+        self.structured_requests = []
         self.route_requests = []
         self.escort_states = []
         self.navigation_result = None
         self.request_publisher = self.create_publisher(
             String, "/museum/user_request", 10
+        )
+        self.text_publisher = self.create_publisher(
+            String, "/museum/user_text", 10
+        )
+        self.create_subscription(
+            String, "/museum/user_request", self._structured_request, 10
         )
         self.create_subscription(
             String, "/museum/assistant_response", self._decision, 10
@@ -52,6 +59,11 @@ class EpisodeProbe(Node):
         if payload is not None:
             self.decision = payload
 
+    def _structured_request(self, message: String) -> None:
+        payload = self._matching_payload(message)
+        if payload is not None:
+            self.structured_requests.append(payload)
+
     def _route_request(self, message: String) -> None:
         payload = self._matching_payload(message)
         if payload is not None:
@@ -78,6 +90,7 @@ def parse_args():
     parser.add_argument("--request-id", required=True)
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--style", required=True)
+    parser.add_argument("--text")
     parser.add_argument("--expected-room", required=True)
     parser.add_argument("--expected-route", required=True)
     parser.add_argument("--expected-candidate", required=True)
@@ -100,17 +113,19 @@ def main() -> None:
     }
     try:
         ready_deadline = time.monotonic() + 30.0
+        publisher = probe.text_publisher if args.text else probe.request_publisher
         while (
-            probe.request_publisher.get_subscription_count() < 1
+            publisher.get_subscription_count() < 1
             and time.monotonic() < ready_deadline
         ):
             rclpy.spin_once(probe, timeout_sec=0.10)
-        if probe.request_publisher.get_subscription_count() < 1:
-            raise RuntimeError("reasoning_node did not subscribe to user requests")
+        if publisher.get_subscription_count() < 1:
+            topic = "/museum/user_text" if args.text else "/museum/user_request"
+            raise RuntimeError(f"no subscriber became ready on {topic}")
 
         message = String()
-        message.data = json.dumps(request)
-        probe.request_publisher.publish(message)
+        message.data = args.text if args.text else json.dumps(request)
+        publisher.publish(message)
         deadline = time.monotonic() + args.timeout
         while probe.navigation_result is None and time.monotonic() < deadline:
             rclpy.spin_once(probe, timeout_sec=0.10)
@@ -123,12 +138,21 @@ def main() -> None:
 
         report = {
             "request": request,
+            "input_text": args.text,
+            "structured_requests": probe.structured_requests,
             "assistant_response": probe.decision,
             "route_requests": probe.route_requests,
             "escort_states": probe.escort_states,
             "navigation_result": probe.navigation_result,
         }
         checks = {
+            "exactly_one_structured_request": (
+                len(probe.structured_requests) == 1
+            ),
+            "structured_request_matches": (
+                len(probe.structured_requests) == 1
+                and probe.structured_requests[0] == request
+            ),
             "reasoning_not_bypassed": probe.decision is not None,
             "decision_success": (
                 probe.decision is not None

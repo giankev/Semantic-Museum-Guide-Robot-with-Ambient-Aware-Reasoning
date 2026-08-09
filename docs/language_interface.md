@@ -1,4 +1,4 @@
-# Phase 7 Text Language Interface
+# Text Language Interface And Dynamic Scene-Graph Integration
 
 ## Status And Scope
 
@@ -24,6 +24,9 @@ manager, conversation memory, or TTS.
   -> existing StructuredRequest validation
   -> /museum/user_request (std_msgs/msg/String containing JSON)
   -> existing deterministic semantic reasoner
+  -> dynamic semantic scene graph
+  -> semantic route dispatcher (navigation intent only)
+  -> supplied route runner -> Nav2
 ```
 
 `language_node` also subscribes to `/museum/session_state`. It caches only the
@@ -40,6 +43,18 @@ ros2 launch museum_assistant language.launch.py
 The launch file does not start Nav2, the reasoner, visitor session, escort,
 people publishing, speech input, or speech output.
 
+For the complete supplied-museum text pipeline, enable the same node in the
+existing final launch:
+
+```bash
+ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
+  gzclient:=False use_language:=True
+```
+
+`use_language` defaults to `False`, preserving the structured-request baseline.
+This launch still contains exactly one semantic route dispatcher and one
+supplied route runner.
+
 ## Deterministic Rules
 
 Navigation phrases `portami`, `accompagnami`, `guidami`, `take me`, `guide me`,
@@ -52,15 +67,17 @@ Only these current constraints are recognized:
 
 | Text cues | Structured constraint |
 | --- | --- |
-| `impressionismo`, `impressionista`, `impressionisti`, `impressionism`, `impressionist` | `style: impressionism` |
+| `impressionismo`, `impressionista`, `impressionism`, `impressionist` | `style: impressionism` |
+| `classico`, `classica`, `classical` | `style: classical` |
 | `bambini`, `per bambini`, `children`, `kids`, `child friendly` | `child_friendly: true` |
 | `accessibile`, `sedia a rotelle`, `accessible`, `wheelchair` | `wheelchair_accessible: true` |
 | `non affollato`, `evitare la folla`, `evita la folla`, `not crowded`, `avoid crowds`, `avoid the crowd` | `avoid_crowd: true` |
+| `sala tranquilla`, `sale rumorose`, `posto silenzioso`, `rumore`, `quiet`, `noisy rooms`, `avoid noise` | `avoid_noise: true` |
 
 Recognized constraints without a navigation verb default to `recommend`.
-Unsupported concepts are not mapped by analogy: for example, `quiet` does not
-become `avoid_crowd`. Direct commands such as `move forward one metre` remain
-unresolved and can never produce a movement request.
+`quiet` maps only to `avoid_noise`; it never implies `avoid_crowd`. Direct
+commands such as `move forward one metre` remain unresolved and can never
+produce a movement request.
 
 ## Groq Fallback
 
@@ -78,9 +95,10 @@ max_retries = 0
 ```
 
 The provider schema requires exactly `resolved`, `intent`, and `constraints`,
-sets `additionalProperties=false` on both objects, and requires all four
-supported constraint fields. Optional intent and constraint values use JSON
-`null`; locally validated null constraint values are removed before the
+sets `additionalProperties=false` on both objects, and derives all supported
+constraint fields directly from `contracts.SUPPORTED_CONSTRAINTS`. Optional
+intent and constraint values use JSON `null`; locally validated null constraint
+values are removed before the
 existing `StructuredRequest` is constructed. The strict local candidate and
 `StructuredRequest` validators remain authoritative. There is no tool calling,
 semantic-map context, provider abstraction, automatic model fallback, retry
@@ -106,7 +124,8 @@ A model candidate may contain only:
   "intent": "recommend_and_prepare_navigation",
   "constraints": {
     "style": "impressionism",
-    "avoid_crowd": true
+    "avoid_crowd": true,
+    "avoid_noise": true
   }
 }
 ```
@@ -163,6 +182,10 @@ reasoner selects a room. The unchanged Phase 3 semantic-navigation filter can
 move TIAGo only for a successful reasoner decision whose intent is
 `recommend_and_prepare_navigation`.
 
+The supplied route dispatcher enforces that intent itself. A successful
+`recommend` response may name `ancient_art_hall`, but produces no
+`/museum/supplied_route_request`.
+
 ## Acceptance Commands
 
 Build the package in the container workspace, then start visitor session,
@@ -187,8 +210,40 @@ The first correlated result should contain:
 
 The reasoner should select `impressionism_hall` and `navigate_to`. A plain
 `Consigliami qualcosa di impressionista` request has intent `recommend`; the
-unchanged semantic-navigation filter must not move the robot. An unsupported
+supplied semantic route dispatcher must not move the robot. An unsupported
 sentence without a key must publish nothing.
+
+The single text-to-Nav2 smoke probe accepts `--text` and verifies exactly one
+structured request and one route:
+
+```bash
+python3 /root/exchange/scripts/run_supplied_museum_reasoning_episode.py \
+  --request-id text_1 --session-id session_1 --style impressionism \
+  --text "Portami a vedere qualcosa di impressionista" \
+  --expected-room impressionism_hall --expected-route north_gallery \
+  --expected-candidate candidate_north \
+  --expected-escort-sequence escorting waiting escorting arrived \
+  --expected-navigation-sequence accepted \
+    intentionally_canceled_for_escort_wait accepted succeeded \
+  --output /root/exchange/.navigation_diagnostics/language_north.json
+```
+
+Run the bounded offline language benchmark with:
+
+```bash
+python3 /root/exchange/scripts/benchmark_language_scene_graph.py
+```
+
+The benchmark uses 27 fixed Italian/English phrases. It checks parser
+resolution, intent, exact constraints, direct-command rejection, dynamic
+scene-graph decisions, and the recommendation/navigation dispatch boundary. It
+is a functional benchmark, not a claim of general NLP accuracy.
+
+On 2026-08-09, the current integration passed all 27 benchmark phrases and one
+runtime `north_gallery` text episode. The episode produced exactly one
+`StructuredRequest`, one semantic route request, reached `candidate_north`
+within 0.121 m, completed the escort sequence through `arrived`, and used the
+active DWB controller with the opt-in `ProxemicForceCritic`.
 
 For live acceptance, the human operator must first revoke the exposed key,
 create and export a new key, then use one sentence outside the deterministic
@@ -211,7 +266,9 @@ The existing reasoner selected `impressionism_hall` and `navigate_to` for both.
 No Nav2 or semantic-navigation node was started. The plain recommendation
 therefore had no movement consumer, consistent with the unchanged Phase 3
 filter. `quiet` and the coordinate prompt-injection sentence produced no
-`/museum/user_request` during four-second observation windows. The stricter
+`/museum/user_request` during four-second observation windows. That historical
+revision did not recognize `quiet`; the current deterministic parser maps it
+to `avoid_noise`. The stricter
 fake-LLM test also verifies that the coordinate prompt remains rejected even
 if fallback returns a schema-valid prepared-navigation candidate.
 
@@ -286,4 +343,3 @@ rejected by the unchanged local validator.
 This is a bounded text-language prototype, not general language understanding,
 dialogue, speech interaction, production security, or direct LLM robot control.
 <!-- phase7-live-acceptance:end -->
-

@@ -101,6 +101,8 @@ class ReasoningRouteDispatcher:
             return None, "decision_not_object"
         if decision.get("status") != "success":
             return None, "decision_status_not_success"
+        if decision.get("intent") != "recommend_and_prepare_navigation":
+            return None, "intent_not_executable"
         if decision.get("skill") != "navigate_to":
             return None, "skill_not_executable"
 

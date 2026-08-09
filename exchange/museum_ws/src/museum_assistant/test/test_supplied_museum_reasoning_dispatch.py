@@ -44,6 +44,7 @@ def executable_decision(room="impressionism_hall"):
         "request_id": "request_1",
         "session_id": "session_1",
         "status": "success",
+        "intent": "recommend_and_prepare_navigation",
         "skill": "navigate_to",
         "selected_room": room,
     }
@@ -95,6 +96,18 @@ def test_no_match_and_non_executable_skill_do_not_dispatch(resolver):
     clarification = executable_decision()
     clarification["skill"] = "ask_clarification"
     assert dispatcher.prepare(clarification) == (None, "skill_not_executable")
+    assert dispatcher.route_request_count == 0
+
+
+def test_recommendation_intent_never_dispatches(resolver):
+    dispatcher = ReasoningRouteDispatcher(resolver)
+    recommendation = executable_decision()
+    recommendation["intent"] = "recommend"
+
+    assert dispatcher.prepare(recommendation) == (
+        None,
+        "intent_not_executable",
+    )
     assert dispatcher.route_request_count == 0
 
 

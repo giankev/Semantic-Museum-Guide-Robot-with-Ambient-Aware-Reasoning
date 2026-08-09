@@ -8,7 +8,7 @@ candidate-coordinate configuration.
 The runtime chain is:
 
 ```text
-/museum/user_request
+[/museum/user_text -> language_node ->] /museum/user_request
   -> reasoning_node
   -> /museum/assistant_response
   -> semantic_route_dispatcher
@@ -63,7 +63,7 @@ Start a clean end-to-end episode:
 
 ```bash
 ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
-  gzclient:=False
+  gzclient:=False use_language:=True
 ```
 
 After Nav2 becomes active, run the correlated probe for impressionism:
@@ -72,6 +72,7 @@ After Nav2 becomes active, run the correlated probe for impressionism:
 python3 /root/exchange/scripts/run_supplied_museum_reasoning_episode.py \
   --request-id runtime_impressionism --session-id session_1 \
   --style impressionism --expected-room impressionism_hall \
+  --text "Portami a vedere qualcosa di impressionista" \
   --expected-route north_gallery --expected-candidate candidate_north \
   --expected-escort-sequence escorting waiting escorting arrived \
   --expected-navigation-sequence accepted \
@@ -79,6 +80,9 @@ python3 /root/exchange/scripts/run_supplied_museum_reasoning_episode.py \
   --output /root/exchange/.navigation_diagnostics/impressionism.json
 ```
 
-The probe publishes only `/museum/user_request`; publishing directly to
-`/museum/supplied_route_request` does not validate this integration. Do not use
-the direct-follow scripted visitor as acceptance evidence for southern routes.
+With `--text`, the probe publishes only `/museum/user_text` and captures the
+single generated `/museum/user_request`; publishing directly to
+`/museum/supplied_route_request` does not validate this integration. Without
+`--text`, the previous structured-request probe mode remains available. Do not
+use the direct-follow scripted visitor as acceptance evidence for southern
+routes.

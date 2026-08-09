@@ -36,6 +36,11 @@ def generate_launch_description():
                 default_value="False",
                 choices=["True", "False"],
             ),
+            DeclareLaunchArgument(
+                "use_language",
+                default_value="False",
+                choices=["True", "False"],
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(navigation_launch),
                 launch_arguments={
@@ -50,6 +55,14 @@ def generate_launch_description():
                 executable="reasoning_node",
                 name="reasoning_node",
                 output="screen",
+                parameters=[{"use_sim_time": True}],
+            ),
+            Node(
+                package="museum_assistant",
+                executable="language_node",
+                name="language_node",
+                output="screen",
+                condition=IfCondition(LaunchConfiguration("use_language")),
                 parameters=[{"use_sim_time": True}],
             ),
             Node(
