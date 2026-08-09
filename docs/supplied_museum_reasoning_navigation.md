@@ -8,7 +8,8 @@ candidate-coordinate configuration.
 The runtime chain is:
 
 ```text
-[/museum/user_text -> language_node ->] /museum/user_request
+[audio file -> speech_to_text_node -> /museum/user_text -> language_node ->]
+  /museum/user_request
   -> reasoning_node
   -> /museum/assistant_response
   -> semantic_route_dispatcher
@@ -63,16 +64,20 @@ Start a clean end-to-end episode:
 
 ```bash
 ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
-  gzclient:=False use_language:=True
+  gzclient:=False use_language:=True use_speech:=True publish_people:=True \
+  nav2_params_file:=$(ros2 pkg prefix museum_assistant)/share/museum_assistant/config/nav2_supplied_social_force.yaml
 ```
 
 After Nav2 becomes active, run the correlated probe for impressionism:
 
 ```bash
 python3 /root/exchange/scripts/run_supplied_museum_reasoning_episode.py \
-  --request-id runtime_impressionism --session-id session_1 \
-  --style impressionism --expected-room impressionism_hall \
-  --text "Portami a vedere qualcosa di impressionista" \
+  --request-id text_1 --session-id session_1 \
+  --style impressionism --avoid-crowd \
+  --audio-file /path/inside/container/request.wav \
+  --expected-transcript \
+    "Portami a vedere qualcosa di impressionista evitando la folla" \
+  --expected-room impressionism_hall \
   --expected-route north_gallery --expected-candidate candidate_north \
   --expected-escort-sequence escorting waiting escorting arrived \
   --expected-navigation-sequence accepted \
@@ -80,9 +85,10 @@ python3 /root/exchange/scripts/run_supplied_museum_reasoning_episode.py \
   --output /root/exchange/.navigation_diagnostics/impressionism.json
 ```
 
-With `--text`, the probe publishes only `/museum/user_text` and captures the
-single generated `/museum/user_request`; publishing directly to
-`/museum/supplied_route_request` does not validate this integration. Without
-`--text`, the previous structured-request probe mode remains available. Do not
-use the direct-follow scripted visitor as acceptance evidence for southern
-routes.
+With `--audio-file`, the probe publishes only `/museum/audio_file`, captures
+the single `/museum/user_text` transcription and generated
+`/museum/user_request`, and verifies both occur once. `GROQ_API_KEY` and a real
+Italian recording are required. The existing `--text` and direct structured
+request modes remain available. Publishing directly to
+`/museum/supplied_route_request` does not validate this integration. Do not use
+the direct-follow scripted visitor as acceptance evidence for southern routes.

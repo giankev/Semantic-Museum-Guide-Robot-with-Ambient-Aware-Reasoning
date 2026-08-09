@@ -190,3 +190,5 @@ def test_reasoning_launch_keeps_social_force_support_opt_in():
     assert 'LaunchConfiguration("publish_people")' in reasoning_source
     assert 'LaunchConfiguration("use_language")' in reasoning_source
     assert reasoning_source.count('executable="language_node"') == 1
+    assert 'LaunchConfiguration("use_speech")' in reasoning_source
+    assert reasoning_source.count('executable="speech_to_text_node"') == 1

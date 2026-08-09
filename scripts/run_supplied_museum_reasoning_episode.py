@@ -16,6 +16,7 @@ class EpisodeProbe(Node):
         super().__init__("supplied_museum_reasoning_episode_probe")
         self.request_id = request_id
         self.decision = None
+        self.transcriptions = []
         self.structured_requests = []
         self.route_requests = []
         self.escort_states = []
@@ -25,6 +26,12 @@ class EpisodeProbe(Node):
         )
         self.text_publisher = self.create_publisher(
             String, "/museum/user_text", 10
+        )
+        self.audio_publisher = self.create_publisher(
+            String, "/museum/audio_file", 10
+        )
+        self.create_subscription(
+            String, "/museum/user_text", self._transcription, 10
         )
         self.create_subscription(
             String, "/museum/user_request", self._structured_request, 10
@@ -64,6 +71,10 @@ class EpisodeProbe(Node):
         if payload is not None:
             self.structured_requests.append(payload)
 
+    def _transcription(self, message: String) -> None:
+        if message.data.strip():
+            self.transcriptions.append(message.data.strip())
+
     def _route_request(self, message: String) -> None:
         payload = self._matching_payload(message)
         if payload is not None:
@@ -90,7 +101,10 @@ def parse_args():
     parser.add_argument("--request-id", required=True)
     parser.add_argument("--session-id", required=True)
     parser.add_argument("--style", required=True)
+    parser.add_argument("--avoid-crowd", action="store_true")
     parser.add_argument("--text")
+    parser.add_argument("--audio-file")
+    parser.add_argument("--expected-transcript")
     parser.add_argument("--expected-room", required=True)
     parser.add_argument("--expected-route", required=True)
     parser.add_argument("--expected-candidate", required=True)
@@ -105,26 +119,39 @@ def main() -> None:
     args = parse_args()
     rclpy.init()
     probe = EpisodeProbe(args.request_id)
+    constraints = {"style": args.style}
+    if args.avoid_crowd:
+        constraints["avoid_crowd"] = True
     request = {
         "request_id": args.request_id,
         "session_id": args.session_id,
         "intent": "recommend_and_prepare_navigation",
-        "constraints": {"style": args.style},
+        "constraints": constraints,
     }
     try:
         ready_deadline = time.monotonic() + 30.0
-        publisher = probe.text_publisher if args.text else probe.request_publisher
+        if args.audio_file:
+            publisher = probe.audio_publisher
+            input_data = args.audio_file
+            topic = "/museum/audio_file"
+        elif args.text:
+            publisher = probe.text_publisher
+            input_data = args.text
+            topic = "/museum/user_text"
+        else:
+            publisher = probe.request_publisher
+            input_data = json.dumps(request)
+            topic = "/museum/user_request"
         while (
             publisher.get_subscription_count() < 1
             and time.monotonic() < ready_deadline
         ):
             rclpy.spin_once(probe, timeout_sec=0.10)
         if publisher.get_subscription_count() < 1:
-            topic = "/museum/user_text" if args.text else "/museum/user_request"
             raise RuntimeError(f"no subscriber became ready on {topic}")
 
         message = String()
-        message.data = args.text if args.text else json.dumps(request)
+        message.data = input_data
         publisher.publish(message)
         deadline = time.monotonic() + args.timeout
         while probe.navigation_result is None and time.monotonic() < deadline:
@@ -138,7 +165,9 @@ def main() -> None:
 
         report = {
             "request": request,
+            "input_audio_file": args.audio_file,
             "input_text": args.text,
+            "transcriptions": probe.transcriptions,
             "structured_requests": probe.structured_requests,
             "assistant_response": probe.decision,
             "route_requests": probe.route_requests,
@@ -192,6 +221,14 @@ def main() -> None:
                 and probe.navigation_result["gazebo_target_error_m"] <= 0.50
             ),
         }
+        if args.audio_file:
+            checks["exactly_one_transcription"] = (
+                len(probe.transcriptions) == 1
+            )
+            if args.expected_transcript:
+                checks["transcription_matches"] = (
+                    probe.transcriptions == [args.expected_transcript]
+                )
         if args.expected_escort_sequence is not None:
             checks["escort_sequence"] = [
                 payload.get("state") for payload in probe.escort_states

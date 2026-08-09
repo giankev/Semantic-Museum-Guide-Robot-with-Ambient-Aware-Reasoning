@@ -313,9 +313,15 @@ for name in HTTP_PROXY HTTPS_PROXY NO_PROXY ALL_PROXY \
 done
 
 docker container rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-echo "Building ${IMAGE_NAME}..."
-docker build -f "${REPO_ROOT}/dockerfiles/Dockerfile.tiago_museum" \
-  -t "${IMAGE_NAME}" "${REPO_ROOT}"
+if [[ "${PHASE8_SKIP_DOCKER_BUILD:-0}" == "1" ]]; then
+  docker image inspect "${IMAGE_NAME}" >/dev/null 2>&1 \
+    || die "PHASE8_SKIP_DOCKER_BUILD=1 but local image ${IMAGE_NAME} does not exist."
+  echo "Reusing local image ${IMAGE_NAME}; Docker build skipped."
+else
+  echo "Building ${IMAGE_NAME}..."
+  docker build -f "${REPO_ROOT}/dockerfiles/Dockerfile.tiago_museum" \
+    -t "${IMAGE_NAME}" "${REPO_ROOT}"
+fi
 
 cp -- "${AUDIO_PATH}" "${COPIED_AUDIO}"
 echo "Starting dedicated headless container..."

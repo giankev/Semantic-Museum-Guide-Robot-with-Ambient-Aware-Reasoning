@@ -41,6 +41,11 @@ def generate_launch_description():
                 default_value="False",
                 choices=["True", "False"],
             ),
+            DeclareLaunchArgument(
+                "use_speech",
+                default_value="False",
+                choices=["True", "False"],
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(navigation_launch),
                 launch_arguments={
@@ -63,6 +68,14 @@ def generate_launch_description():
                 name="language_node",
                 output="screen",
                 condition=IfCondition(LaunchConfiguration("use_language")),
+                parameters=[{"use_sim_time": True}],
+            ),
+            Node(
+                package="museum_assistant",
+                executable="speech_to_text_node",
+                name="speech_to_text_node",
+                output="screen",
+                condition=IfCondition(LaunchConfiguration("use_speech")),
                 parameters=[{"use_sim_time": True}],
             ),
             Node(

@@ -1,6 +1,6 @@
 # Bounded File-Based Speech Interface
 
-## Phase 8 Scope
+## Scope
 
 Phase 8 adds a file-based speech-to-text boundary in front of the Phase 7
 language pipeline:
@@ -12,8 +12,8 @@ audio file path -> speech_to_text_node -> Groq audio transcription
                 -> /museum/assistant_response
 ```
 
-This prototype accepts one existing audio file path visible inside the
-container. It does not capture a microphone, stream audio, detect wake words
+This prototype accepts one existing WAV or other supported audio file path
+visible inside the container. It does not capture a microphone, stream audio, detect wake words
 or voice activity, manage dialogue, synthesize speech, play audio, or perform
 local speech recognition.
 
@@ -99,8 +99,10 @@ colcon test-result --verbose
 ```
 
 The focused unit and coordinator tests are ROS-independent and make no
-Internet requests. The current selected suite passes 100 tests with zero
-errors, failures, or skips.
+Internet requests. They use a generated WAV and a fake provider to verify one
+successful Italian transcription, one publication outcome, empty-audio
+suppression, provider-failure suppression, and the unchanged language-parser
+boundary.
 
 Run the operator-supplied Italian recording through the complete headless
 acceptance chain with:
@@ -109,17 +111,60 @@ acceptance chain with:
 scripts/phase8_live_acceptance.sh /path/to/recording.wav
 ```
 
-The runner builds the image and packages, runs automated tests, checks model
-access, starts only `speech_to_text_node`, `language_node`, and
+To reuse an already available local `museum-tiago:humble` image and skip the
+potentially slow Docker build:
+
+```bash
+PHASE8_SKIP_DOCKER_BUILD=1 \
+./scripts/phase8_live_acceptance.sh ~/phase8_request.wav
+```
+
+This mode fails before starting the acceptance container if the local image is
+missing. Without `PHASE8_SKIP_DOCKER_BUILD=1`, the runner keeps rebuilding the
+image as before.
+
+By default, the Phase 8 runner builds the image and packages, runs automated
+tests, checks model access, starts only `speech_to_text_node`, `language_node`, and
 `reasoning_node`, and exercises success, nonexistent-file, unsupported-format,
 and missing-key behavior. Gazebo, Nav2, escort, people publishers, social
-navigation, microphone streaming, and TTS are not started.
+navigation, microphone streaming, and TTS are not started by that bounded
+runner.
+
+The complete supplied-museum launch can include this same speech node without
+changing the downstream interfaces:
+
+```bash
+ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
+  gzclient:=False use_language:=True use_speech:=True publish_people:=True \
+  nav2_params_file:=$(ros2 pkg prefix museum_assistant)/share/museum_assistant/config/nav2_supplied_social_force.yaml
+```
+
+With `GROQ_API_KEY` configured, publish a container-visible recording through
+the correlated physical-episode probe:
+
+```bash
+python3 /root/exchange/scripts/run_supplied_museum_reasoning_episode.py \
+  --request-id text_1 --session-id session_1 --style impressionism \
+  --avoid-crowd --audio-file /path/inside/container/request.wav \
+  --expected-transcript \
+    "Portami a vedere qualcosa di impressionista evitando la folla" \
+  --expected-room impressionism_hall --expected-route north_gallery \
+  --expected-candidate candidate_north \
+  --expected-escort-sequence escorting waiting escorting arrived \
+  --expected-navigation-sequence accepted \
+    intentionally_canceled_for_escort_wait accepted succeeded \
+  --output /root/exchange/.navigation_diagnostics/speech_north.json
+```
+
+The probe publishes only the audio path, then requires exactly one transcript,
+one matching StructuredRequest, one route request, a reasoning decision,
+`candidate_north`, successful Nav2 completion, and escort `arrived`.
 
 ## Runtime Result
 
 Implementation and automated acceptance pass. Live audio acceptance remains
 pending an operator-provided recording containing "Portami a vedere qualcosa
-di impressionista" and a configured Groq key. Headless negative ROS checks
+di impressionista evitando la folla" and a configured Groq key. Headless negative ROS checks
 pass for nonexistent files, unsupported formats, and a missing key: all
 publish zero user texts and leave the node alive. Do not describe Phase 8 as
 the runtime-validated bounded file-based speech-to-text prototype until the
