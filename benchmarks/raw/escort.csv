@@ -1,0 +1,2 @@
+run_id,timestamp_utc,git_commit,benchmark,scenario,variant,status,trial,configuration,expected_sequence,observed_sequence,transition_correct,nav_cancel_correct,resume_correct,duplicate_goal,terminal_cmd_vel_zero,final_outcome,source_path
+escort-lag-resume-1,2026-08-09T15:19:58Z,NA,escort,lag_resume,scripted_visitor,passed,1,supplied_museum_final_social_force,"[""escorting"",""waiting"",""escorting"",""arrived""]","[""escorting"",""waiting"",""escorting"",""arrived""]",1,1,1,0,1,arrived,.navigation_diagnostics/final_20260809T151958Z_146338/final_report.json

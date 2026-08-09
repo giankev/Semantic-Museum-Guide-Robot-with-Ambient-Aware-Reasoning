@@ -1,0 +1,313 @@
+{
+  "end_to_end": {
+    "N": 1,
+    "success_rate": 1.0,
+    "successful_runs": 1
+  },
+  "escort": {
+    "valid_runs": {
+      "lag_resume": 1,
+      "lost": 0,
+      "normal": 0
+    }
+  },
+  "generated_at": "2026-08-09T21:56:53Z",
+  "git_branch": "integrate-supplied-reasoning-escort",
+  "git_commit": "3a72d3d364e836f7998544d3c6207ccf06b5c1b8",
+  "language": {
+    "constraint_extraction": {
+      "N": 22,
+      "accuracy": 1.0,
+      "correct": 22
+    },
+    "direct_invalid_rejection": {
+      "N": 5,
+      "accuracy": 1.0,
+      "correct": 5
+    },
+    "end_to_end_reasoning": {
+      "N": 22,
+      "accuracy": 1.0,
+      "correct": 22
+    },
+    "intent": {
+      "N": 22,
+      "accuracy": 1.0,
+      "correct": 22
+    },
+    "label": "bounded functional language benchmark",
+    "parser_resolution": {
+      "N": 27,
+      "accuracy": 1.0,
+      "correct": 27
+    },
+    "route_policy": {
+      "N": 22,
+      "accuracy": 1.0,
+      "correct": 22
+    },
+    "total_phrases": 27
+  },
+  "limitations": [
+    "Simulation-only evaluation.",
+    "People are scripted/non-reactive.",
+    "Physical paired comparisons currently have a small N.",
+    "Escort uses visitor ground truth and simulated observation.",
+    "Live STT evidence uses the external Groq cloud provider.",
+    "No real-user subjective study was conducted."
+  ],
+  "museum_world": "supplied_museum",
+  "navigation": {
+    "central_gallery": {
+      "N": 2,
+      "amcl_target_error_m": {
+        "mean": 0.19110210946567913,
+        "std": 0.0057653225341431765
+      },
+      "gazebo_target_error_m": {
+        "mean": 0.28483600858928043,
+        "std": 0.02561068180450854
+      },
+      "navigation_time_s": {
+        "mean": 98.16499999999999,
+        "std": 0.12727922061357333
+      },
+      "physical_path_length_m": {
+        "mean": 4.756082022816209,
+        "std": 0.02499418660161103
+      },
+      "success_rate": 1.0,
+      "total_recoveries": null
+    },
+    "north_gallery": {
+      "N": 1,
+      "amcl_target_error_m": {
+        "mean": 0.19179592505724496,
+        "std": null
+      },
+      "gazebo_target_error_m": {
+        "mean": 0.10895112654558656,
+        "std": null
+      },
+      "navigation_time_s": {
+        "mean": 138.71,
+        "std": null
+      },
+      "physical_path_length_m": {
+        "mean": 16.049013788800636,
+        "std": null
+      },
+      "success_rate": 1.0,
+      "total_recoveries": null
+    },
+    "south_east_gallery": {
+      "N": 2,
+      "amcl_target_error_m": {
+        "mean": 0.12491671557448542,
+        "std": 0.004805132580033715
+      },
+      "gazebo_target_error_m": {
+        "mean": 0.4034452683447989,
+        "std": 0.02970495440281713
+      },
+      "navigation_time_s": {
+        "mean": 261.4225,
+        "std": 2.1248558774655724
+      },
+      "physical_path_length_m": {
+        "mean": 30.124592226336414,
+        "std": 0.04979532193465473
+      },
+      "success_rate": 1.0,
+      "total_recoveries": null
+    },
+    "south_west_gallery": {
+      "N": 2,
+      "amcl_target_error_m": {
+        "mean": 0.16929682716991729,
+        "std": 0.004293082744228373
+      },
+      "gazebo_target_error_m": {
+        "mean": 0.4471159688585733,
+        "std": 0.028155049900763954
+      },
+      "navigation_time_s": {
+        "mean": 256.0075,
+        "std": 0.7530687219636514
+      },
+      "physical_path_length_m": {
+        "mean": 29.952509105258258,
+        "std": 0.05045203275937902
+      },
+      "success_rate": 1.0,
+      "total_recoveries": null
+    }
+  },
+  "navigation_controller": "dwb_core::DWBLocalPlanner",
+  "number_of_runs_per_benchmark": {
+    "end_to_end": 1,
+    "escort": 1,
+    "language": 27,
+    "navigation": 7,
+    "reasoning": 25,
+    "session_memory": 8,
+    "social_navigation": 3
+  },
+  "reasoning": {
+    "decision": {
+      "N": 25,
+      "accuracy": 1.0,
+      "correct": 25
+    },
+    "deterministic_repeatability": {
+      "N": 25,
+      "accuracy": 1.0,
+      "correct": 25
+    },
+    "label": "bounded deterministic functional benchmark",
+    "no_match": {
+      "N": 6,
+      "accuracy": 1.0,
+      "correct": 6
+    },
+    "rejection_reason": {
+      "N": 6,
+      "accuracy": 1.0,
+      "correct": 6
+    },
+    "route_policy": {
+      "N": 25,
+      "accuracy": 1.0,
+      "correct": 25
+    },
+    "total_cases": 25
+  },
+  "ros_distro": "humble (project target)",
+  "session_memory": {
+    "ambient_revalidation": {
+      "N": 3,
+      "accuracy": 1.0,
+      "correct": 3
+    },
+    "ambient_revalidation_accuracy": 1.0,
+    "deterministic_repeatability": {
+      "N": 8,
+      "accuracy": 1.0,
+      "correct": 8
+    },
+    "explicit_override": {
+      "N": 1,
+      "accuracy": 1.0,
+      "correct": 1
+    },
+    "follow_up": {
+      "N": 3,
+      "accuracy": 1.0,
+      "correct": 3
+    },
+    "follow_up_accuracy": 1.0,
+    "label": "bounded session-memory functional benchmark",
+    "memory_write": {
+      "N": 2,
+      "accuracy": 1.0,
+      "correct": 2
+    },
+    "route_policy": {
+      "N": 8,
+      "accuracy": 1.0,
+      "correct": 8
+    },
+    "route_policy_accuracy": 1.0,
+    "session_isolation": {
+      "N": 1,
+      "accuracy": 1.0,
+      "correct": 1
+    },
+    "session_isolation_accuracy": 1.0,
+    "total_cases": 8
+  },
+  "social_critic": "museum_social_critic::ProxemicForceCritic",
+  "social_navigation": {
+    "anisotropic": {
+      "N": 1,
+      "minimum_front_person_distance_m": {
+        "mean": 1.5001747821443703,
+        "std": null
+      },
+      "minimum_person_distance_m": {
+        "mean": 1.4891087950130888,
+        "std": null
+      },
+      "navigation_time_s": {
+        "mean": 145.865,
+        "std": null
+      },
+      "physical_path_length_m": {
+        "mean": 16.051100699382353,
+        "std": null
+      },
+      "success_rate": 1.0
+    },
+    "baseline": {
+      "N": 1,
+      "minimum_front_person_distance_m": {
+        "mean": 1.4424061288427854,
+        "std": null
+      },
+      "minimum_person_distance_m": {
+        "mean": 1.4424061288427854,
+        "std": null
+      },
+      "navigation_time_s": {
+        "mean": 144.22,
+        "std": null
+      },
+      "physical_path_length_m": {
+        "mean": 16.053409766464007,
+        "std": null
+      },
+      "success_rate": 1.0
+    },
+    "isotropic": {
+      "N": 1,
+      "minimum_front_person_distance_m": {
+        "mean": 1.488970526081255,
+        "std": null
+      },
+      "minimum_person_distance_m": {
+        "mean": 1.474531588593506,
+        "std": null
+      },
+      "navigation_time_s": {
+        "mean": 143.38500000000002,
+        "std": null
+      },
+      "physical_path_length_m": {
+        "mean": 16.052136804909484,
+        "std": null
+      },
+      "success_rate": 1.0
+    },
+    "paired_deltas": {
+      "anisotropic_minus_baseline": {
+        "minimum_front_person_distance_delta_m": 0.05776865330158487,
+        "minimum_front_person_distance_improvement_pct": 4.005019955643945,
+        "minimum_person_distance_delta_m": 0.046702666170303386,
+        "minimum_person_distance_improvement_pct": 3.2378305413727015
+      },
+      "anisotropic_minus_isotropic": {
+        "minimum_front_person_distance_delta_m": 0.01120425606311537,
+        "minimum_front_person_distance_improvement_pct": 0.7524834015756696,
+        "minimum_person_distance_delta_m": 0.014577206419582822,
+        "minimum_person_distance_improvement_pct": 0.9885991275024097
+      },
+      "isotropic_minus_baseline": {
+        "minimum_front_person_distance_delta_m": 0.0465643972384695,
+        "minimum_front_person_distance_improvement_pct": 3.2282445496697396,
+        "minimum_person_distance_delta_m": 0.032125459750720564,
+        "minimum_person_distance_improvement_pct": 2.227213203572159
+      }
+    },
+    "triplet_N": 1
+  }
+}

@@ -1,0 +1,79 @@
+benchmark,scenario,variant,metric,value,unit,N
+navigation,central_gallery,baseline_dwb,success_rate,1.0,ratio,2
+navigation,central_gallery,baseline_dwb,navigation_time_s_mean,98.16499999999999,s,2
+navigation,central_gallery,baseline_dwb,navigation_time_s_std,0.12727922061357333,s,2
+navigation,central_gallery,baseline_dwb,physical_path_length_m_mean,4.756082022816209,m,2
+navigation,central_gallery,baseline_dwb,physical_path_length_m_std,0.02499418660161103,m,2
+navigation,central_gallery,baseline_dwb,gazebo_target_error_m_mean,0.28483600858928043,m,2
+navigation,central_gallery,baseline_dwb,gazebo_target_error_m_std,0.02561068180450854,m,2
+navigation,central_gallery,baseline_dwb,amcl_target_error_m_mean,0.19110210946567913,m,2
+navigation,central_gallery,baseline_dwb,amcl_target_error_m_std,0.0057653225341431765,m,2
+navigation,north_gallery,baseline_dwb,success_rate,1.0,ratio,1
+navigation,north_gallery,baseline_dwb,navigation_time_s_mean,138.71,s,1
+navigation,north_gallery,baseline_dwb,navigation_time_s_std,,s,1
+navigation,north_gallery,baseline_dwb,physical_path_length_m_mean,16.049013788800636,m,1
+navigation,north_gallery,baseline_dwb,physical_path_length_m_std,,m,1
+navigation,north_gallery,baseline_dwb,gazebo_target_error_m_mean,0.10895112654558656,m,1
+navigation,north_gallery,baseline_dwb,gazebo_target_error_m_std,,m,1
+navigation,north_gallery,baseline_dwb,amcl_target_error_m_mean,0.19179592505724496,m,1
+navigation,north_gallery,baseline_dwb,amcl_target_error_m_std,,m,1
+navigation,south_west_gallery,baseline_dwb,success_rate,1.0,ratio,2
+navigation,south_west_gallery,baseline_dwb,navigation_time_s_mean,256.0075,s,2
+navigation,south_west_gallery,baseline_dwb,navigation_time_s_std,0.7530687219636514,s,2
+navigation,south_west_gallery,baseline_dwb,physical_path_length_m_mean,29.952509105258258,m,2
+navigation,south_west_gallery,baseline_dwb,physical_path_length_m_std,0.05045203275937902,m,2
+navigation,south_west_gallery,baseline_dwb,gazebo_target_error_m_mean,0.4471159688585733,m,2
+navigation,south_west_gallery,baseline_dwb,gazebo_target_error_m_std,0.028155049900763954,m,2
+navigation,south_west_gallery,baseline_dwb,amcl_target_error_m_mean,0.16929682716991729,m,2
+navigation,south_west_gallery,baseline_dwb,amcl_target_error_m_std,0.004293082744228373,m,2
+navigation,south_east_gallery,baseline_dwb,success_rate,1.0,ratio,2
+navigation,south_east_gallery,baseline_dwb,navigation_time_s_mean,261.4225,s,2
+navigation,south_east_gallery,baseline_dwb,navigation_time_s_std,2.1248558774655724,s,2
+navigation,south_east_gallery,baseline_dwb,physical_path_length_m_mean,30.124592226336414,m,2
+navigation,south_east_gallery,baseline_dwb,physical_path_length_m_std,0.04979532193465473,m,2
+navigation,south_east_gallery,baseline_dwb,gazebo_target_error_m_mean,0.4034452683447989,m,2
+navigation,south_east_gallery,baseline_dwb,gazebo_target_error_m_std,0.02970495440281713,m,2
+navigation,south_east_gallery,baseline_dwb,amcl_target_error_m_mean,0.12491671557448542,m,2
+navigation,south_east_gallery,baseline_dwb,amcl_target_error_m_std,0.004805132580033715,m,2
+reasoning,all,bounded deterministic functional benchmark,decision_accuracy,1.0,ratio,25
+reasoning,all,bounded deterministic functional benchmark,no_match_accuracy,1.0,ratio,6
+reasoning,all,bounded deterministic functional benchmark,rejection_reason_accuracy,1.0,ratio,6
+reasoning,all,bounded deterministic functional benchmark,route_policy_accuracy,1.0,ratio,25
+reasoning,all,bounded deterministic functional benchmark,deterministic_repeatability_accuracy,1.0,ratio,25
+language,all,bounded functional language benchmark,parser_resolution_accuracy,1.0,ratio,27
+language,all,bounded functional language benchmark,intent_accuracy,1.0,ratio,22
+language,all,bounded functional language benchmark,constraint_extraction_accuracy,1.0,ratio,22
+language,all,bounded functional language benchmark,direct_invalid_rejection_accuracy,1.0,ratio,5
+language,all,bounded functional language benchmark,end_to_end_reasoning_accuracy,1.0,ratio,22
+language,all,bounded functional language benchmark,route_policy_accuracy,1.0,ratio,22
+session_memory,all,bounded session-memory functional benchmark,memory_write_accuracy,1.0,ratio,2
+session_memory,all,bounded session-memory functional benchmark,follow_up_accuracy,1.0,ratio,3
+session_memory,all,bounded session-memory functional benchmark,session_isolation_accuracy,1.0,ratio,1
+session_memory,all,bounded session-memory functional benchmark,explicit_override_accuracy,1.0,ratio,1
+session_memory,all,bounded session-memory functional benchmark,ambient_revalidation_accuracy,1.0,ratio,3
+session_memory,all,bounded session-memory functional benchmark,route_policy_accuracy,1.0,ratio,8
+session_memory,all,bounded session-memory functional benchmark,deterministic_repeatability_accuracy,1.0,ratio,8
+social_navigation,north_gallery,baseline,minimum_person_distance_m_mean,1.4424061288427854,m,1
+social_navigation,north_gallery,baseline,minimum_person_distance_m_std,,m,1
+social_navigation,north_gallery,baseline,minimum_front_person_distance_m_mean,1.4424061288427854,m,1
+social_navigation,north_gallery,baseline,minimum_front_person_distance_m_std,,m,1
+social_navigation,north_gallery,baseline,navigation_time_s_mean,144.22,s,1
+social_navigation,north_gallery,baseline,navigation_time_s_std,,s,1
+social_navigation,north_gallery,baseline,physical_path_length_m_mean,16.053409766464007,m,1
+social_navigation,north_gallery,baseline,physical_path_length_m_std,,m,1
+social_navigation,north_gallery,isotropic,minimum_person_distance_m_mean,1.474531588593506,m,1
+social_navigation,north_gallery,isotropic,minimum_person_distance_m_std,,m,1
+social_navigation,north_gallery,isotropic,minimum_front_person_distance_m_mean,1.488970526081255,m,1
+social_navigation,north_gallery,isotropic,minimum_front_person_distance_m_std,,m,1
+social_navigation,north_gallery,isotropic,navigation_time_s_mean,143.38500000000002,s,1
+social_navigation,north_gallery,isotropic,navigation_time_s_std,,s,1
+social_navigation,north_gallery,isotropic,physical_path_length_m_mean,16.052136804909484,m,1
+social_navigation,north_gallery,isotropic,physical_path_length_m_std,,m,1
+social_navigation,north_gallery,anisotropic,minimum_person_distance_m_mean,1.4891087950130888,m,1
+social_navigation,north_gallery,anisotropic,minimum_person_distance_m_std,,m,1
+social_navigation,north_gallery,anisotropic,minimum_front_person_distance_m_mean,1.5001747821443703,m,1
+social_navigation,north_gallery,anisotropic,minimum_front_person_distance_m_std,,m,1
+social_navigation,north_gallery,anisotropic,navigation_time_s_mean,145.865,s,1
+social_navigation,north_gallery,anisotropic,navigation_time_s_std,,s,1
+social_navigation,north_gallery,anisotropic,physical_path_length_m_mean,16.051100699382353,m,1
+social_navigation,north_gallery,anisotropic,physical_path_length_m_std,,m,1

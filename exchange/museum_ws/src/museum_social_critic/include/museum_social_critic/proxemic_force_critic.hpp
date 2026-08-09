@@ -33,12 +33,28 @@ struct PersonState
 
 double proxemicCost(double distance, double comfort_distance, double sigma);
 
+double effectiveProxemicDistance(
+  double relative_x,
+  double relative_y,
+  double velocity_x,
+  double velocity_y,
+  bool anisotropic_enabled,
+  double front_scale,
+  double side_scale,
+  double back_scale,
+  double min_heading_speed);
+
 double maximumProxemicScore(
   const std::vector<TimedPoint> & robot_poses,
   const std::vector<PersonState> & people,
   const std::unordered_set<std::string> & ignored_identifiers,
   double comfort_distance,
-  double sigma);
+  double sigma,
+  bool anisotropic_enabled = false,
+  double front_scale = 1.4,
+  double side_scale = 1.0,
+  double back_scale = 0.8,
+  double min_heading_speed = 0.1);
 
 class ProxemicForceCritic : public dwb_core::TrajectoryCritic
 {
@@ -72,6 +88,11 @@ private:
   double comfort_distance_{1.0};
   double sigma_{0.4};
   double people_timeout_{1.0};
+  double front_scale_{1.4};
+  double side_scale_{1.0};
+  double back_scale_{0.8};
+  double min_heading_speed_{0.1};
+  bool anisotropic_enabled_{false};
   double cycle_min_score_{std::numeric_limits<double>::infinity()};
   double cycle_max_score_{0.0};
   bool logged_snapshot_{false};

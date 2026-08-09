@@ -102,7 +102,11 @@ controller_server:
       ProxemicForce.people_topic: /people
       ProxemicForce.people_timeout: 1.0
       ProxemicForce.ignored_identifiers: [visitor_1]
-      ProxemicForce.anisotropic_enabled: false
+      ProxemicForce.anisotropic_enabled: true
+      ProxemicForce.front_scale: 1.40
+      ProxemicForce.side_scale: 1.00
+      ProxemicForce.back_scale: 0.80
+      ProxemicForce.min_heading_speed: 0.10
       PathAlign.scale: 16.0
       PathAlign.forward_point_distance: 0.325
       GoalAlign.scale: 12.0

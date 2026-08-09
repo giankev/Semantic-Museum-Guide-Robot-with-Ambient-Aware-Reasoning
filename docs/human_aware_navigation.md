@@ -444,6 +444,47 @@ navigation: accepted -> intentional wait cancel -> accepted -> succeeded
 escort:     escorting -> waiting -> escorting -> arrived
 ```
 
+## Velocity-Aligned Anisotropic Opt-In
+
+`ProxemicForceCritic` keeps its original isotropic behavior by default. The
+optional mode uses the already transformed person velocity as a heading and
+warps only the distance passed to the existing logistic cost:
+
+```text
+anisotropic_enabled: false
+front_scale: 1.4
+side_scale: 1.0
+back_scale: 0.8
+min_heading_speed: 0.1
+```
+
+When the option is disabled, or the person's speed is below
+`min_heading_speed`, effective distance is exactly Euclidean. The moving case
+uses the velocity-aligned longitudinal/lateral axes, so the same geometric
+offset costs most in front, then at the side, then behind. Prediction,
+ignored-person filtering, transforms, aggregation, scale, and failure behavior
+are unchanged.
+
+The opt-in supplied configuration is
+`config/nav2_supplied_anisotropic.yaml`; the existing
+`nav2_supplied_social_force.yaml` remains explicitly isotropic. A validated
+fresh-run triplet used `guide_1` from `(1.4, 16.0)` with velocity
+`(0.0, -0.12)` m/s:
+
+| Variant | Nav2 | Gazebo error | Sim time | Path | Min distance | Min front distance |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Baseline | succeeded | 0.112 m | 144.220 s | 16.053 m | 1.442 m | 1.442 m |
+| Isotropic | succeeded | 0.099 m | 143.385 s | 16.052 m | 1.475 m | 1.489 m |
+| Anisotropic | succeeded | 0.114 m | 145.865 s | 16.051 m | 1.489 m | 1.500 m |
+
+All three runs produced `escorting → waiting → escorting → arrived`, used two
+unique goal UUIDs for intentional cancel/resume, received `/people`, had zero
+recoveries/no-progress failures, and ended with zero command velocity. Relative
+to isotropic, anisotropic increased total clearance by `0.0146 m` (`0.99%`)
+and front clearance by `0.0112 m` (`0.75%`). This is one validated triplet;
+the final benchmark reports `N=1` and does not present it as a statistical
+claim.
+
 The supplied technical and behavioral gates therefore both pass at the already
 accepted scale `32.0`; no tuning sweep was performed.
 

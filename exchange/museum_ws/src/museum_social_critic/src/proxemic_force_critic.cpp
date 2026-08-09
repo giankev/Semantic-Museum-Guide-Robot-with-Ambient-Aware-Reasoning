@@ -33,12 +33,42 @@ double proxemicCost(double distance, double comfort_distance, double sigma)
   return 1.0 / (1.0 + growth);
 }
 
+double effectiveProxemicDistance(
+  double relative_x,
+  double relative_y,
+  double velocity_x,
+  double velocity_y,
+  bool anisotropic_enabled,
+  double front_scale,
+  double side_scale,
+  double back_scale,
+  double min_heading_speed)
+{
+  const double isotropic_distance = std::hypot(relative_x, relative_y);
+  const double speed = std::hypot(velocity_x, velocity_y);
+  if (!anisotropic_enabled || speed < min_heading_speed) {
+    return isotropic_distance;
+  }
+
+  const double heading_x = velocity_x / speed;
+  const double heading_y = velocity_y / speed;
+  const double longitudinal = relative_x * heading_x + relative_y * heading_y;
+  const double lateral = -relative_x * heading_y + relative_y * heading_x;
+  const double longitudinal_scale = longitudinal >= 0.0 ? front_scale : back_scale;
+  return std::hypot(longitudinal / longitudinal_scale, lateral / side_scale);
+}
+
 double maximumProxemicScore(
   const std::vector<TimedPoint> & robot_poses,
   const std::vector<PersonState> & people,
   const std::unordered_set<std::string> & ignored_identifiers,
   double comfort_distance,
-  double sigma)
+  double sigma,
+  bool anisotropic_enabled,
+  double front_scale,
+  double side_scale,
+  double back_scale,
+  double min_heading_speed)
 {
   double maximum = 0.0;
   for (const auto & person : people) {
@@ -48,7 +78,9 @@ double maximumProxemicScore(
     for (const auto & robot : robot_poses) {
       const double person_x = person.x + person.vx * robot.time;
       const double person_y = person.y + person.vy * robot.time;
-      const double distance = std::hypot(robot.x - person_x, robot.y - person_y);
+      const double distance = effectiveProxemicDistance(
+        robot.x - person_x, robot.y - person_y, person.vx, person.vy,
+        anisotropic_enabled, front_scale, side_scale, back_scale, min_heading_speed);
       maximum = std::max(maximum, proxemicCost(distance, comfort_distance, sigma));
     }
   }
@@ -74,6 +106,16 @@ void ProxemicForceCritic::onInit()
   nav2_util::declare_parameter_if_not_declared(
     node, prefix + ".people_timeout", rclcpp::ParameterValue(1.0));
   nav2_util::declare_parameter_if_not_declared(
+    node, prefix + ".anisotropic_enabled", rclcpp::ParameterValue(false));
+  nav2_util::declare_parameter_if_not_declared(
+    node, prefix + ".front_scale", rclcpp::ParameterValue(1.4));
+  nav2_util::declare_parameter_if_not_declared(
+    node, prefix + ".side_scale", rclcpp::ParameterValue(1.0));
+  nav2_util::declare_parameter_if_not_declared(
+    node, prefix + ".back_scale", rclcpp::ParameterValue(0.8));
+  nav2_util::declare_parameter_if_not_declared(
+    node, prefix + ".min_heading_speed", rclcpp::ParameterValue(0.1));
+  nav2_util::declare_parameter_if_not_declared(
     node, prefix + ".ignored_identifiers",
     rclcpp::ParameterValue(std::vector<std::string>{"visitor_1"}));
 
@@ -82,11 +124,20 @@ void ProxemicForceCritic::onInit()
   node->get_parameter(prefix + ".sigma", sigma_);
   node->get_parameter(prefix + ".people_topic", people_topic_);
   node->get_parameter(prefix + ".people_timeout", people_timeout_);
+  node->get_parameter(prefix + ".anisotropic_enabled", anisotropic_enabled_);
+  node->get_parameter(prefix + ".front_scale", front_scale_);
+  node->get_parameter(prefix + ".side_scale", side_scale_);
+  node->get_parameter(prefix + ".back_scale", back_scale_);
+  node->get_parameter(prefix + ".min_heading_speed", min_heading_speed_);
   node->get_parameter(prefix + ".ignored_identifiers", ignored);
 
   if (!std::isfinite(comfort_distance_) || comfort_distance_ <= 0.0 ||
     !std::isfinite(sigma_) || sigma_ <= 0.0 ||
     !std::isfinite(people_timeout_) || people_timeout_ <= 0.0 ||
+    !std::isfinite(front_scale_) || front_scale_ <= 0.0 ||
+    !std::isfinite(side_scale_) || side_scale_ <= 0.0 ||
+    !std::isfinite(back_scale_) || back_scale_ <= 0.0 ||
+    !std::isfinite(min_heading_speed_) || min_heading_speed_ < 0.0 ||
     people_topic_.empty())
   {
     throw std::invalid_argument("ProxemicForceCritic parameters are invalid.");
@@ -99,9 +150,10 @@ void ProxemicForceCritic::onInit()
 
   RCLCPP_INFO(
     logger_,
-    "ProxemicForceCritic subscribed to %s; frame target=%s; ignored identifiers=%zu",
+    "ProxemicForceCritic subscribed to %s; frame target=%s; ignored identifiers=%zu; "
+    "anisotropic=%s",
     people_topic_.c_str(), costmap_ros_->getGlobalFrameID().c_str(),
-    ignored_identifiers_.size());
+    ignored_identifiers_.size(), anisotropic_enabled_ ? "true" : "false");
 }
 
 void ProxemicForceCritic::peopleCallback(
@@ -247,7 +299,8 @@ double ProxemicForceCritic::scoreTrajectory(
   }
 
   const double score = maximumProxemicScore(
-    robot_poses, prepared_people_, ignored_identifiers_, comfort_distance_, sigma_);
+    robot_poses, prepared_people_, ignored_identifiers_, comfort_distance_, sigma_,
+    anisotropic_enabled_, front_scale_, side_scale_, back_scale_, min_heading_speed_);
   cycle_min_score_ = std::min(cycle_min_score_, score);
   cycle_max_score_ = std::max(cycle_max_score_, score);
   return score;
@@ -258,8 +311,8 @@ void ProxemicForceCritic::debrief(const nav_2d_msgs::msg::Twist2D &)
   if (!prepared_people_.empty() && std::isfinite(cycle_min_score_)) {
     RCLCPP_INFO_THROTTLE(
       logger_, *clock_, 5000,
-      "ProxemicForceCritic raw candidate range: %.4f to %.4f (scale %.3f)",
-      cycle_min_score_, cycle_max_score_, scale_);
+      "ProxemicForceCritic raw candidate range: %.4f to %.4f (scale %.3f, anisotropic=%s)",
+      cycle_min_score_, cycle_max_score_, scale_, anisotropic_enabled_ ? "true" : "false");
   }
 }
 

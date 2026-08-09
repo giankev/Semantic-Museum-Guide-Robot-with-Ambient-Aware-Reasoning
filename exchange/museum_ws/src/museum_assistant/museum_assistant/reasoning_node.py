@@ -93,6 +93,7 @@ class ReasoningNode(Node):
 
         response = self.reasoner.handle_request(request)
         self._publish_response(response)
+        self._publish_scene_graph()
         self.get_logger().info(
             "Handled request "
             f"request_id={response.get('request_id')} "

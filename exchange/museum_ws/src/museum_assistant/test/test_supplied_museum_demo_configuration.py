@@ -11,6 +11,7 @@ BASE_PATH = PACKAGE / "config/nav2_museum.yaml"
 ODOM_OVERRIDE_PATH = PACKAGE / "config/nav2_ground_truth_odom_override.yaml"
 DEMO_PATH = PACKAGE / "config/nav2_supplied_demo.yaml"
 SOCIAL_PATH = PACKAGE / "config/nav2_supplied_social_force.yaml"
+ANISOTROPIC_PATH = PACKAGE / "config/nav2_supplied_anisotropic.yaml"
 LAUNCH_PATH = PACKAGE / "launch/supplied_museum_demo_navigation.launch.py"
 REASONING_LAUNCH_PATH = (
     PACKAGE / "launch/supplied_museum_reasoning_navigation.launch.py"
@@ -41,6 +42,7 @@ BASE = yaml.safe_load(BASE_PATH.read_text(encoding="utf-8"))
 OVERRIDE = yaml.safe_load(ODOM_OVERRIDE_PATH.read_text(encoding="utf-8"))
 DEMO = yaml.safe_load(DEMO_PATH.read_text(encoding="utf-8"))
 SOCIAL = yaml.safe_load(SOCIAL_PATH.read_text(encoding="utf-8"))
+ANISOTROPIC = yaml.safe_load(ANISOTROPIC_PATH.read_text(encoding="utf-8"))
 GENERATOR = load_generator()
 WIDTH, HEIGHT, CELLS = GENERATOR.rasterize(GENERATOR.load_boxes())
 
@@ -163,6 +165,24 @@ def test_supplied_social_force_config_only_adds_the_existing_critic():
         prefix + ("ProxemicForce.ignored_identifiers",): (
             None, ["visitor_1"],
         ),
+        prefix + ("ProxemicForce.anisotropic_enabled",): (None, False),
+    }
+
+
+def test_supplied_anisotropic_config_only_changes_directional_parameters():
+    before, after = flattened(SOCIAL), flattened(ANISOTROPIC)
+    changed = {
+        path: (before.get(path), after.get(path))
+        for path in before.keys() | after.keys()
+        if before.get(path) != after.get(path)
+    }
+    prefix = ("controller_server", "ros__parameters", "FollowPath")
+    assert changed == {
+        prefix + ("ProxemicForce.anisotropic_enabled",): (False, True),
+        prefix + ("ProxemicForce.front_scale",): (None, 1.4),
+        prefix + ("ProxemicForce.side_scale",): (None, 1.0),
+        prefix + ("ProxemicForce.back_scale",): (None, 0.8),
+        prefix + ("ProxemicForce.min_heading_speed",): (None, 0.1),
     }
 
 

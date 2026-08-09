@@ -32,6 +32,13 @@ ARTWORK_REQUIRED_FIELDS = {
     "description",
 }
 NAV_POSE_FIELDS = {"x", "y", "yaw"}
+SESSION_PREFERENCE_FIELDS = {
+    "style": "preferred_style",
+    "avoid_crowd": "avoid_crowd",
+    "avoid_noise": "avoid_noise",
+    "child_friendly": "child_friendly",
+    "wheelchair_accessible": "wheelchair_accessible",
+}
 
 
 class SemanticMapError(ValueError):
@@ -170,6 +177,83 @@ class MuseumSemanticGraph:
             raise KeyError(f"Unknown room id: {room_id}")
         return self._matching_artworks_for_room(room_id)
 
+    def ensure_session(self, session_id: str) -> None:
+        if not isinstance(session_id, str) or not session_id.strip():
+            raise ValueError("session_id must be a non-empty string")
+        if session_id in self.graph:
+            if self.graph.nodes[session_id].get("kind") != "session":
+                raise ValueError(f"Session id conflicts with node: {session_id}")
+            self.graph.nodes[session_id]["active"] = True
+        else:
+            self.graph.add_node(
+                session_id, kind="session", session_id=session_id, active=True
+            )
+
+    def remember_session_request(
+        self,
+        session_id: str,
+        intent: str,
+        constraints: dict[str, Any],
+    ) -> None:
+        self.ensure_session(session_id)
+        node = self.graph.nodes[session_id]
+        node["last_intent"] = intent
+        if constraints:
+            for field in SESSION_PREFERENCE_FIELDS.values():
+                node.pop(field, None)
+            for name, value in constraints.items():
+                node[SESSION_PREFERENCE_FIELDS[name]] = deepcopy(value)
+
+    def remember_session_destination(
+        self, session_id: str, room_id: str
+    ) -> None:
+        self._validate_room_id(room_id)
+        self.ensure_session(session_id)
+        for _, target, attributes in list(self.graph.out_edges(
+            session_id, data=True
+        )):
+            if "wants_to_reach" in attributes.get("relations", []):
+                self.graph.remove_edge(session_id, target)
+        self._add_labeled_edge(session_id, room_id, "wants_to_reach")
+
+    def get_session_context(
+        self, session_id: str
+    ) -> dict[str, Any] | None:
+        if (
+            session_id not in self.graph
+            or self.graph.nodes[session_id].get("kind") != "session"
+        ):
+            return None
+        context = self._node_data(session_id)
+        context["constraints"] = {
+            name: context[field]
+            for name, field in SESSION_PREFERENCE_FIELDS.items()
+            if field in context
+        }
+        destinations = self.neighbors(session_id, "wants_to_reach")
+        context["wants_to_reach"] = destinations[0] if destinations else None
+        return context
+
+    def update_session_interaction_state(
+        self, session_id: str, state: str
+    ) -> None:
+        self.ensure_session(session_id)
+        self.graph.nodes[session_id]["interaction_state"] = state
+
+    def room_rejections(
+        self, room_id: str, constraints: dict[str, Any]
+    ) -> list[str]:
+        self._validate_room_id(room_id)
+        return self._room_rejections(
+            self.graph.nodes[room_id],
+            style=constraints.get("style"),
+            avoid_crowd=constraints.get("avoid_crowd", False),
+            avoid_noise=constraints.get("avoid_noise", False),
+            child_friendly=constraints.get("child_friendly"),
+            wheelchair_accessible=constraints.get("wheelchair_accessible"),
+            require_open=True,
+        )
+
     def neighbors(
         self, node_id: str, relation: str = "connected_to"
     ) -> list[str]:
@@ -195,6 +279,11 @@ class MuseumSemanticGraph:
             "sensor": ("type",),
             "role": ("display_name",),
             "concept": (),
+            "session": (
+                "session_id", "active", "preferred_style", "avoid_crowd",
+                "avoid_noise", "child_friendly", "wheelchair_accessible",
+                "last_intent", "interaction_state",
+            ),
         }
         nodes = []
         for node_id, attributes in self.graph.nodes(data=True):

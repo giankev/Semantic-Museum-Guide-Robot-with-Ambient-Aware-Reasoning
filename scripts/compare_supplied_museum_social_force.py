@@ -8,11 +8,15 @@ from pathlib import Path
 import time
 
 from action_msgs.msg import GoalStatus, GoalStatusArray
-from gazebo_msgs.msg import ModelStates
-from geometry_msgs.msg import TwistStamped
-from nav2_msgs.action import NavigateToPose
+from gazebo_msgs.msg import EntityState, ModelStates
+from gazebo_msgs.srv import SetEntityState
+from geometry_msgs.msg import PoseWithCovarianceStamped, TwistStamped
+from nav2_msgs.action import NavigateThroughPoses, NavigateToPose
 import rclpy
 from rcl_interfaces.msg import Log
+from lifecycle_msgs.msg import State
+from lifecycle_msgs.srv import GetState
+from rclpy.action import ActionClient
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from social_nav_msgs.msg import Pedestrians
@@ -23,7 +27,10 @@ EXPECTED_ESCORT = ["escorting", "waiting", "escorting", "arrived"]
 
 
 class ComparisonProbe(Node):
-    def __init__(self, request_id: str, person_id: str, person_model: str):
+    def __init__(
+        self, request_id: str, person_id: str, person_model: str,
+        motion: dict | None, min_heading_speed: float,
+    ):
         super().__init__(
             "supplied_social_force_comparison_probe",
             parameter_overrides=[Parameter("use_sim_time", value=True)],
@@ -43,16 +50,44 @@ class ComparisonProbe(Node):
         self.navigation_end_wall = None
         self.physical_path_length = 0.0
         self.minimum_person_distance = math.inf
+        self.minimum_front_person_distance = math.inf
         self.initial_person_pose = None
+        self.latest_person_velocity = None
+        self.maximum_person_speed = 0.0
+        self.moving_velocity_samples = 0
+        self.min_heading_speed = min_heading_speed
+        self.motion = motion
+        self.motion_start_sim = None
+        self._motion_future = None
+        self.critic_activity = False
+        self.critic_mode_observed = None
         self._previous_robot_position = None
         self._finished = False
         self.maximum_recoveries = 0
         self.no_progress_failures = 0
         self.latest_command = (math.inf, math.inf)
+        self.localization_received = False
 
         self.request_publisher = self.create_publisher(
             String, "/museum/user_request", 10
         )
+        self.navigate_to_pose_client = ActionClient(
+            self, NavigateToPose, "/navigate_to_pose"
+        )
+        self.navigate_through_poses_client = ActionClient(
+            self, NavigateThroughPoses, "/navigate_through_poses"
+        )
+        self.lifecycle_clients = [
+            self.create_client(GetState, f"/{name}/get_state")
+            for name in (
+                "map_server",
+                "amcl",
+                "planner_server",
+                "controller_server",
+                "bt_navigator",
+                "velocity_smoother",
+            )
+        ]
         self.create_subscription(
             String, "/museum/assistant_response", self._decision, 10
         )
@@ -67,6 +102,12 @@ class ComparisonProbe(Node):
         )
         self.create_subscription(
             ModelStates, "/gazebo/model_states", self._models, 10
+        )
+        self.create_subscription(
+            PoseWithCovarianceStamped,
+            "/amcl_pose",
+            self._localization,
+            10,
         )
         self.create_subscription(Pedestrians, "/people", self._people, 10)
         self.create_subscription(
@@ -88,6 +129,11 @@ class ComparisonProbe(Node):
             20,
         )
         self.create_subscription(Log, "/rosout", self._log, 50)
+        if self.motion:
+            self.motion_client = self.create_client(
+                SetEntityState, "/gazebo/set_entity_state"
+            )
+            self.create_timer(0.1, self._move_person)
 
     def _payload(self, message):
         try:
@@ -131,6 +177,23 @@ class ComparisonProbe(Node):
         self.people_identifiers.update(
             person.identifier for person in message.pedestrians
         )
+        if self.navigation_start_sim is None or self._finished:
+            return
+        person = next(
+            (
+                item for item in message.pedestrians
+                if item.identifier == self.person_id
+            ),
+            None,
+        )
+        if person is None:
+            return
+        velocity = (person.velocity.x, person.velocity.y)
+        speed = math.hypot(*velocity)
+        self.latest_person_velocity = velocity
+        self.maximum_person_speed = max(self.maximum_person_speed, speed)
+        if speed >= self.min_heading_speed:
+            self.moving_velocity_samples += 1
 
     def _action_status(self, message):
         active = {GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING}
@@ -139,6 +202,10 @@ class ComparisonProbe(Node):
         ):
             self.navigation_start_sim = self._sim_time()
             self.navigation_start_wall = time.monotonic()
+            self.motion_start_sim = self.navigation_start_sim
+            self.latest_person_velocity = None
+            self.maximum_person_speed = 0.0
+            self.moving_velocity_samples = 0
 
     def _feedback(self, message):
         self.maximum_recoveries = max(
@@ -166,6 +233,14 @@ class ComparisonProbe(Node):
         self.minimum_person_distance = min(
             self.minimum_person_distance, math.dist(robot, person)
         )
+        velocity = self.latest_person_velocity
+        if velocity is not None and math.hypot(*velocity) >= self.min_heading_speed:
+            relative = (robot[0] - person[0], robot[1] - person[1])
+            if relative[0] * velocity[0] + relative[1] * velocity[1] > 0.0:
+                self.minimum_front_person_distance = min(
+                    self.minimum_front_person_distance,
+                    math.dist(robot, person),
+                )
         if self.initial_person_pose is None:
             self.initial_person_pose = list(person)
 
@@ -175,9 +250,95 @@ class ComparisonProbe(Node):
             message.twist.angular.z,
         )
 
+    def _localization(self, _message):
+        self.localization_received = True
+
     def _log(self, message):
-        if "failed to make progress" in message.msg.lower():
+        text = message.msg.lower()
+        if "failed to make progress" in text:
             self.no_progress_failures += 1
+        if "proxemicforcecritic raw candidate range" in text:
+            self.critic_activity = True
+            if "anisotropic=true" in text:
+                self.critic_mode_observed = "anisotropic"
+            elif "anisotropic=false" in text:
+                self.critic_mode_observed = "isotropic"
+
+    def initialize_motion(self, timeout=30.0):
+        if not self.motion:
+            return True
+        deadline = time.monotonic() + timeout
+        while (
+            not self.motion_client.wait_for_service(timeout_sec=0.2)
+            and time.monotonic() < deadline
+        ):
+            rclpy.spin_once(self, timeout_sec=0.05)
+        if not self.motion_client.service_is_ready():
+            return False
+        future = self._set_person_state(0.0)
+        while not future.done() and time.monotonic() < deadline:
+            rclpy.spin_once(self, timeout_sec=0.05)
+        return future.done() and bool(future.result().success)
+
+    def wait_for_navigation(self, timeout=180.0):
+        deadline = time.monotonic() + timeout
+        clients = (
+            self.navigate_to_pose_client,
+            self.navigate_through_poses_client,
+        )
+        while time.monotonic() < deadline:
+            if (
+                self.localization_received
+                and all(client.server_is_ready() for client in clients)
+                and self._navigation_nodes_active()
+            ):
+                return True
+            rclpy.spin_once(self, timeout_sec=0.1)
+        return False
+
+    def _navigation_nodes_active(self):
+        if not all(client.service_is_ready() for client in self.lifecycle_clients):
+            return False
+        futures = [
+            client.call_async(GetState.Request())
+            for client in self.lifecycle_clients
+        ]
+        deadline = time.monotonic() + 2.0
+        while not all(future.done() for future in futures):
+            if time.monotonic() >= deadline:
+                return False
+            rclpy.spin_once(self, timeout_sec=0.05)
+        return all(
+            future.result() is not None
+            and future.result().current_state.id == State.PRIMARY_STATE_ACTIVE
+            for future in futures
+        )
+
+    def _set_person_state(self, elapsed):
+        initial = self.motion["initial_pose"]
+        velocity = self.motion["velocity"]
+        request = SetEntityState.Request()
+        state = EntityState()
+        state.name = self.person_model
+        state.reference_frame = "world"
+        state.pose.position.x = initial[0] + velocity[0] * elapsed
+        state.pose.position.y = initial[1] + velocity[1] * elapsed
+        yaw = math.atan2(velocity[1], velocity[0])
+        state.pose.orientation.z = math.sin(yaw / 2.0)
+        state.pose.orientation.w = math.cos(yaw / 2.0)
+        state.twist.linear.x = velocity[0]
+        state.twist.linear.y = velocity[1]
+        request.state = state
+        return self.motion_client.call_async(request)
+
+    def _move_person(self):
+        if (
+            not self.motion or self.motion_start_sim is None or self._finished
+            or (self._motion_future is not None and not self._motion_future.done())
+        ):
+            return
+        elapsed = max(0.0, self._sim_time() - self.motion_start_sim)
+        self._motion_future = self._set_person_state(elapsed)
 
     def _sim_time(self):
         return self.get_clock().now().nanoseconds / 1.0e9
@@ -185,7 +346,18 @@ class ComparisonProbe(Node):
 
 def record(args):
     rclpy.init()
-    probe = ComparisonProbe(args.request_id, args.person_id, args.person_model)
+    motion = None
+    if args.moving_person:
+        motion = {
+            "trajectory_id": args.trajectory_id,
+            "initial_pose": [args.initial_x, args.initial_y],
+            "velocity": [args.velocity_x, args.velocity_y],
+            "start_policy": "first_active_navigation_goal",
+        }
+    probe = ComparisonProbe(
+        args.request_id, args.person_id, args.person_model,
+        motion, args.min_heading_speed,
+    )
     request = {
         "request_id": args.request_id,
         "session_id": args.session_id,
@@ -193,6 +365,10 @@ def record(args):
         "constraints": {"style": "impressionism"},
     }
     try:
+        if not probe.initialize_motion():
+            raise RuntimeError("Could not initialize moving-person trajectory")
+        if not probe.wait_for_navigation():
+            raise RuntimeError("Nav2 action servers did not become ready")
         ready_deadline = time.monotonic() + 30.0
         while (
             probe.request_publisher.get_subscription_count() < 1
@@ -236,6 +412,21 @@ def record(args):
             ),
             "terminal_cmd_vel_zero": terminal_zero,
             "no_progress_failures": probe.no_progress_failures == 0,
+            "moving_person_velocity_verified": (
+                not motion
+                or (
+                    probe.maximum_person_speed >= args.min_heading_speed
+                    and probe.moving_velocity_samples > 0
+                )
+            ),
+            "critic_configuration_observed": (
+                args.variant == "baseline"
+                or (
+                    probe.critic_activity
+                    and probe.critic_mode_observed
+                    == ("anisotropic" if args.variant == "anisotropic" else "isotropic")
+                )
+            ),
         }
         report = {
             "variant": args.variant,
@@ -259,6 +450,16 @@ def record(args):
             "minimum_person_distance_m": finite_or_none(
                 probe.minimum_person_distance
             ),
+            "minimum_front_person_distance_m": finite_or_none(
+                probe.minimum_front_person_distance
+            ),
+            "maximum_observed_person_speed_mps": probe.maximum_person_speed,
+            "moving_velocity_samples": probe.moving_velocity_samples,
+            "min_heading_speed_mps": args.min_heading_speed,
+            "person_trajectory": motion,
+            "person_trajectory_start_time_sim_s": probe.motion_start_sim,
+            "critic_activity": probe.critic_activity,
+            "critic_mode_observed": probe.critic_mode_observed,
             "maximum_recoveries": probe.maximum_recoveries,
             "no_progress_failures": probe.no_progress_failures,
             "terminal_cmd_vel": {
@@ -338,6 +539,9 @@ def summary(report):
             "navigation_wall_time_sec",
             "physical_path_length_m",
             "minimum_person_distance_m",
+            "minimum_front_person_distance_m",
+            "maximum_observed_person_speed_mps",
+            "person_trajectory",
             "maximum_recoveries",
             "no_progress_failures",
             "terminal_cmd_vel",
@@ -362,11 +566,22 @@ def parse_args():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command", required=True)
     recorder = subparsers.add_parser("record")
-    recorder.add_argument("--variant", choices=("baseline", "social"), required=True)
+    recorder.add_argument(
+        "--variant",
+        choices=("baseline", "social", "isotropic", "anisotropic"),
+        required=True,
+    )
     recorder.add_argument("--request-id", required=True)
     recorder.add_argument("--session-id", default="session_1")
     recorder.add_argument("--person-id", default="guide_1")
     recorder.add_argument("--person-model", default="guide_marker")
+    recorder.add_argument("--moving-person", action="store_true")
+    recorder.add_argument("--trajectory-id", default="north_front_crossing_v1")
+    recorder.add_argument("--initial-x", type=float, default=1.4)
+    recorder.add_argument("--initial-y", type=float, default=16.0)
+    recorder.add_argument("--velocity-x", type=float, default=0.0)
+    recorder.add_argument("--velocity-y", type=float, default=-0.12)
+    recorder.add_argument("--min-heading-speed", type=float, default=0.10)
     recorder.add_argument("--timeout", type=float, default=1500.0)
     recorder.add_argument("--output", type=Path, required=True)
     recorder.set_defaults(function=record)
