@@ -9,6 +9,7 @@ SUPPORTED_INTENTS = {"recommend", "recommend_and_prepare_navigation"}
 SUPPORTED_CONSTRAINTS = {
     "style",
     "avoid_crowd",
+    "avoid_noise",
     "child_friendly",
     "wheelchair_accessible",
 }
@@ -105,6 +106,7 @@ class StructuredRequest:
             )
         for name in (
             "avoid_crowd",
+            "avoid_noise",
             "child_friendly",
             "wheelchair_accessible",
         ):

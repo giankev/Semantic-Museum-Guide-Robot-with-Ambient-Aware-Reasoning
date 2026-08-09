@@ -35,6 +35,7 @@ class DeterministicReasoner:
         recommendation = self.semantic_graph.recommend_room(
             style=constraints.get("style"),
             avoid_crowd=constraints.get("avoid_crowd", False),
+            avoid_noise=constraints.get("avoid_noise", False),
             child_friendly=constraints.get("child_friendly"),
             wheelchair_accessible=constraints.get(
                 "wheelchair_accessible"

@@ -39,6 +39,8 @@ class SemanticMapError(ValueError):
 
 
 class MuseumSemanticGraph:
+    """NetworkX-backed dynamic semantic scene graph for the museum."""
+
     def __init__(self, data: dict[str, Any]):
         self.data = data
         self.rooms = {room["id"]: room for room in data["rooms"]}
@@ -95,19 +97,27 @@ class MuseumSemanticGraph:
         self.graph.add_edge(source, target, relation=relation, relations=[relation])
 
     def room_ids(self) -> list[str]:
-        return list(self.rooms.keys())
+        return [
+            node_id
+            for node_id, attributes in self.graph.nodes(data=True)
+            if attributes.get("kind") == "room"
+        ]
 
     def artwork_ids(self) -> list[str]:
-        return list(self.artworks.keys())
+        return [
+            node_id
+            for node_id, attributes in self.graph.nodes(data=True)
+            if attributes.get("kind") == "artwork"
+        ]
 
     def get_room(self, room_id: str) -> dict[str, Any]:
         if room_id not in self.rooms:
             raise KeyError(f"Unknown room id: {room_id}")
-        return deepcopy(self.rooms[room_id])
+        return self._node_data(room_id)
 
     def get_room_state(self, room_id: str) -> dict[str, str]:
         self._validate_room_id(room_id)
-        room = self.rooms[room_id]
+        room = self.graph.nodes[room_id]
         return {
             "room_id": room_id,
             "status": room["status"],
@@ -139,64 +149,113 @@ class MuseumSemanticGraph:
         return self.get_room_state(room_id)
 
     def get_artwork(self, artwork_id: str) -> dict[str, Any]:
-        if artwork_id not in self.artworks:
+        if (
+            artwork_id not in self.graph
+            or self.graph.nodes[artwork_id].get("kind") != "artwork"
+        ):
             raise KeyError(f"Unknown artwork id: {artwork_id}")
-        return deepcopy(self.artworks[artwork_id])
+        return self._node_data(artwork_id)
 
     def artworks_by_style(self, style: str) -> list[dict[str, Any]]:
         style_key = _normalize(style)
         return [
-            deepcopy(artwork)
-            for artwork in self.artworks.values()
-            if _normalize(artwork["style"]) == style_key
+            self._node_data(node_id)
+            for node_id, attributes in self.graph.nodes(data=True)
+            if attributes.get("kind") == "artwork"
+            and _normalize(attributes["style"]) == style_key
         ]
 
     def artworks_in_room(self, room_id: str) -> list[dict[str, Any]]:
         if room_id not in self.rooms:
             raise KeyError(f"Unknown room id: {room_id}")
+        return self._matching_artworks_for_room(room_id)
+
+    def neighbors(
+        self, node_id: str, relation: str = "connected_to"
+    ) -> list[str]:
+        """Return outgoing semantic neighbors joined by ``relation``."""
+        if node_id not in self.graph:
+            raise KeyError(f"Unknown node id: {node_id}")
         return [
-            deepcopy(artwork)
-            for artwork in self.artworks.values()
-            if artwork["located_in"] == room_id
+            target
+            for _, target, attributes in self.graph.out_edges(
+                node_id, data=True
+            )
+            if relation in attributes.get("relations", [])
         ]
+
+    def snapshot(self) -> dict[str, list[dict[str, Any]]]:
+        """Return a compact JSON-serializable scene graph snapshot."""
+        fields_by_kind = {
+            "room": (
+                "display_name", "status", "crowd_level", "noise_level",
+                "child_friendly", "wheelchair_accessible",
+            ),
+            "artwork": ("title", "style"),
+            "sensor": ("type",),
+            "role": ("display_name",),
+            "concept": (),
+        }
+        nodes = []
+        for node_id, attributes in self.graph.nodes(data=True):
+            kind = attributes.get("kind")
+            node = {"id": node_id, "kind": kind}
+            for field in fields_by_kind.get(kind, ()):
+                if field in attributes:
+                    node[field] = deepcopy(attributes[field])
+            nodes.append(node)
+
+        edges = []
+        for source, target, attributes in self.graph.edges(data=True):
+            for relation in attributes.get("relations", []):
+                edges.append(
+                    {"source": source, "relation": relation, "target": target}
+                )
+        return {"nodes": nodes, "edges": edges}
 
     def rooms_matching(
         self,
         style: str | None = None,
         avoid_crowd: bool = False,
+        avoid_noise: bool = False,
         child_friendly: bool | None = None,
         wheelchair_accessible: bool | None = None,
         require_open: bool = True,
     ) -> list[dict[str, Any]]:
         matches: list[dict[str, Any]] = []
-        for room in self.rooms.values():
+        for room_id in self.room_ids():
+            room = self.graph.nodes[room_id]
             rejected = self._room_rejections(
                 room,
                 style=style,
                 avoid_crowd=avoid_crowd,
+                avoid_noise=avoid_noise,
                 child_friendly=child_friendly,
                 wheelchair_accessible=wheelchair_accessible,
                 require_open=require_open,
             )
             if not rejected:
-                matches.append(deepcopy(room))
+                matches.append(self._node_data(room_id))
         return matches
 
     def recommend_room(
         self,
         style: str | None = None,
         avoid_crowd: bool = False,
+        avoid_noise: bool = False,
         child_friendly: bool | None = None,
         wheelchair_accessible: bool | None = None,
     ) -> dict[str, Any]:
         rejected_rooms: list[dict[str, Any]] = []
         candidates: list[dict[str, Any]] = []
 
-        for room in self.rooms.values():
+        for room_id in self.room_ids():
+            room = self.graph.nodes[room_id]
             rejected = self._room_rejections(
                 room,
                 style=style,
                 avoid_crowd=avoid_crowd,
+                avoid_noise=avoid_noise,
                 child_friendly=child_friendly,
                 wheelchair_accessible=wheelchair_accessible,
                 require_open=True,
@@ -230,12 +289,13 @@ class MuseumSemanticGraph:
             matching_artworks,
             style,
             avoid_crowd,
+            avoid_noise,
             child_friendly,
             wheelchair_accessible,
         )
 
         return {
-            "selected_room": deepcopy(selected),
+            "selected_room": self._node_data(selected["id"]),
             "matching_artworks": matching_artworks,
             "reason": reason,
             "rejected_rooms": rejected_rooms,
@@ -246,6 +306,7 @@ class MuseumSemanticGraph:
         room: dict[str, Any],
         style: str | None,
         avoid_crowd: bool,
+        avoid_noise: bool,
         child_friendly: bool | None,
         wheelchair_accessible: bool | None,
         require_open: bool,
@@ -255,6 +316,8 @@ class MuseumSemanticGraph:
             rejected.append("room_closed")
         if avoid_crowd and room["crowd_level"] == "high":
             rejected.append("crowd_level_high")
+        if avoid_noise and room["noise_level"] == "high":
+            rejected.append("noise_level_high")
         if child_friendly is not None and room["child_friendly"] != child_friendly:
             rejected.append("child_friendly_mismatch")
         if (
@@ -269,11 +332,14 @@ class MuseumSemanticGraph:
     def _matching_artworks_for_room(
         self, room_id: str, style: str | None = None
     ) -> list[dict[str, Any]]:
-        artworks = [
-            artwork
-            for artwork in self.artworks.values()
-            if artwork["located_in"] == room_id
-        ]
+        artworks = []
+        for source, _, attributes in self.graph.in_edges(room_id, data=True):
+            node = self.graph.nodes[source]
+            if (
+                node.get("kind") == "artwork"
+                and "located_in" in attributes.get("relations", [])
+            ):
+                artworks.append(node)
         if style:
             style_key = _normalize(style)
             artworks = [
@@ -281,7 +347,14 @@ class MuseumSemanticGraph:
                 for artwork in artworks
                 if _normalize(artwork["style"]) == style_key
             ]
-        return [deepcopy(artwork) for artwork in artworks]
+        return [self._node_data(artwork["id"]) for artwork in artworks]
+
+    def _node_data(self, node_id: str) -> dict[str, Any]:
+        return {
+            field: deepcopy(value)
+            for field, value in self.graph.nodes[node_id].items()
+            if field != "kind"
+        }
 
     def _recommendation_reason(
         self,
@@ -289,18 +362,22 @@ class MuseumSemanticGraph:
         matching_artworks: list[dict[str, Any]],
         style: str | None,
         avoid_crowd: bool,
+        avoid_noise: bool,
         child_friendly: bool | None,
         wheelchair_accessible: bool | None,
     ) -> str:
         parts = [
             f"Selected {selected['display_name']} because it is open",
             f"has {selected['crowd_level']} crowd level",
+            f"has {selected['noise_level']} noise level",
         ]
         if style:
             titles = ", ".join(artwork["title"] for artwork in matching_artworks)
             parts.append(f"contains {style} artwork: {titles}")
         if avoid_crowd:
             parts.append("satisfies the avoid-crowd constraint")
+        if avoid_noise:
+            parts.append("satisfies the avoid-noise constraint")
         if child_friendly is True:
             parts.append("is child-friendly")
         if wheelchair_accessible is True:
@@ -308,7 +385,10 @@ class MuseumSemanticGraph:
         return "; ".join(parts) + "."
 
     def _validate_room_id(self, room_id: str) -> None:
-        if room_id not in self.rooms:
+        if (
+            room_id not in self.graph
+            or self.graph.nodes[room_id].get("kind") != "room"
+        ):
             raise ValueError(f"Unknown room id: {room_id}")
 
     def _validate_room_state_values(

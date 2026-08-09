@@ -32,6 +32,11 @@ class ReasoningNode(Node):
             "/museum/assistant_response",
             10,
         )
+        self.scene_graph_publisher = self.create_publisher(
+            String,
+            "/museum/scene_graph",
+            10,
+        )
         self.ambient_subscription = self.create_subscription(
             String,
             "/museum/ambient_state",
@@ -50,6 +55,7 @@ class ReasoningNode(Node):
         self.get_logger().info(
             "Publishing assistant responses on /museum/assistant_response"
         )
+        self._publish_scene_graph()
 
     def _handle_ambient_state(self, msg: String) -> None:
         try:
@@ -72,6 +78,7 @@ class ReasoningNode(Node):
             return
 
         self.get_logger().info(f"Updated ambient room state: {updated_state}")
+        self._publish_scene_graph()
 
     def _handle_user_request(self, msg: String) -> None:
         try:
@@ -99,6 +106,11 @@ class ReasoningNode(Node):
         msg = String()
         msg.data = json.dumps(response)
         self.response_publisher.publish(msg)
+
+    def _publish_scene_graph(self) -> None:
+        msg = String()
+        msg.data = json.dumps(self.semantic_graph.snapshot())
+        self.scene_graph_publisher.publish(msg)
 
 
 def main(args=None):
