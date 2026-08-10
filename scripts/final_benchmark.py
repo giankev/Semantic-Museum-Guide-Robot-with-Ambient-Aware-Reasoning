@@ -34,6 +34,7 @@ BASE_FIELDS = (
     "scenario",
     "variant",
     "status",
+    "failure_reason",
 )
 CSV_FIELDS = {
     "engagement": (
@@ -141,9 +142,14 @@ CSV_FIELDS = {
     "end_to_end": BASE_FIELDS + (
         "trial",
         "configuration",
+        "engagement_success",
+        "engagement_activation_latency_s",
         "stt_success",
         "stt_latency_s",
         "transcript",
+        "transcript_correct",
+        "structured_request_count",
+        "session_correlation",
         "intent_correct",
         "constraints_correct",
         "selected_room",
@@ -154,6 +160,8 @@ CSV_FIELDS = {
         "amcl_target_error_m",
         "dwb_active",
         "proxemic_force_active",
+        "anisotropic_critic_active",
+        "people_stream_received",
         "terminal_cmd_vel_zero",
         "overall_success",
         "source_path",
@@ -308,6 +316,9 @@ def final_navigation_batch():
 
 def import_navigation():
     batch_name, reports = final_navigation_batch()
+    manifest = load_json(DIAGNOSTICS / str(batch_name) / "manifest.json") or {}
+    new_sources = manifest.get("new_runs", {})
+    historical_source = manifest.get("historical_source")
     rows = []
     for path, report in reports:
         destination = report["destination"]
@@ -319,11 +330,18 @@ def import_navigation():
             if isinstance(item.get("duration_sim_sec"), (int, float))
         ]
         final = report.get("final", {})
+        source = new_sources.get(path.name)
+        if source is None and historical_source:
+            source = str(Path(historical_source) / path.name)
+        source_path = REPO_ROOT / source if source else path
+        timestamp = report.get("campaign_timestamp_utc")
+        if timestamp is None:
+            timestamp = timestamp_from_name(source_path.parent.name)
         rows.append(
             {
                 "run_id": f"navigation-{batch_name}-{destination}-{trial}",
-                "timestamp_utc": timestamp_from_name(batch_name),
-                "git_commit": "NA",
+                "timestamp_utc": timestamp,
+                "git_commit": report.get("campaign_git_commit", "NA"),
                 "benchmark": "navigation",
                 "scenario": destination,
                 "variant": "baseline_dwb",
@@ -340,7 +358,7 @@ def import_navigation():
                 "terminal_cmd_vel_zero": report.get("checks", {}).get(
                     "terminal_command_zero"
                 ),
-                "source_path": relative(path),
+                "source_path": relative(source_path),
             }
         )
     return rows
@@ -394,8 +412,10 @@ def import_social():
                 rows.append(
                     {
                         "run_id": f"social-{trial_group}-{variant}",
-                        "timestamp_utc": timestamp_from_name(parent.name),
-                        "git_commit": "NA",
+                        "timestamp_utc": report.get(
+                            "campaign_timestamp_utc"
+                        ) or timestamp_from_name(parent.name),
+                        "git_commit": report.get("campaign_git_commit", "NA"),
                         "benchmark": "social_navigation",
                         "scenario": "north_gallery",
                         "variant": variant,
@@ -543,6 +563,70 @@ def import_escort_and_end_to_end():
                 ),
                 "overall_success": report.get("status") == "passed"
                 and all(assertions.values()),
+                "source_path": relative(path),
+            }
+        )
+
+    for path in sorted(DIAGNOSTICS.glob("escort_campaign_*/*.json")):
+        report = load_json(path)
+        if report is None or report.get("scenario") not in {"normal", "lost"}:
+            continue
+        scenario = report["scenario"]
+        sequence = report.get("observed_sequence", [])
+        checks = report.get("checks", {})
+        expected_sequence = report.get("expected_sequence", [])
+        escort_rows.append(
+            {
+                "run_id": f"escort-{scenario}-{path.parent.name}",
+                "timestamp_utc": report.get("campaign_timestamp_utc")
+                or timestamp_from_name(path.parent.name),
+                "git_commit": report.get("campaign_git_commit", "NA"),
+                "benchmark": "escort",
+                "scenario": scenario,
+                "variant": "controlled_visitor",
+                "status": report.get("status"),
+                "failure_reason": report.get("failure_reason"),
+                "trial": 1,
+                "configuration": report.get("configuration"),
+                "expected_sequence": expected_sequence,
+                "observed_sequence": sequence,
+                "transition_correct": sequence == expected_sequence,
+                "nav_cancel_correct": checks.get(
+                    "navigation_canceled",
+                    checks.get("navigation_success"),
+                ),
+                "resume_correct": checks.get(
+                    "no_automatic_resume",
+                    checks.get("no_incorrect_wait_or_lost"),
+                ),
+                "duplicate_goal": not checks.get(
+                    "no_duplicate_completed_waypoint", True
+                ),
+                "terminal_cmd_vel_zero": checks.get(
+                    "terminal_cmd_vel_zero"
+                ),
+                "final_outcome": sequence[-1] if sequence else None,
+                "source_path": relative(path),
+            }
+        )
+
+    for path in sorted(DIAGNOSTICS.glob("e2e_campaign_*/*.json")):
+        report = load_json(path)
+        if report is None or report.get("benchmark") != "end_to_end":
+            continue
+        end_rows.append(
+            {
+                "run_id": report.get("run_id", path.stem),
+                "timestamp_utc": report.get("campaign_timestamp_utc")
+                or timestamp_from_name(path.parent.name),
+                "git_commit": report.get("campaign_git_commit", "NA"),
+                "benchmark": "end_to_end",
+                "scenario": report.get("scenario"),
+                "variant": report.get("variant"),
+                "status": report.get("status"),
+                "failure_reason": report.get("failure_reason"),
+                "trial": report.get("trial"),
+                "configuration": report.get("configuration"),
                 "source_path": relative(path),
             }
         )
@@ -903,11 +987,19 @@ def social_summary(rows):
                     percentages.append(100.0 * (after - before) / before)
         output["paired_deltas"][label] = {
             "minimum_person_distance_delta_m": mean(total_deltas),
+            "minimum_person_distance_delta_m_std": std(total_deltas),
             "minimum_person_distance_improvement_pct": mean(
                 total_percentages
             ),
+            "minimum_person_distance_improvement_pct_std": std(
+                total_percentages
+            ),
             "minimum_front_person_distance_delta_m": mean(front_deltas),
+            "minimum_front_person_distance_delta_m_std": std(front_deltas),
             "minimum_front_person_distance_improvement_pct": mean(
+                front_percentages
+            ),
+            "minimum_front_person_distance_improvement_pct_std": std(
                 front_percentages
             ),
         }
@@ -1021,8 +1113,11 @@ def build_summary():
         )
         for scenario in ("normal", "lag_resume", "lost")
     }
+    valid_end_to_end = [
+        row for row in tables["end_to_end"] if row["status"] != "invalid_run"
+    ]
     end_success = sum(
-        boolean(row["overall_success"]) is True for row in tables["end_to_end"]
+        boolean(row["overall_success"]) is True for row in valid_end_to_end
     )
     return {
         "generated_at": now_utc(),
@@ -1043,12 +1138,31 @@ def build_summary():
         "engagement": engagement_summary(tables["engagement"]),
         "escort": {"valid_runs": escort_counts},
         "end_to_end": {
-            "N": len(tables["end_to_end"]),
+            "N": len(valid_end_to_end),
+            "invalid_runs": sum(
+                row["status"] == "invalid_run"
+                for row in tables["end_to_end"]
+            ),
             "successful_runs": end_success,
             "success_rate": (
-                end_success / len(tables["end_to_end"])
-                if tables["end_to_end"]
+                end_success / len(valid_end_to_end)
+                if valid_end_to_end
                 else None
+            ),
+            "gazebo_target_error_m": metric(
+                [number(row["gazebo_target_error_m"]) for row in valid_end_to_end]
+            ),
+            "amcl_target_error_m": metric(
+                [number(row["amcl_target_error_m"]) for row in valid_end_to_end]
+            ),
+            "stt_latency_s": metric(
+                [number(row["stt_latency_s"]) for row in valid_end_to_end]
+            ),
+            "engagement_activation_latency_s": metric(
+                [
+                    number(row["engagement_activation_latency_s"])
+                    for row in valid_end_to_end
+                ]
             ),
         },
         "limitations": [
@@ -1140,6 +1254,20 @@ def flatten_summary(summary):
                         "N": values["N"],
                     }
                 )
+    for comparison, values in social["paired_deltas"].items():
+        for metric_name, value in values.items():
+            rows.append(
+                {
+                    "benchmark": "social_navigation",
+                    "scenario": "north_gallery",
+                    "variant": comparison,
+                    "metric": metric_name,
+                    "value": value,
+                    "unit": "percent" if metric_name.endswith("pct")
+                    or metric_name.endswith("pct_std") else "m",
+                    "N": social["triplet_N"],
+                }
+            )
     return rows
 
 
@@ -1293,6 +1421,19 @@ def command_plot(_args):
             range(3), means, marker="D", linewidth=2.2, color="#C00000",
             label="mean",
         )
+        errors = [
+            std(
+                [
+                    values_by_variant[variant].get(group)
+                    for group in trial_groups
+                ]
+            ) or 0.0
+            for variant in variants
+        ]
+        axis.errorbar(
+            range(3), means, yerr=errors, capsize=4, fmt="none",
+            color="#C00000", linewidth=1.4, label="mean ± SD",
+        )
         axis.set_xticks(
             range(3), ["DWB baseline", "Isotropic", "Anisotropic"]
         )
@@ -1424,7 +1565,9 @@ def command_status(_args):
         print(f"  {scenario}: {count}/1")
     print("End-to-end:")
     complete = sum(row["status"] == "passed" for row in end_to_end)
+    invalid = sum(row["status"] == "invalid_run" for row in end_to_end)
     print(f"  complete runs: {complete}/3")
+    print(f"  invalid preflight attempts: {invalid}")
 
 
 def parse_args():

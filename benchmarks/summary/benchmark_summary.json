@@ -1,6 +1,23 @@
 {
   "end_to_end": {
     "N": 1,
+    "amcl_target_error_m": {
+      "mean": 0.19694245510237834,
+      "std": null
+    },
+    "engagement_activation_latency_s": {
+      "mean": null,
+      "std": null
+    },
+    "gazebo_target_error_m": {
+      "mean": 0.11722585299490262,
+      "std": null
+    },
+    "invalid_runs": 2,
+    "stt_latency_s": {
+      "mean": 6.181,
+      "std": null
+    },
     "success_rate": 1.0,
     "successful_runs": 1
   },
@@ -15,13 +32,13 @@
   "escort": {
     "valid_runs": {
       "lag_resume": 1,
-      "lost": 0,
-      "normal": 0
+      "lost": 1,
+      "normal": 1
     }
   },
-  "generated_at": "2026-08-10T13:44:03Z",
+  "generated_at": "2026-08-10T16:25:36Z",
   "git_branch": "integrate-supplied-reasoning-escort",
-  "git_commit": "65989cb2c41aec4bcee6395ba15c4026f145c8e1",
+  "git_commit": "257cfdf6e62374536555b6958d4975a3916678c0",
   "language": {
     "constraint_extraction": {
       "N": 22,
@@ -67,85 +84,85 @@
   "museum_world": "supplied_museum",
   "navigation": {
     "central_gallery": {
-      "N": 2,
+      "N": 3,
       "amcl_target_error_m": {
-        "mean": 0.19110210946567913,
-        "std": 0.0057653225341431765
+        "mean": 0.18249356170311196,
+        "std": 0.015457708617468225
       },
       "gazebo_target_error_m": {
-        "mean": 0.28483600858928043,
-        "std": 0.02561068180450854
+        "mean": 0.27401293836472385,
+        "std": 0.026064728245330748
       },
       "navigation_time_s": {
-        "mean": 98.16499999999999,
-        "std": 0.12727922061357333
+        "mean": 97.83666666666666,
+        "std": 0.5757676035809306
       },
       "physical_path_length_m": {
-        "mean": 4.756082022816209,
-        "std": 0.02499418660161103
+        "mean": 4.766178711293828,
+        "std": 0.024863307032258995
       },
       "success_rate": 1.0,
       "total_recoveries": null
     },
     "north_gallery": {
-      "N": 1,
+      "N": 3,
       "amcl_target_error_m": {
-        "mean": 0.19179592505724496,
-        "std": null
+        "mean": 0.19186570289893923,
+        "std": 0.000474558087978805
       },
       "gazebo_target_error_m": {
-        "mean": 0.10895112654558656,
-        "std": null
+        "mean": 0.11246582261237863,
+        "std": 0.009165078683440766
       },
       "navigation_time_s": {
-        "mean": 138.71,
-        "std": null
+        "mean": 139.19166666666666,
+        "std": 0.4192950432968713
       },
       "physical_path_length_m": {
-        "mean": 16.049013788800636,
-        "std": null
+        "mean": 16.04905897000531,
+        "std": 0.00037564347255503796
       },
       "success_rate": 1.0,
       "total_recoveries": null
     },
     "south_east_gallery": {
-      "N": 2,
+      "N": 3,
       "amcl_target_error_m": {
-        "mean": 0.12491671557448542,
-        "std": 0.004805132580033715
+        "mean": 0.11793915972573948,
+        "std": 0.012554023515309978
       },
       "gazebo_target_error_m": {
-        "mean": 0.4034452683447989,
-        "std": 0.02970495440281713
+        "mean": 0.40233027024356044,
+        "std": 0.021093169992535944
       },
       "navigation_time_s": {
-        "mean": 261.4225,
-        "std": 2.1248558774655724
+        "mean": 261.88000000000005,
+        "std": 1.6986538788111
       },
       "physical_path_length_m": {
-        "mean": 30.124592226336414,
-        "std": 0.04979532193465473
+        "mean": 30.131188531632393,
+        "std": 0.03701784399396151
       },
       "success_rate": 1.0,
       "total_recoveries": null
     },
     "south_west_gallery": {
-      "N": 2,
+      "N": 3,
       "amcl_target_error_m": {
-        "mean": 0.16929682716991729,
-        "std": 0.004293082744228373
+        "mean": 0.16865734509806338,
+        "std": 0.003231422548207426
       },
       "gazebo_target_error_m": {
-        "mean": 0.4471159688585733,
-        "std": 0.028155049900763954
+        "mean": 0.43363698096316433,
+        "std": 0.030682287423055704
       },
       "navigation_time_s": {
-        "mean": 256.0075,
-        "std": 0.7530687219636514
+        "mean": 255.885,
+        "std": 0.5732146194925377
       },
       "physical_path_length_m": {
-        "mean": 29.952509105258258,
-        "std": 0.05045203275937902
+        "mean": 29.958759167158505,
+        "std": 0.03728127715150616
       },
       "success_rate": 1.0,
       "total_recoveries": null
@@ -153,14 +170,14 @@
   },
   "navigation_controller": "dwb_core::DWBLocalPlanner",
   "number_of_runs_per_benchmark": {
-    "end_to_end": 1,
+    "end_to_end": 3,
     "engagement": 7,
-    "escort": 1,
+    "escort": 3,
     "language": 27,
-    "navigation": 7,
+    "navigation": 12,
     "reasoning": 25,
     "session_memory": 8,
-    "social_navigation": 3
+    "social_navigation": 9
   },
   "reasoning": {
     "decision": {
@@ -238,85 +255,97 @@
   "social_critic": "museum_social_critic::ProxemicForceCritic",
   "social_navigation": {
     "anisotropic": {
-      "N": 1,
+      "N": 3,
       "minimum_front_person_distance_m": {
-        "mean": 1.5001747821443703,
-        "std": null
+        "mean": 1.4842715188980984,
+        "std": 0.013772778459435283
       },
       "minimum_person_distance_m": {
-        "mean": 1.4891087950130888,
-        "std": null
+        "mean": 1.4772196331704972,
+        "std": 0.011494078900687852
       },
       "navigation_time_s": {
-        "mean": 145.865,
-        "std": null
+        "mean": 145.78666666666666,
+        "std": 1.3641877925466732
       },
       "physical_path_length_m": {
-        "mean": 16.051100699382353,
-        "std": null
+        "mean": 16.05168828225347,
+        "std": 0.001802109640209704
       },
       "success_rate": 1.0
     },
     "baseline": {
-      "N": 1,
+      "N": 3,
       "minimum_front_person_distance_m": {
-        "mean": 1.4424061288427854,
-        "std": null
+        "mean": 1.4266598555350631,
+        "std": 0.02539763154255006
       },
       "minimum_person_distance_m": {
-        "mean": 1.4424061288427854,
-        "std": null
+        "mean": 1.4232036558271257,
+        "std": 0.02822885189841699
       },
       "navigation_time_s": {
-        "mean": 144.22,
-        "std": null
+        "mean": 144.91333333333333,
+        "std": 1.3017520245167176
       },
       "physical_path_length_m": {
-        "mean": 16.053409766464007,
-        "std": null
+        "mean": 16.054325777694228,
+        "std": 0.004131940463521551
       },
       "success_rate": 1.0
     },
     "isotropic": {
-      "N": 1,
+      "N": 3,
       "minimum_front_person_distance_m": {
-        "mean": 1.488970526081255,
-        "std": null
+        "mean": 1.4722782919181088,
+        "std": 0.015888618216314758
       },
       "minimum_person_distance_m": {
-        "mean": 1.474531588593506,
-        "std": null
+        "mean": 1.467465312755526,
+        "std": 0.008995797267038022
       },
       "navigation_time_s": {
-        "mean": 143.38500000000002,
-        "std": null
+        "mean": 143.55166666666668,
+        "std": 0.5060220680299727
       },
       "physical_path_length_m": {
-        "mean": 16.052136804909484,
-        "std": null
+        "mean": 16.0538430436484,
+        "std": 0.005124553362477565
       },
       "success_rate": 1.0
     },
     "paired_deltas": {
       "anisotropic_minus_baseline": {
-        "minimum_front_person_distance_delta_m": 0.05776865330158487,
-        "minimum_front_person_distance_improvement_pct": 4.005019955643945,
-        "minimum_person_distance_delta_m": 0.046702666170303386,
-        "minimum_person_distance_improvement_pct": 3.2378305413727015
+        "minimum_front_person_distance_delta_m": 0.05761166336303525,
+        "minimum_front_person_distance_delta_m_std": 0.02149055579418442,
+        "minimum_front_person_distance_improvement_pct": 4.054273966300956,
+        "minimum_front_person_distance_improvement_pct_std": 1.5768589208616337,
+        "minimum_person_distance_delta_m": 0.05401597734337157,
+        "minimum_person_distance_delta_m_std": 0.028628614304500713,
+        "minimum_person_distance_improvement_pct": 3.821126864780839,
+        "minimum_person_distance_improvement_pct_std": 2.1029790036739846
       },
       "anisotropic_minus_isotropic": {
-        "minimum_front_person_distance_delta_m": 0.01120425606311537,
-        "minimum_front_person_distance_improvement_pct": 0.7524834015756696,
-        "minimum_person_distance_delta_m": 0.014577206419582822,
-        "minimum_person_distance_improvement_pct": 0.9885991275024097
+        "minimum_front_person_distance_delta_m": 0.011993226979989688,
+        "minimum_front_person_distance_delta_m_std": 0.006565268997097393,
+        "minimum_front_person_distance_improvement_pct": 0.8163081799867081,
+        "minimum_front_person_distance_improvement_pct_std": 0.4532362204277676,
+        "minimum_person_distance_delta_m": 0.009754320414971263,
+        "minimum_person_distance_delta_m_std": 0.004432803869015578,
+        "minimum_person_distance_improvement_pct": 0.6642349781931745,
+        "minimum_person_distance_improvement_pct_std": 0.2994323942423411
       },
       "isotropic_minus_baseline": {
-        "minimum_front_person_distance_delta_m": 0.0465643972384695,
-        "minimum_front_person_distance_improvement_pct": 3.2282445496697396,
-        "minimum_person_distance_delta_m": 0.032125459750720564,
-        "minimum_person_distance_improvement_pct": 2.227213203572159
+        "minimum_front_person_distance_delta_m": 0.04561843638304556,
+        "minimum_front_person_distance_delta_m_std": 0.02803171641124176,
+        "minimum_front_person_distance_improvement_pct": 3.2177704952549306,
+        "minimum_front_person_distance_improvement_pct_std": 2.0234439714988826,
+        "minimum_person_distance_delta_m": 0.044261656928400304,
+        "minimum_person_distance_delta_m_std": 0.031225985916610847,
+        "minimum_person_distance_improvement_pct": 3.1389982377037726,
+        "minimum_person_distance_improvement_pct_std": 2.279238054768421
       }
     },
-    "triplet_N": 1
+    "triplet_N": 3
   }
 }
