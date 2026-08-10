@@ -1,25 +1,25 @@
 {
   "end_to_end": {
-    "N": 1,
+    "N": 3,
     "amcl_target_error_m": {
-      "mean": 0.19694245510237834,
-      "std": null
+      "mean": 0.20878500490774907,
+      "std": 0.01054525536081938
     },
     "engagement_activation_latency_s": {
-      "mean": null,
-      "std": null
+      "mean": 7.419670724500065,
+      "std": 3.1421329558906907
     },
     "gazebo_target_error_m": {
-      "mean": 0.11722585299490262,
-      "std": null
+      "mean": 0.1207861463186752,
+      "std": 0.007143760394794373
     },
-    "invalid_runs": 2,
+    "invalid_runs": 3,
     "stt_latency_s": {
-      "mean": 6.181,
-      "std": null
+      "mean": 6.808,
+      "std": 0.6210869504344783
     },
     "success_rate": 1.0,
-    "successful_runs": 1
+    "successful_runs": 3
   },
   "engagement": {
     "bounded_engagement_state_accuracy": 1.0,
@@ -36,9 +36,9 @@
       "normal": 1
     }
   },
-  "generated_at": "2026-08-10T16:25:36Z",
+  "generated_at": "2026-08-10T18:48:57Z",
   "git_branch": "integrate-supplied-reasoning-escort",
-  "git_commit": "257cfdf6e62374536555b6958d4975a3916678c0",
+  "git_commit": "2acf3807225134b32099b33c76e819d7581cf4bb",
   "language": {
     "constraint_extraction": {
       "N": 22,
@@ -170,7 +170,7 @@
   },
   "navigation_controller": "dwb_core::DWBLocalPlanner",
   "number_of_runs_per_benchmark": {
-    "end_to_end": 3,
+    "end_to_end": 6,
     "engagement": 7,
     "escort": 3,
     "language": 27,

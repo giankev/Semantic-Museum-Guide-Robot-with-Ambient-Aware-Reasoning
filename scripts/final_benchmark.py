@@ -627,6 +627,45 @@ def import_escort_and_end_to_end():
                 "failure_reason": report.get("failure_reason"),
                 "trial": report.get("trial"),
                 "configuration": report.get("configuration"),
+                "engagement_success": report.get("engagement_success"),
+                "engagement_activation_latency_s": report.get(
+                    "engagement_activation_latency_s"
+                ),
+                "stt_success": report.get("stt_success"),
+                "stt_latency_s": report.get("stt_latency_s"),
+                "transcript": report.get("transcript"),
+                "transcript_correct": report.get("transcript_correct"),
+                "structured_request_count": report.get(
+                    "structured_request_count"
+                ),
+                "session_correlation": report.get("session_correlation"),
+                "intent_correct": report.get("intent_correct"),
+                "constraints_correct": report.get("constraints_correct"),
+                "selected_room": report.get("reasoning_result", {}).get(
+                    "selected_room"
+                ),
+                "route": report.get("route_request", {}).get("route"),
+                "escort_arrived": report.get("escort_arrived"),
+                "nav_success": report.get("nav_success"),
+                "gazebo_target_error_m": report.get(
+                    "gazebo_target_error_m"
+                ),
+                "amcl_target_error_m": report.get("amcl_target_error_m"),
+                "dwb_active": report.get("dwb_active"),
+                "proxemic_force_active": report.get(
+                    "proxemic_force_active"
+                ),
+                "anisotropic_critic_active": report.get(
+                    "anisotropic_critic_active"
+                ),
+                "people_stream_received": report.get(
+                    "people_stream_received"
+                ),
+                "terminal_cmd_vel_zero": report.get(
+                    "terminal_cmd_vel_zero"
+                ),
+                "overall_success": report.get("status") == "passed"
+                and all(report.get("assertions", {}).values()),
                 "source_path": relative(path),
             }
         )

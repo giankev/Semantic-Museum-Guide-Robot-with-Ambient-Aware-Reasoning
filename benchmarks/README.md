@@ -153,11 +153,17 @@ tests or invent physical results.
 Record end-to-end integration evidence with the existing runner:
 
 ```bash
-FINAL_SKIP_DOCKER_BUILD=1 \
-./scripts/final_end_to_end_acceptance.sh ~/phase8_request.wav
+campaign_id="e2e_campaign_$(date -u +%Y%m%dT%H%M%SZ)"
+E2E_TRIAL=2 E2E_CAMPAIGN_ID="${campaign_id}" FINAL_SKIP_DOCKER_BUILD=1 \
+  ./scripts/final_end_to_end_acceptance.sh ~/phase8_request.wav
+E2E_TRIAL=3 E2E_CAMPAIGN_ID="${campaign_id}" FINAL_SKIP_DOCKER_BUILD=1 \
+  ./scripts/final_end_to_end_acceptance.sh ~/phase8_request.wav
 ```
 
-The target is three complete runs. The WAV stays outside `benchmarks/`.
+Each trial starts a fresh container and uses required engagement, Groq STT,
+and the supplied anisotropic Nav2 configuration. The target is three complete
+runs. The WAV stays outside `benchmarks/` and is removed from temporary
+diagnostics during shutdown.
 
 ## Metrics and report-ready outputs
 
