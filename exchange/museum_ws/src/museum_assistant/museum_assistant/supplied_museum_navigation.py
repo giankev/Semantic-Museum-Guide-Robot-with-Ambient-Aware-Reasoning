@@ -210,6 +210,17 @@ class GoalSequence:
         else:
             raise ValueError(f"unsupported goal result: {status}")
 
+    def pause_active(self) -> None:
+        if self.active is None or self.state != "active":
+            raise RuntimeError("there is no active route goal to pause")
+        self.state = "paused"
+
+    def resume_active(self) -> Pose2D:
+        if self.active is None or self.state != "paused":
+            raise RuntimeError("there is no paused route goal to resume")
+        self.state = "active"
+        return self.active
+
     def cancel(self) -> None:
         if self.state not in {"succeeded", "failed", "cancelled"}:
             self.active = None

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from museum_assistant.contracts import StructuredRequest
+from museum_assistant.contracts import SUPPORTED_CONSTRAINTS
 from museum_assistant.language_parser import (
     CandidateValidationError,
     DEFAULT_GROQ_MODEL,
@@ -34,6 +35,46 @@ def test_deterministic_italian_navigation():
     assert candidate["constraints"] == {"style": "impressionism"}
 
 
+def test_deterministic_classical_recommendation():
+    candidate = parse_deterministic("Consigliami qualcosa di classico")
+
+    assert candidate["intent"] == "recommend"
+    assert candidate["constraints"] == {"style": "classical"}
+
+
+@pytest.mark.parametrize(
+    "text,expected_intent",
+    [
+        ("Vorrei una sala tranquilla", "recommend"),
+        ("Evita le sale rumorose", "recommend"),
+        ("Preferisco un posto silenzioso", "recommend"),
+        ("Avoid noisy rooms", "recommend"),
+        ("I prefer somewhere quiet", "recommend"),
+        ("Take me somewhere quiet", "recommend_and_prepare_navigation"),
+    ],
+)
+def test_deterministic_avoid_noise_is_distinct_from_crowd(
+    text, expected_intent
+):
+    candidate = parse_deterministic(text)
+
+    assert candidate["intent"] == expected_intent
+    assert candidate["constraints"] == {"avoid_noise": True}
+
+
+def test_deterministic_combines_crowd_and_noise_constraints():
+    candidate = parse_deterministic(
+        "Portami a vedere arte impressionista evitando folla e rumore"
+    )
+
+    assert candidate["intent"] == "recommend_and_prepare_navigation"
+    assert candidate["constraints"] == {
+        "style": "impressionism",
+        "avoid_crowd": True,
+        "avoid_noise": True,
+    }
+
+
 def test_constraints_without_movement_default_to_recommendation():
     candidate = parse_deterministic(
         "Vorrei qualcosa per bambini e non affollato"
@@ -59,7 +100,7 @@ def test_deterministic_english_accessible_navigation():
     "text",
     [
         "unsupported text",
-        "quiet",
+        "dance near the cafe",
         "move forward one metre",
     ],
 )
@@ -292,6 +333,7 @@ def test_groq_client_requests_strict_json_schema(monkeypatch):
                                     "constraints": {
                                         "style": None,
                                         "avoid_crowd": None,
+                                        "avoid_noise": None,
                                         "child_friendly": None,
                                         "wheelchair_accessible": None,
                                     },
@@ -339,18 +381,14 @@ def test_groq_client_requests_strict_json_schema(monkeypatch):
 
     constraints = schema["properties"]["constraints"]
     assert constraints["additionalProperties"] is False
-    assert set(constraints["properties"]) == {
-        "style",
-        "avoid_crowd",
-        "child_friendly",
-        "wheelchair_accessible",
-    }
+    assert set(constraints["properties"]) == SUPPORTED_CONSTRAINTS
     assert set(constraints["required"]) == set(constraints["properties"])
     assert constraints["properties"]["style"] == {
         "type": ["string", "null"]
     }
     for name in (
         "avoid_crowd",
+        "avoid_noise",
         "child_friendly",
         "wheelchair_accessible",
     ):
@@ -371,6 +409,7 @@ def test_null_constraints_are_removed_after_local_validation():
                 "constraints": {
                     "style": None,
                     "avoid_crowd": True,
+                    "avoid_noise": None,
                     "child_friendly": True,
                     "wheelchair_accessible": None,
                 },
@@ -400,6 +439,7 @@ def test_plural_intents_field_is_not_renamed():
                 "constraints": {
                     "style": None,
                     "avoid_crowd": None,
+                    "avoid_noise": None,
                     "child_friendly": None,
                     "wheelchair_accessible": None,
                 },

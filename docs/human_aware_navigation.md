@@ -374,6 +374,120 @@ Phase 6B behavioral acceptance is therefore **PASS**. The optional moving
 bystander runtime check was not needed; constant-velocity prediction is covered
 by its focused unit test, and no additional moving-human framework was added.
 
+## Supplied-Museum Opt-In Variant
+
+The supplied baseline remains `config/nav2_supplied_demo.yaml`. Its default
+launch behavior is unchanged and its critic list does not contain
+`ProxemicForce`. The opt-in variant is:
+
+```text
+config/nav2_supplied_social_force.yaml
+```
+
+This file is structurally identical to the supplied baseline except for adding
+`ProxemicForce` to `FollowPath.critics` and the seven accepted Phase 6B
+parameters. DWB, corrected simulation odometry, AMCL, speed samples, goal
+tolerance, `allow_unknown=false`, both costmaps, and the velocity smoother are
+unchanged. The critic still consumes `/people` directly, ignores `visitor_1`,
+and considers `guide_1` and `staff_1`; the compatibility bridge is not used.
+
+The existing reasoning launch accepts two opt-in arguments. The baseline
+defaults remain the same. For a controlled comparison, both variants publish
+the same people stream:
+
+```bash
+# Baseline supplied DWB
+ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
+  gzclient:=False publish_people:=True
+
+# Supplied DWB plus the existing ProxemicForceCritic
+ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py \
+  gzclient:=False publish_people:=True \
+  nav2_params_file:=$(ros2 pkg prefix museum_assistant)/share/museum_assistant/config/nav2_supplied_social_force.yaml
+```
+
+The comparison probe publishes only `/museum/user_request`; it does not bypass
+reasoning or the supplied route runner:
+
+```bash
+python3 scripts/compare_supplied_museum_social_force.py record \
+  --variant baseline --request-id supplied_social_baseline \
+  --output /tmp/baseline.json
+python3 scripts/compare_supplied_museum_social_force.py record \
+  --variant social --request-id supplied_social_force \
+  --output /tmp/social.json
+python3 scripts/compare_supplied_museum_social_force.py compare \
+  --baseline /tmp/baseline.json --social /tmp/social.json \
+  --output /tmp/comparison.json
+```
+
+Two clean `north_gallery` runs used the unchanged initial pose, route, world,
+and `guide_1` pose `(1.2, 9.0)`. Navigation time is measured from the first
+active `NavigateToPose` status through the correlated terminal result, so it
+includes the intentional escort wait/resume. Path length and guide distance
+are integrated from Gazebo model states over the same interval.
+
+| Variant | Nav2 | Escort | Gazebo error | Sim time | Wall time | Path length | Min guide distance | Recoveries / no-progress | Terminal command |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| Baseline supplied | succeeded | arrived | 0.090 m | 143.63 s | 257.34 s | 16.065 m | 1.147 m | 0 / 0 | zero |
+| Supplied social force | succeeded | arrived | 0.092 m | 143.63 s | 254.33 s | 16.064 m | 1.269 m | 0 / 0 | zero |
+
+The social variant increased minimum guide clearance by `0.122 m`. This is a
+centimeter-scale trajectory difference, not the millimeter-scale noise rejected
+in Phase 6A. The controller logged three `/people` inputs as two considered and
+one ignored, and emitted non-zero, trajectory-discriminating proxemic scores
+near the guide. Both runs preserved:
+
+```text
+reasoning:  impressionism_hall -> north_gallery
+navigation: accepted -> intentional wait cancel -> accepted -> succeeded
+escort:     escorting -> waiting -> escorting -> arrived
+```
+
+## Velocity-Aligned Anisotropic Opt-In
+
+`ProxemicForceCritic` keeps its original isotropic behavior by default. The
+optional mode uses the already transformed person velocity as a heading and
+warps only the distance passed to the existing logistic cost:
+
+```text
+anisotropic_enabled: false
+front_scale: 1.4
+side_scale: 1.0
+back_scale: 0.8
+min_heading_speed: 0.1
+```
+
+When the option is disabled, or the person's speed is below
+`min_heading_speed`, effective distance is exactly Euclidean. The moving case
+uses the velocity-aligned longitudinal/lateral axes, so the same geometric
+offset costs most in front, then at the side, then behind. Prediction,
+ignored-person filtering, transforms, aggregation, scale, and failure behavior
+are unchanged.
+
+The opt-in supplied configuration is
+`config/nav2_supplied_anisotropic.yaml`; the existing
+`nav2_supplied_social_force.yaml` remains explicitly isotropic. A validated
+fresh-run triplet used `guide_1` from `(1.4, 16.0)` with velocity
+`(0.0, -0.12)` m/s:
+
+| Variant | Nav2 | Gazebo error | Sim time | Path | Min distance | Min front distance |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Baseline | succeeded | 0.112 m | 144.220 s | 16.053 m | 1.442 m | 1.442 m |
+| Isotropic | succeeded | 0.099 m | 143.385 s | 16.052 m | 1.475 m | 1.489 m |
+| Anisotropic | succeeded | 0.114 m | 145.865 s | 16.051 m | 1.489 m | 1.500 m |
+
+All three runs produced `escorting → waiting → escorting → arrived`, used two
+unique goal UUIDs for intentional cancel/resume, received `/people`, had zero
+recoveries/no-progress failures, and ended with zero command velocity. Relative
+to isotropic, anisotropic increased total clearance by `0.0146 m` (`0.99%`)
+and front clearance by `0.0112 m` (`0.75%`). This is one validated triplet;
+the final benchmark reports `N=1` and does not present it as a statistical
+claim.
+
+The supplied technical and behavioral gates therefore both pass at the already
+accepted scale `32.0`; no tuning sweep was performed.
+
 ## Regression Result
 
 - Original baseline launch remains independent of the custom package behavior.
@@ -391,10 +505,7 @@ by its focused unit test, and no additional moving-human framework was added.
 
 ## Remaining Limitations
 
-- All accepted baseline/social measurements in this document use the
-  lightweight baseline museum. The supplied environment has no accepted
-  aligned map yet, so the custom critic was not loaded or compared there.
-- Phase 6B is a one-scenario functional acceptance result, not a broad
+- The supplied result is one controlled `north_gallery` scenario, not a broad
   quantitative evaluation or general social-navigation guarantee.
 - Only the selected scale-32 setting is accepted. Scale 64 demonstrated the
   upper failure boundary and must not be selected.

@@ -1,0 +1,4 @@
+semantic_routes:
+  impressionism_hall: north_gallery
+  ancient_art_hall: south_west_gallery
+  kids_hall: south_east_gallery

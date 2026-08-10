@@ -19,6 +19,7 @@ response schema.
   "constraints": {
     "style": "impressionism",
     "avoid_crowd": true,
+    "avoid_noise": true,
     "child_friendly": false,
     "wheelchair_accessible": true
   }
@@ -40,7 +41,11 @@ Requests without `session_id` remain valid and produce the original response
 shape. When provided, the validated session ID is copied into the reasoning
 response for correlation only; the reasoner does not manage session state.
 
-Supported intents are `recommend` and `recommend_and_prepare_navigation`. Supported constraints are `style`, `avoid_crowd`, `child_friendly`, and `wheelchair_accessible`.
+Supported intents are `recommend` and `recommend_and_prepare_navigation`.
+Supported constraints are `style`, `avoid_crowd`, `avoid_noise`,
+`child_friendly`, and `wheelchair_accessible`. `avoid_noise: true` rejects a
+room only when its current `noise_level` is `high`, with the explicit rejection
+reason `noise_level_high`.
 
 `/museum/assistant_response` carries JSON strings with the deterministic result. A successful response includes the selected room, display name, abstract skill `navigate_to`, navigation pose from the semantic map, explanation, matching artworks, and rejected rooms. If no room matches, the response uses `status: no_match` and skill `ask_clarification`. Invalid input produces `status: invalid_request`.
 
@@ -63,6 +68,7 @@ Inspect responses:
 
 ```bash
 ros2 topic echo /museum/assistant_response
+ros2 topic echo /museum/scene_graph
 ```
 
 This interface can later receive output from a deterministic natural-language

@@ -43,7 +43,10 @@ def test_supplied_world_is_valid_portable_sdf():
     assert root.attrib["version"] == "1.6"
     assert all(path not in world_text for path in FORBIDDEN_PATHS)
     mesh_uris = [element.text for element in root.findall(".//mesh/uri")]
-    assert mesh_uris == ["model.dae", "collision.dae"]
+    assert mesh_uris[:2] == ["model.dae", "collision.dae"]
+    assert mesh_uris[2:] == [
+        "humans/person_standing/meshes/standing.dae"
+    ] * 3
     floor_collision = root.find(
         ".//model[@name='floor']/link/collision"
     )
@@ -176,6 +179,27 @@ def test_complete_supplied_asset_tree_is_installed():
     assert (installed_dir / "museum.world").is_file()
     assert (installed_dir / "model.dae").is_file()
     assert (installed_dir / "collision.dae").is_file()
+    human = installed_dir / "humans" / "person_standing"
+    assert (human / "meshes" / "standing.dae").is_file()
+    assert (human / "ATTRIBUTION.md").is_file()
+    assert (human / "LICENSE").is_file()
+
+
+def test_human_names_poses_and_simple_collisions_are_preserved():
+    root = ET.parse(SOURCE_ASSET_DIR / "museum.world")
+    expected = {
+        "visitor_marker": "-1 0 0 0 0 0",
+        "guide_marker": "1.2 9 0 0 0 0",
+        "staff_marker": "35 0 0 0 0 0",
+    }
+    for name, pose in expected.items():
+        model = root.find(f".//model[@name='{name}']")
+        assert model.find("pose").text == pose
+        assert model.find(".//visual[@name='human']") is not None
+        collision = model.find(".//collision[@name='body_collision']")
+        cylinder = collision.find("geometry/cylinder")
+        assert cylinder.find("radius").text == "0.16"
+        assert cylinder.find("length").text == "0.75"
 
 
 def test_supplied_launch_resolves_the_installed_world():

@@ -45,6 +45,8 @@ is not a real-perception system or a broad social-navigation evaluation.
 - SLAM Toolbox configuration and a saved museum occupancy map.
 - Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
 - Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
+- Opt-in pretrained RGB person detection plus deterministic camera/LiDAR/dwell
+  engagement estimation, with engagement-gated session activation.
 
 The validated runtime baseline is documented in [the user manual](docs/user_manual.md).
 The Phase 4 automatic and manual procedures are in
@@ -57,6 +59,8 @@ The bounded Phase 8 file interface and its cloud-audio privacy boundary are in
 [Speech Interface](docs/speech_interface.md).
 The supplied-world asset, Gazebo, collision, and rejected-map evidence is in
 [Supplied Museum Integration](docs/supplied_museum_integration.md).
+The final sensor-based interaction-start feature is documented in
+[Engagement Detection](docs/engagement_detection.md).
 
 ### Partially Implemented
 
@@ -78,11 +82,10 @@ The supplied-world asset, Gazebo, collision, and rejected-map evidence is in
   individual calibration.
 - **Ambient world state:** updates are scripted and in memory. There is no shared persistent world-model service or task-time re-reasoning policy.
 - **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
-- **Roles and people:** roles are represented semantically. The static
-  `visitor_marker` is detected through Gazebo ground truth for the Phase 2
-  demo. Phase 5 also exposes the visitor, guide, and staff markers on `/people`,
-  but there is no real person tracking, engagement perception, or role
-  perception.
+- **Roles and people:** roles are represented semantically. Interaction can
+  start from opt-in RGB person detection and deterministic LiDAR/dwell fusion.
+  Escort monitoring and the `/people` stream remain simulation-assisted, and
+  there is no identity or role recognition.
 - **Sessions and downstream modules:** one minimal in-memory session and one
   escort task are supported for the static simulated visitor. There are no
   preferences, history, persistence, Interaction Manager, Behavior Executive,

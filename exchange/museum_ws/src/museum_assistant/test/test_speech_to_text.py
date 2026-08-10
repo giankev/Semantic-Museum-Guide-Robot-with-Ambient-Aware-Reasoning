@@ -3,6 +3,7 @@ from pathlib import Path
 import threading
 import time
 from types import SimpleNamespace
+import wave
 
 import pytest
 
@@ -22,6 +23,15 @@ from museum_assistant.speech_to_text import (
 
 def write_audio(path: Path, content: bytes = b"not decoded in unit tests") -> Path:
     path.write_bytes(content)
+    return path
+
+
+def write_wav(path: Path) -> Path:
+    with wave.open(str(path), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(16000)
+        audio.writeframes(b"\x00\x00" * 160)
     return path
 
 
@@ -114,12 +124,26 @@ def make_recording_factory(response_text=" transcript ", provider_error=None):
     return factory, record
 
 
-def test_successful_fake_transcription_returns_stripped_text(tmp_path):
-    path = write_audio(tmp_path / "sample.m4a")
-    factory, _record = make_recording_factory("  Testo italiano.  ")
+def test_italian_wav_transcription_returns_expected_text(tmp_path):
+    path = write_wav(tmp_path / "italian_request.wav")
+    expected = "Portami a vedere qualcosa di impressionista evitando la folla"
+    factory, _record = make_recording_factory(f"  {expected}  ")
     client = GroqTranscriptionClient("unit-key", openai_factory=factory)
 
-    assert client.transcribe(str(path)).text == "Testo italiano."
+    assert client.transcribe(str(path)).text == expected
+
+
+def test_successful_transcription_is_consumed_for_publication_once(tmp_path):
+    expected = "Portami a vedere qualcosa di impressionista evitando la folla"
+    path = write_wav(tmp_path / "request.wav")
+    factory, _record = make_recording_factory(expected)
+    client = GroqTranscriptionClient("unit-key", openai_factory=factory)
+    coordinator = TranscriptionCoordinator(client)
+    assert coordinator.submit(str(path)) is None
+    outcome = poll_until_ready(coordinator)
+
+    assert publication_data(outcome)[1] == expected
+    assert coordinator.poll() is None
 
 
 def test_whitespace_only_transcription_is_rejected(tmp_path):
@@ -184,6 +208,27 @@ def test_publication_boundary_emits_text_only_for_success():
     assert success_text == "Portami al museo"
     assert json.loads(failure_status)["status"] == "transcription_api_error"
     assert failure_text is None
+
+
+def test_empty_audio_and_stt_failure_never_publish_text(tmp_path):
+    empty_path = write_audio(tmp_path / "empty.wav", b"")
+    empty_client = GroqTranscriptionClient("unit-key")
+    with pytest.raises(SpeechToTextError) as empty_error:
+        empty_client.transcribe(str(empty_path))
+
+    empty = TranscriptionOutcome(
+        audio_request_id="audio_empty",
+        status=empty_error.value.status,
+        model=DEFAULT_GROQ_STT_MODEL,
+    )
+    failed = TranscriptionOutcome(
+        audio_request_id="audio_failure",
+        status="transcription_api_error",
+        model=DEFAULT_GROQ_STT_MODEL,
+    )
+    assert empty_error.value.status == "empty_audio_file"
+    assert publication_data(empty)[1] is None
+    assert publication_data(failed)[1] is None
 
 
 def poll_until_ready(coordinator, timeout=1.0):

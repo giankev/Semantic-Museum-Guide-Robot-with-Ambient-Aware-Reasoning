@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <unordered_set>
 #include <vector>
 
@@ -51,4 +52,56 @@ TEST(ProxemicMath, MaximumDoesNotGrowWithRepeatedSamples)
   EXPECT_DOUBLE_EQ(
     msc::maximumProxemicScore(one_pose, people, {}, 1.0, 0.4),
     msc::maximumProxemicScore(repeated, people, {}, 1.0, 0.4));
+}
+
+TEST(ProxemicMath, DisabledAnisotropyIsExactIsotropicRegression)
+{
+  const std::vector<msc::TimedPoint> poses{{1.0, 2.0, 0.5}};
+  const std::vector<msc::PersonState> people{{"guide_1", 0.2, 0.4, 0.3, -0.1}};
+  const double predicted_x = 0.2 + 0.3 * 0.5;
+  const double predicted_y = 0.4 - 0.1 * 0.5;
+  const double expected = msc::proxemicCost(
+    std::hypot(1.0 - predicted_x, 2.0 - predicted_y), 1.0, 0.4);
+  EXPECT_DOUBLE_EQ(
+    msc::maximumProxemicScore(
+      poses, people, {}, 1.0, 0.4, false, 1.4, 1.0, 0.8, 0.1),
+    expected);
+}
+
+TEST(ProxemicMath, MovingPersonScoresFrontAboveSideAboveBack)
+{
+  const std::vector<msc::PersonState> person{{"guide_1", 0.0, 0.0, 1.0, 0.0}};
+  const auto score = [&person](double x, double y) {
+      return msc::maximumProxemicScore(
+        {{x, y, 0.0}}, person, {}, 1.0, 0.4, true, 1.4, 1.0, 0.8, 0.1);
+    };
+  const double front = score(1.0, 0.0);
+  const double side = score(0.0, 1.0);
+  const double back = score(-1.0, 0.0);
+  EXPECT_GT(front, side);
+  EXPECT_GT(side, back);
+}
+
+TEST(ProxemicMath, SlowPersonFallsBackExactlyToIsotropicDistance)
+{
+  const std::vector<msc::TimedPoint> poses{{0.5, 0.8, 0.0}};
+  const std::vector<msc::PersonState> person{{"guide_1", 0.0, 0.0, 0.05, 0.0}};
+  EXPECT_DOUBLE_EQ(
+    msc::maximumProxemicScore(
+      poses, person, {}, 1.0, 0.4, true, 1.4, 1.0, 0.8, 0.1),
+    msc::maximumProxemicScore(poses, person, {}, 1.0, 0.4));
+}
+
+TEST(ProxemicMath, AnisotropicScoreIsRotationInvariant)
+{
+  const std::vector<msc::TimedPoint> original{{1.0, 0.5, 0.0}};
+  const std::vector<msc::PersonState> heading_x{{"guide_1", 0.0, 0.0, 1.0, 0.0}};
+  const std::vector<msc::TimedPoint> rotated{{-0.5, 1.0, 0.0}};
+  const std::vector<msc::PersonState> heading_y{{"guide_1", 0.0, 0.0, 0.0, 1.0}};
+  EXPECT_NEAR(
+    msc::maximumProxemicScore(
+      original, heading_x, {}, 1.0, 0.4, true, 1.4, 1.0, 0.8, 0.1),
+    msc::maximumProxemicScore(
+      rotated, heading_y, {}, 1.0, 0.4, true, 1.4, 1.0, 0.8, 0.1),
+    1.0e-12);
 }

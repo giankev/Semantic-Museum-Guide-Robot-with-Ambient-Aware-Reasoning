@@ -60,3 +60,11 @@ def test_absent_observation_omits_distance():
         "track_id": "visitor_1",
         "present": False,
     }
+
+
+def test_generic_session_can_activate_without_simulator_presence():
+    visitor = VisitorSession("visitor_marker")
+    session = visitor.activate()
+    assert session.session_id == "session_1"
+    assert session.track_id == "visitor_1"
+    assert "visitor_marker" not in str(session.to_dict())
