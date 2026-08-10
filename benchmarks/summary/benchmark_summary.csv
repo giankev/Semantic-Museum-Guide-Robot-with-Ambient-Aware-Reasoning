@@ -53,6 +53,7 @@ session_memory,all,bounded session-memory functional benchmark,explicit_override
 session_memory,all,bounded session-memory functional benchmark,ambient_revalidation_accuracy,1.0,ratio,3
 session_memory,all,bounded session-memory functional benchmark,route_policy_accuracy,1.0,ratio,8
 session_memory,all,bounded session-memory functional benchmark,deterministic_repeatability_accuracy,1.0,ratio,8
+engagement,all,bounded deterministic sensor fusion,bounded_engagement_state_accuracy,1.0,ratio,7
 social_navigation,north_gallery,baseline,minimum_person_distance_m_mean,1.4424061288427854,m,1
 social_navigation,north_gallery,baseline,minimum_person_distance_m_std,,m,1
 social_navigation,north_gallery,baseline,minimum_front_person_distance_m_mean,1.4424061288427854,m,1

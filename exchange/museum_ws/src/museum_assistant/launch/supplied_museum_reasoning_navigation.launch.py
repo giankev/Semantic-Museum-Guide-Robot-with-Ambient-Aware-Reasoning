@@ -46,6 +46,21 @@ def generate_launch_description():
                 default_value="False",
                 choices=["True", "False"],
             ),
+            DeclareLaunchArgument(
+                "use_engagement",
+                default_value="False",
+                choices=["True", "False"],
+            ),
+            DeclareLaunchArgument(
+                "require_engagement",
+                default_value="False",
+                choices=["True", "False"],
+            ),
+            DeclareLaunchArgument(
+                "publish_debug_image",
+                default_value="False",
+                choices=["True", "False"],
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(navigation_launch),
                 launch_arguments={
@@ -96,7 +111,29 @@ def generate_launch_description():
                 executable="visitor_session_node",
                 name="visitor_session_node",
                 output="screen",
-                parameters=[{"use_sim_time": True}],
+                parameters=[
+                    {
+                        "use_sim_time": True,
+                        "require_engagement": LaunchConfiguration(
+                            "require_engagement"
+                        ),
+                    }
+                ],
+            ),
+            Node(
+                package="museum_assistant",
+                executable="engagement_node",
+                name="engagement_node",
+                output="screen",
+                condition=IfCondition(LaunchConfiguration("use_engagement")),
+                parameters=[
+                    {
+                        "use_sim_time": True,
+                        "publish_debug_image": LaunchConfiguration(
+                            "publish_debug_image"
+                        ),
+                    }
+                ],
             ),
             Node(
                 package="museum_assistant",

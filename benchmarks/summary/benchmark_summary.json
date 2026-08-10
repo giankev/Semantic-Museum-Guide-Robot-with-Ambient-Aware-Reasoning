@@ -4,6 +4,14 @@
     "success_rate": 1.0,
     "successful_runs": 1
   },
+  "engagement": {
+    "bounded_engagement_state_accuracy": 1.0,
+    "correct_cases": 7,
+    "false_engagement_count": 0,
+    "mean_activation_latency_s": 2.5,
+    "positive_cases": 2,
+    "total_cases": 7
+  },
   "escort": {
     "valid_runs": {
       "lag_resume": 1,
@@ -11,9 +19,9 @@
       "normal": 0
     }
   },
-  "generated_at": "2026-08-09T21:56:53Z",
+  "generated_at": "2026-08-10T13:44:03Z",
   "git_branch": "integrate-supplied-reasoning-escort",
-  "git_commit": "3a72d3d364e836f7998544d3c6207ccf06b5c1b8",
+  "git_commit": "65989cb2c41aec4bcee6395ba15c4026f145c8e1",
   "language": {
     "constraint_extraction": {
       "N": 22,
@@ -146,6 +154,7 @@
   "navigation_controller": "dwb_core::DWBLocalPlanner",
   "number_of_runs_per_benchmark": {
     "end_to_end": 1,
+    "engagement": 7,
     "escort": 1,
     "language": 27,
     "navigation": 7,

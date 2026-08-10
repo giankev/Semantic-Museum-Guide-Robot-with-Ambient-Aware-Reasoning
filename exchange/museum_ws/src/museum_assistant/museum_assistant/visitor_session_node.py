@@ -26,12 +26,16 @@ class VisitorSessionNode(Node):
             "robot_model_name",
             DEFAULT_ROBOT_MODEL_NAME,
         )
+        self.declare_parameter("require_engagement", False)
         self._visitor_model_name = self.get_parameter(
             "visitor_model_name"
         ).value
         self._robot_model_name = self.get_parameter(
             "robot_model_name"
         ).value
+        self._require_engagement = bool(
+            self.get_parameter("require_engagement").value
+        )
 
         self.visitor = VisitorSession(self._visitor_model_name)
         self.session_publisher = self.create_publisher(
@@ -50,27 +54,29 @@ class VisitorSessionNode(Node):
             self._handle_model_states,
             10,
         )
+        self.engagement_subscription = None
+        if self._require_engagement:
+            self.engagement_subscription = self.create_subscription(
+                String,
+                "/museum/engagement_state",
+                self._handle_engagement,
+                10,
+            )
         self._session_announced = False
         self._robot_missing_announced = False
-        self.get_logger().info(
-            "Observing the configured visitor and robot on "
-            "/gazebo/model_states"
-        )
+        activation = "engagement" if self._require_engagement else "model presence"
+        self.get_logger().info(f"Session activation source: {activation}")
 
     def _handle_model_states(self, msg: ModelStates) -> None:
-        session = self.visitor.observe(msg.name)
+        session = (
+            self.visitor.current_session
+            if self._require_engagement
+            else self.visitor.observe(msg.name)
+        )
         if session is not None:
-            output = String()
-            output.data = json.dumps(session.to_dict())
-            self.session_publisher.publish(output)
-
-            if not self._session_announced:
-                self.get_logger().info(
-                    "Created active visitor session "
-                    f"session_id={session.session_id} "
-                    f"track_id={session.track_id}"
-                )
-                self._session_announced = True
+            self._publish_session(session)
+        elif self._require_engagement:
+            return
 
         model_indices = {
             name: index
@@ -103,6 +109,23 @@ class VisitorSessionNode(Node):
             present=True,
             distance_to_robot=distance,
         )
+
+    def _handle_engagement(self, msg: String) -> None:
+        try:
+            payload = json.loads(msg.data)
+        except json.JSONDecodeError:
+            return
+        if isinstance(payload, dict) and payload.get("state") == "engaged":
+            self._publish_session(self.visitor.activate())
+
+    def _publish_session(self, session) -> None:
+        self.session_publisher.publish(String(data=json.dumps(session.to_dict())))
+        if not self._session_announced:
+            self.get_logger().info(
+                f"Created active visitor session session_id={session.session_id} "
+                f"track_id={session.track_id}"
+            )
+            self._session_announced = True
 
     def _publish_observation(
         self,

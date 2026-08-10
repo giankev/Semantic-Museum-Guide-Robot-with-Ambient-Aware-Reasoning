@@ -61,7 +61,15 @@ class SuppliedMuseumNavProxyTest(unittest.TestCase):
 
     def test_world_parses_and_original_mesh_is_visual_only(self):
         self.assertEqual(self.root.tag, "sdf")
-        self.assertEqual([e.text for e in self.root.findall(".//visual/geometry/mesh/uri")], ["model.dae"])
+        visual_meshes = [
+            element.text
+            for element in self.root.findall(".//visual/geometry/mesh/uri")
+        ]
+        self.assertEqual(visual_meshes[0], "model.dae")
+        self.assertEqual(
+            visual_meshes[1:],
+            ["humans/person_standing/meshes/standing.dae"] * 3,
+        )
         self.assertEqual(self.root.findall(".//collision/geometry/mesh/uri"), [])
 
     def test_navigation_boxes_are_finite_positive_axis_aligned_boxes(self):

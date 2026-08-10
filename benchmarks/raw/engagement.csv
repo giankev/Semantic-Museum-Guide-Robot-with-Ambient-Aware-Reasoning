@@ -1,0 +1,8 @@
+case_id,scenario,expected_engaged,observed_engaged,expected_terminal_state,observed_terminal_state,correct,false_engagement,activation_latency_s,notes
+E1,empty,0,0,NO_PERSON,NO_PERSON,1,0,,deterministic sensor-fusion sequence
+E2,visual_only,0,0,PASSING,PASSING,1,0,,deterministic sensor-fusion sequence
+E3,lidar_only,0,0,NO_PERSON,NO_PERSON,1,0,,deterministic sensor-fusion sequence
+E4,passing,0,0,NO_PERSON,NO_PERSON,1,0,,deterministic sensor-fusion sequence
+E5,far_person,0,0,PASSING,PASSING,1,0,,deterministic sensor-fusion sequence
+E6,stationary_near,1,1,ENGAGED,ENGAGED,1,0,2.5,deterministic sensor-fusion sequence
+E7,engaged_then_leave,1,1,NO_PERSON,NO_PERSON,1,0,2.5,deterministic sensor-fusion sequence

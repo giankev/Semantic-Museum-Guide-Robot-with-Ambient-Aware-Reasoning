@@ -36,6 +36,11 @@ class VisitorSession:
         if self._simulator_model_name not in simulator_model_names:
             return None
 
+        return self.activate()
+
+    def activate(self) -> SessionState:
+        """Activate the generic current-interlocutor session."""
+
         if self.current_session is None:
             self.current_session = SessionState(
                 session_id=self._session_id,

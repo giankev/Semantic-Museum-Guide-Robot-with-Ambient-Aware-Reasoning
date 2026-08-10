@@ -1,4 +1,5 @@
 from glob import glob
+from pathlib import Path
 from setuptools import setup
 
 package_name = "museum_assistant"
@@ -11,6 +12,7 @@ setup(
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
         (f"share/{package_name}/config", glob("config/*.yaml")),
+        (f"share/{package_name}/models", glob("models/*")),
         (f"share/{package_name}/launch", glob("launch/*.launch.py")),
         (f"share/{package_name}/behavior_trees", glob("behavior_trees/*.xml")),
         (
@@ -23,7 +25,26 @@ setup(
         (f"share/{package_name}/worlds", glob("worlds/*.world")),
         (
             f"share/{package_name}/worlds/supplied_museum",
-            glob("worlds/supplied_museum/*"),
+            [
+                path
+                for path in glob("worlds/supplied_museum/*")
+                if Path(path).is_file()
+            ],
+        ),
+        (
+            f"share/{package_name}/worlds/supplied_museum/humans/person_standing",
+            [
+                "worlds/supplied_museum/humans/person_standing/ATTRIBUTION.md",
+                "worlds/supplied_museum/humans/person_standing/LICENSE",
+            ],
+        ),
+        (
+            f"share/{package_name}/worlds/supplied_museum/humans/person_standing/meshes",
+            glob("worlds/supplied_museum/humans/person_standing/meshes/*"),
+        ),
+        (
+            f"share/{package_name}/worlds/supplied_museum/humans/person_standing/materials/textures",
+            glob("worlds/supplied_museum/humans/person_standing/materials/textures/*"),
         ),
     ],
     install_requires=["setuptools"],
@@ -69,6 +90,7 @@ setup(
                 "simulated_people_node = "
                 "museum_assistant.simulated_people_node:main"
             ),
+            "engagement_node = museum_assistant.engagement_node:main",
             (
                 "social_people_bridge_node = "
                 "museum_assistant.social_people_bridge_node:main"

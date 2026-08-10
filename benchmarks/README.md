@@ -24,6 +24,8 @@ experiment manager, or alternative recorder.
 7. **Session memory:** does the runtime scene graph preserve a destination for
    one session, isolate other sessions, and revalidate ambient constraints
    before a deictic follow-up route?
+8. **Engagement:** do bounded visual-only, LiDAR-only, passing, far, stationary,
+   and leaving sequences produce the expected deterministic engagement state?
 
 Following the AirporTiago evaluation philosophy, this framework does not
 re-benchmark established external algorithms in isolation. It evaluates the
@@ -37,11 +39,13 @@ modules developed in this project and, especially, their integration.
 - `summary/benchmark_summary.csv` is a flat report-table view.
 - `plots/*.png` contains the five required publication-style figures.
 
-Every raw row contains `run_id`, `timestamp_utc`, `git_commit`, `benchmark`,
+Most raw rows contain `run_id`, `timestamp_utc`, `git_commit`, `benchmark`,
 `scenario`, `variant`, and `status`. Older diagnostics that did not record a
 commit retain `git_commit=NA`; the framework never substitutes the current
 commit for unknown historical provenance. Missing metrics remain empty/NA.
 Credentials, authorization headers, and raw audio are never imported.
+`engagement.csv` intentionally uses the smaller case schema documented in the
+engagement feature specification.
 
 `import-existing` conservatively selects the newest complete, all-PASS
 navigation batch whose reports contain the final localization and terminal
@@ -73,7 +77,8 @@ python3 scripts/final_benchmark.py plot
 python3 scripts/final_benchmark.py status
 ```
 
-`offline` runs only the scene-graph, language, and session-memory scripts.
+`offline` runs only the scene-graph, language, session-memory, and engagement
+logic benchmarks.
 These are reported as a **bounded deterministic functional benchmark**, a
 **bounded functional language benchmark**, and a **bounded session-memory
 functional benchmark**, not as general AI or dialogue accuracy. The language

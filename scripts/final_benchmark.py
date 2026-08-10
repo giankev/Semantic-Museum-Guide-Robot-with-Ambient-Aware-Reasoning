@@ -36,6 +36,18 @@ BASE_FIELDS = (
     "status",
 )
 CSV_FIELDS = {
+    "engagement": (
+        "case_id",
+        "scenario",
+        "expected_engaged",
+        "observed_engaged",
+        "expected_terminal_state",
+        "observed_terminal_state",
+        "correct",
+        "false_engagement",
+        "activation_latency_s",
+        "notes",
+    ),
     "navigation": BASE_FIELDS + (
         "destination",
         "trial",
@@ -713,22 +725,61 @@ def offline_session_memory(commit, timestamp):
     return rows
 
 
+def offline_engagement():
+    package_src = REPO_ROOT / "exchange/museum_ws/src/museum_assistant"
+    sys.path.insert(0, str(package_src))
+    from museum_assistant.engagement import EngagementModel
+
+    cases = (
+        ("E1", "empty", False, "NO_PERSON", [(0, False, False, None)]),
+        ("E2", "visual_only", False, "PASSING", [(0, True, True, None), (3, True, True, None)]),
+        ("E3", "lidar_only", False, "NO_PERSON", [(0, False, False, 1.5), (3, False, False, 1.5)]),
+        ("E4", "passing", False, "NO_PERSON", [(0, True, True, 1.5), (0.5, False, False, None)]),
+        ("E5", "far_person", False, "PASSING", [(0, True, True, 2.2), (3, True, True, 2.2)]),
+        ("E6", "stationary_near", True, "ENGAGED", [(0, True, True, 1.5), (1, True, True, 1.5), (2.5, True, True, 1.5)]),
+        ("E7", "engaged_then_leave", True, "NO_PERSON", [(0, True, True, 1.5), (1, True, True, 1.5), (2.5, True, True, 1.5), (2.6, False, False, None), (4.2, False, False, None)]),
+    )
+    rows = []
+    for case_id, scenario, expected, terminal, sequence in cases:
+        model, observed, latency = EngagementModel(), False, None
+        for now, visual, central, distance in sequence:
+            result = model.update(now=now, visual_person=visual,
+                                  central=central, distance_m=distance)
+            if result.state.value == "ENGAGED" and not observed:
+                observed, latency = True, now
+        correct = observed == expected and result.state.value == terminal
+        rows.append({
+            "case_id": case_id, "scenario": scenario,
+            "expected_engaged": expected, "observed_engaged": observed,
+            "expected_terminal_state": terminal,
+            "observed_terminal_state": result.state.value,
+            "correct": correct, "false_engagement": observed and not expected,
+            "activation_latency_s": latency,
+            "notes": "deterministic sensor-fusion sequence",
+        })
+    return rows
+
+
 def command_offline(_args):
     commit = current_commit()
     timestamp = now_utc()
     reasoning = offline_reasoning(commit, timestamp)
     language = offline_language(commit, timestamp)
     session_memory = offline_session_memory(commit, timestamp)
+    engagement = offline_engagement()
     write_csv("reasoning", reasoning)
     write_csv("language", language)
     write_csv("session_memory", session_memory)
+    write_csv("engagement", engagement)
     reasoning_pass = sum(row["status"] == "passed" for row in reasoning)
     language_pass = sum(row["status"] == "passed" for row in language)
     memory_pass = sum(row["status"] == "passed" for row in session_memory)
+    engagement_pass = sum(row["correct"] for row in engagement)
     print(f"Reasoning: {reasoning_pass}/{len(reasoning)}")
     print(f"Language: {language_pass}/{len(language)}")
     print(f"Session memory: {memory_pass}/{len(session_memory)}")
-    if reasoning_pass != 25 or language_pass != 27 or memory_pass != 8:
+    print(f"Engagement: {engagement_pass}/{len(engagement)}")
+    if (reasoning_pass, language_pass, memory_pass, engagement_pass) != (25, 27, 8, 7):
         raise SystemExit("Offline benchmark totals differ from the validated baseline.")
 
 
@@ -943,6 +994,23 @@ def session_memory_summary(rows):
     return summary
 
 
+def engagement_summary(rows):
+    correct = sum(boolean(row["correct"]) is True for row in rows)
+    positive = [row for row in rows if boolean(row["expected_engaged"]) is True]
+    return {
+        "total_cases": len(rows),
+        "correct_cases": correct,
+        "bounded_engagement_state_accuracy": correct / len(rows) if rows else None,
+        "false_engagement_count": sum(
+            boolean(row["false_engagement"]) is True for row in rows
+        ),
+        "positive_cases": len(positive),
+        "mean_activation_latency_s": mean(
+            [number(row["activation_latency_s"]) for row in positive]
+        ),
+    }
+
+
 def build_summary():
     tables = {name: read_csv(name) for name in CSV_FIELDS}
     escort_counts = {
@@ -972,6 +1040,7 @@ def build_summary():
         "reasoning": reasoning_summary(tables["reasoning"]),
         "language": language_summary(tables["language"]),
         "session_memory": session_memory_summary(tables["session_memory"]),
+        "engagement": engagement_summary(tables["engagement"]),
         "escort": {"valid_runs": escort_counts},
         "end_to_end": {
             "N": len(tables["end_to_end"]),
@@ -1042,6 +1111,14 @@ def flatten_summary(summary):
                     "N": values["N"],
                 }
             )
+    engagement = summary["engagement"]
+    rows.append({
+        "benchmark": "engagement", "scenario": "all",
+        "variant": "bounded deterministic sensor fusion",
+        "metric": "bounded_engagement_state_accuracy",
+        "value": engagement["bounded_engagement_state_accuracy"],
+        "unit": "ratio", "N": engagement["total_cases"],
+    })
     social = summary["social_navigation"]
     for variant in ("baseline", "isotropic", "anisotropic"):
         values = social[variant]
@@ -1310,8 +1387,11 @@ def command_status(_args):
     escort = read_csv("escort")
     end_to_end = read_csv("end_to_end")
     session_memory = read_csv("session_memory")
+    engagement = read_csv("engagement")
     memory_pass = sum(row["status"] == "passed" for row in session_memory)
     print(f"Session memory:\n  offline cases: {memory_pass}/8")
+    engagement_pass = sum(row["correct"] == "1" for row in engagement)
+    print(f"Engagement:\n  offline cases: {engagement_pass}/{len(engagement)}")
     print("Navigation:")
     for destination in DESTINATIONS:
         count = sum(
