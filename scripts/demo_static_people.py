@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Place six stationary pedestrians along the Video 1 north-gallery route."""
+"""Place ten stationary pedestrians in three social groups for Video 1."""
 
 from __future__ import annotations
 
@@ -23,22 +23,36 @@ class StaticPerson:
     y: float
     yaw: float
     guest: bool = False
+    group: str = ""
 
 
-# Six people spread along the validated route from (0,0) to north_gallery
-# (0,16). They alternate left/right of the nominal centerline and stay away
-# from the narrow y=10 separator itself, whose free opening is x=-3..3.
+# Video choreography: ten stationary people in three groups.  Nothing is
+# placed close to TIAGo's spawn.  Group A fills the direct centre route,
+# Group B reinforces the right/centre side before the north opening, and
+# Group C makes the final room look populated without blocking the goal.
+# The intended visual result is a clear leftward social detour rather than a
+# straight run through isolated people.
 PEOPLE = (
-    StaticPerson("visitor_marker", "visitor_1", -2.6, 2.3, 0.3),
-    StaticPerson("guest_marker_1", "guest_1", 1.7, 4.2, math.pi, True),
-    StaticPerson("staff_marker", "staff_1", -1.7, 6.7, 0.0),
-    StaticPerson("guest_marker_2", "guest_2", 1.7, 8.6, math.pi, True),
-    StaticPerson("guide_marker", "guide_1", -1.8, 12.4, 0.0),
-    StaticPerson("guest_marker_3", "guest_3", 1.8, 15.0, math.pi, True),
+    # Group A: direct route occupied, nearest member still > 4 m from spawn.
+    StaticPerson("visitor_marker", "visitor_1", -0.9, 4.6, 0.20, False, "A"),
+    StaticPerson("guest_marker_1", "guest_1", 0.2, 4.9, math.pi, True, "A"),
+    StaticPerson("guest_marker_2", "guest_2", 1.3, 4.6, 2.80, True, "A"),
+    # Group B: centre/right crowd leaves the left side visibly preferable.
+    StaticPerson("staff_marker", "staff_1", 0.9, 7.6, 0.0, False, "B"),
+    StaticPerson("guest_marker_3", "guest_3", 1.9, 8.0, math.pi, True, "B"),
+    StaticPerson("guest_marker_4", "guest_4", 2.7, 8.5, 2.60, True, "B"),
+    # Group C: north gallery, spread away from the final goal (0,16).
+    StaticPerson("guide_marker", "guide_1", -3.8, 12.7, 0.35, False, "C"),
+    StaticPerson("guest_marker_5", "guest_5", -2.8, 13.6, 2.90, True, "C"),
+    StaticPerson("guest_marker_6", "guest_6", 3.3, 12.8, math.pi, True, "C"),
+    StaticPerson("guest_marker_7", "guest_7", 3.9, 14.0, 2.65, True, "C"),
 )
 
 ALLOWLIST = frozenset(person.model_name for person in PEOPLE)
 GUESTS = frozenset(person.model_name for person in PEOPLE if person.guest)
+
+if len(PEOPLE) != 10 or len(ALLOWLIST) != 10:
+    raise RuntimeError("Video 1 static demo must contain exactly ten unique people")
 
 
 class StaticPeopleDemo(Node):
@@ -63,10 +77,11 @@ class StaticPeopleDemo(Node):
         self.create_subscription(ModelStates, "/gazebo/model_states", self._models, 10)
         self.create_timer(0.25, self._tick)
 
-        self.get_logger().info("Static Video 1 people layout:")
+        self.get_logger().info("Static Video 1 layout: 10 people / 3 groups")
         for person in PEOPLE:
             self.get_logger().info(
-                f"  {person.public_id}: ({person.x:.1f}, {person.y:.1f})"
+                f"  group {person.group} | {person.public_id}: "
+                f"({person.x:.1f}, {person.y:.1f}) yaw={math.degrees(person.yaw):.0f} deg"
             )
 
     def _models(self, msg: ModelStates) -> None:
@@ -105,7 +120,7 @@ class StaticPeopleDemo(Node):
         if len(self.placed) == len(PEOPLE) and not self.reported_ready:
             self.reported_ready = True
             self.get_logger().info(
-                "STATIC PEOPLE READY: six stationary pedestrians placed along the route"
+                "STATIC PEOPLE READY: ten pedestrians placed in three groups"
             )
 
     def _finish_pending_sets(self) -> None:
