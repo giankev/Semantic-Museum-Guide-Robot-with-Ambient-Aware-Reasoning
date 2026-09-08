@@ -79,9 +79,6 @@ echo "Building museum_assistant and museum_social_critic..."
 docker exec "${CONTAINER}" bash -lc \
   "${BUILD_SETUP} && cd /root/exchange/exchange/museum_ws && colcon build --symlink-install --packages-select museum_assistant museum_social_critic"
 
-# Keep the validated benchmark configuration untouched.  Video 1 receives a
-# temporary stronger social-navigation profile: 3 m comfort target and a
-# larger social cost so DWB visibly prefers the open left side of the groups.
 echo "Preparing Video 1 social-navigation profile (3.0 m comfort target)..."
 docker exec "${CONTAINER}" bash -lc "
   cp /root/exchange/exchange/museum_ws/src/museum_assistant/config/nav2_supplied_anisotropic.yaml ${DEMO_NAV2_PARAMS} &&
@@ -93,7 +90,6 @@ docker exec "${CONTAINER}" bash -lc "
     -e 's/PathAlign.scale: 16.0/PathAlign.scale: 10.0/' \
     -e 's/PathDist.scale: 20.0/PathDist.scale: 12.0/' \
     ${DEMO_NAV2_PARAMS}
-  grep -E 'ProxemicForce.(scale|comfort_distance|sigma|ignored_identifiers)|PathAlign.scale|PathDist.scale' ${DEMO_NAV2_PARAMS}
 "
 
 SIMULATION_REMOTE="${ROS_SETUP} && exec ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py gzclient:=True publish_people:=True use_scripted_visitor:=False use_engagement:=False use_language:=False use_speech:=False nav2_params_file:=${DEMO_NAV2_PARAMS}"
@@ -115,6 +111,14 @@ nav2_ready() {
   grep -Eq '^active \[3\]$' <<<"${controller}" && grep -Eq '^active \[3\]$' <<<"${navigator}"
 }
 
+print_nav2_state() {
+  local controller navigator
+  controller="$(ros_exec "ros2 lifecycle get /controller_server" 2>/dev/null || true)"
+  navigator="$(ros_exec "ros2 lifecycle get /bt_navigator" 2>/dev/null || true)"
+  echo "  controller_server: ${controller:-not available}"
+  echo "  bt_navigator:      ${navigator:-not available}"
+}
+
 robot_at_demo_start() {
   local position x y
   position="$(ros_exec "timeout 5 ros2 topic echo /museum/ground_truth_odom --once --field pose.pose.position" 2>/dev/null)" || return 1
@@ -123,22 +127,20 @@ robot_at_demo_start() {
   awk -v x="${x}" -v y="${y}" 'BEGIN {exit !(x != "" && y != "" && sqrt(x*x+y*y) <= 0.50)}'
 }
 
-echo "Waiting for Gazebo GUI/server and exact Nav2 active state..."
-deadline=$((SECONDS + 300))
-until gazebo_ready && nav2_ready; do
+# Open the people and monitor windows as soon as Gazebo itself is alive.
+# Previously these were opened only AFTER Nav2 became active, so when Nav2
+# activation was slow/stuck the user saw only Gazebo and no other windows.
+echo "Waiting for Gazebo services..."
+deadline=$((SECONDS + 180))
+until gazebo_ready; do
   if ((SECONDS >= deadline)); then
-    echo "Timed out waiting for Gazebo/Nav2." >&2
+    echo "Timed out waiting for Gazebo services. Check TIAGO - SIMULATION." >&2
     exit 1
   fi
   sleep 2
 done
 
-echo "Gazebo + Nav2 READY."
-
-if ! robot_at_demo_start; then
-  echo "TIAGo is not near the expected start (0,0)." >&2
-  exit 1
-fi
+echo "Gazebo services READY. Opening static-people and social-monitor windows now."
 
 STATIC_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_static_people.py --ros-args -p use_sim_time:=true"
 printf -v static_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${STATIC_REMOTE}"
@@ -148,6 +150,31 @@ MONITOR_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_social_
 printf -v monitor_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${MONITOR_REMOTE}"
 open_terminal "TIAGO - SOCIAL MONITOR" "monitor" "${monitor_command}"
 
+echo "Waiting for Nav2 to become ACTIVE..."
+deadline=$((SECONDS + 300))
+next_report=$SECONDS
+until nav2_ready; do
+  if ((SECONDS >= next_report)); then
+    print_nav2_state
+    next_report=$((SECONDS + 10))
+  fi
+  if ((SECONDS >= deadline)); then
+    echo "Timed out waiting for Nav2 ACTIVE." >&2
+    print_nav2_state >&2
+    echo "Gazebo, static people and monitor remain open for diagnosis." >&2
+    exit 1
+  fi
+  sleep 2
+done
+
+echo "Nav2 ACTIVE."
+
+if ! robot_at_demo_start; then
+  echo "TIAGo is not near the expected start (0,0)." >&2
+  echo "Gazebo, static people and monitor remain open for diagnosis." >&2
+  exit 1
+fi
+
 people_ready() {
   local snapshot count
   snapshot="$(ros_exec "timeout 5 ros2 topic echo /people --once" 2>/dev/null)" || return 1
@@ -156,16 +183,16 @@ people_ready() {
 }
 
 echo "Waiting for all 10 static pedestrians on /people..."
-deadline=$((SECONDS + 90))
+deadline=$((SECONDS + 120))
 until people_ready; do
   if ((SECONDS >= deadline)); then
-    echo "Timed out waiting for ten people. Check TIAGO - STATIC PEOPLE." >&2
+    echo "Timed out waiting for ten people. Check TIAGO - STATIC PEOPLE and TIAGO - SOCIAL MONITOR." >&2
     exit 1
   fi
   sleep 2
 done
 
-echo "10 pedestrians READY. Three social groups are active."
+echo "10 pedestrians READY. Opening Video Control."
 
 read -r -d '' CONTROL_TEXT <<EOF || true
 clear
