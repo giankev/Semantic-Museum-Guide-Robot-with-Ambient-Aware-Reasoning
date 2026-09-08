@@ -10,7 +10,7 @@ from typing import Any
 
 from ament_index_python.packages import get_package_share_directory
 from gazebo_msgs.msg import EntityState, ModelStates
-from gazebo_msgs.srv import SetEntityState, SpawnEntity
+from gazebo_msgs.srv import DeleteEntity, SetEntityState, SpawnEntity
 import rclpy
 from rclpy.node import Node
 
@@ -26,27 +26,24 @@ class StaticPerson:
     group: str = ""
 
 
-# IMPORTANT FOR VIDEO 1:
-# - no pedestrian is placed near TIAGo's spawn at (0,0)
-# - the robot receives ONLY north_gallery (0,16)
-# - Group A lies on the nominal straight route far enough ahead that TIAGo
-#   starts by driving straight and only later needs to reshape locally
-# - Groups B/C populate the rest of the museum without forming a solid wall
+# There is intentionally NO waypoint route in Video 1. TIAGo receives only
+# north_gallery (0,16). The first group lies on the nominal straight route,
+# but far enough from spawn that the robot visibly drives straight first and
+# only later reshapes its trajectory under the local social critic.
 #
-# visitor_marker is intentionally NOT used in this demo because its world
-# default is close to the robot spawn.  We keep ten total people by spawning
-# guest_marker_8 instead.
+# visitor_marker is explicitly deleted from Gazebo for this video because the
+# supplied world spawns it at (-1,0), visually next to TIAGo. Ten people are
+# still shown by using guest_marker_1..8 plus staff_marker and guide_marker.
 PEOPLE = (
-    # Group A: social obstacle directly on the nominal centreline.
+    # Group A: directly ahead, around six metres from the start.
     StaticPerson("guest_marker_1", "guest_1", -0.75, 5.8, 0.20, True, "A"),
     StaticPerson("guest_marker_2", "guest_2", 0.35, 6.1, math.pi, True, "A"),
     StaticPerson("guest_marker_3", "guest_3", 1.35, 5.7, 2.80, True, "A"),
-    # Group B: farther ahead, biased to the right so a local left deviation
-    # remains feasible without requiring any waypoint.
+    # Group B: farther ahead and biased right, leaving a feasible local detour.
     StaticPerson("staff_marker", "staff_1", 1.0, 8.0, 0.0, False, "B"),
     StaticPerson("guest_marker_4", "guest_4", 2.0, 8.3, math.pi, True, "B"),
     StaticPerson("guest_marker_5", "guest_5", 2.8, 8.6, 2.60, True, "B"),
-    # Group C: north room population, kept away from the final goal (0,16).
+    # Group C: north room population, away from the final goal.
     StaticPerson("guide_marker", "guide_1", -4.0, 12.8, 0.35, False, "C"),
     StaticPerson("guest_marker_6", "guest_6", -3.0, 13.8, 2.90, True, "C"),
     StaticPerson("guest_marker_7", "guest_7", 3.4, 12.9, math.pi, True, "C"),
@@ -55,11 +52,10 @@ PEOPLE = (
 
 ALLOWLIST = frozenset(person.model_name for person in PEOPLE)
 GUESTS = frozenset(person.model_name for person in PEOPLE if person.guest)
+REMOVED_NEAR_SPAWN_MODEL = "visitor_marker"
 
 if len(PEOPLE) != 10 or len(ALLOWLIST) != 10:
     raise RuntimeError("Video 1 static demo must contain exactly ten unique people")
-if "visitor_marker" in ALLOWLIST:
-    raise RuntimeError("visitor_marker must stay out of Video 1; it is too close to spawn")
 
 
 class StaticPeopleDemo(Node):
@@ -77,14 +73,17 @@ class StaticPeopleDemo(Node):
         self.spawn_requested: set[str] = set()
         self.spawn_future = None
         self.spawn_name: str | None = None
+        self.delete_future = None
+        self.delete_requested = False
         self.reported_ready = False
 
         self.set_client = self.create_client(SetEntityState, "/gazebo/set_entity_state")
         self.spawn_client = self.create_client(SpawnEntity, "/spawn_entity")
+        self.delete_client = self.create_client(DeleteEntity, "/delete_entity")
         self.create_subscription(ModelStates, "/gazebo/model_states", self._models, 10)
         self.create_timer(0.25, self._tick)
 
-        self.get_logger().info("Static Video 1 layout: 10 people / single north-gallery goal")
+        self.get_logger().info("Video 1: 10 static people, one single north-gallery goal")
         for person in PEOPLE:
             self.get_logger().info(
                 f"  group {person.group} | {person.public_id}: "
@@ -98,10 +97,13 @@ class StaticPeopleDemo(Node):
                 self.z_by_name[name] = pose.position.z
 
     def _tick(self) -> None:
+        self._remove_near_spawn_visitor()
         self._finish_pending_sets()
         self._spawn_missing_guest()
 
         if not self.set_client.service_is_ready():
+            return
+        if REMOVED_NEAR_SPAWN_MODEL in self.model_names:
             return
         if not all(person.model_name in self.model_names for person in PEOPLE):
             return
@@ -124,8 +126,35 @@ class StaticPeopleDemo(Node):
         if len(self.placed) == len(PEOPLE) and not self.reported_ready:
             self.reported_ready = True
             self.get_logger().info(
-                "STATIC PEOPLE READY: ten pedestrians placed; visitor_marker excluded"
+                "STATIC PEOPLE READY: 10 people placed; near-spawn visitor removed"
             )
+
+    def _remove_near_spawn_visitor(self) -> None:
+        if REMOVED_NEAR_SPAWN_MODEL not in self.model_names:
+            return
+        if self.delete_future is not None:
+            if not self.delete_future.done():
+                return
+            try:
+                response = self.delete_future.result()
+            except Exception as exc:
+                self.get_logger().error(f"Failed to remove visitor_marker: {exc}")
+                self.delete_future = None
+                self.delete_requested = False
+                return
+            if response is not None and response.success:
+                self.get_logger().info("Removed visitor_marker next to TIAGo spawn")
+            else:
+                self.get_logger().error("Gazebo rejected visitor_marker deletion")
+                self.delete_requested = False
+            self.delete_future = None
+            return
+        if self.delete_requested or not self.delete_client.service_is_ready():
+            return
+        request = DeleteEntity.Request()
+        request.name = REMOVED_NEAR_SPAWN_MODEL
+        self.delete_requested = True
+        self.delete_future = self.delete_client.call_async(request)
 
     def _finish_pending_sets(self) -> None:
         for name, future in list(self.pending_set.items()):
