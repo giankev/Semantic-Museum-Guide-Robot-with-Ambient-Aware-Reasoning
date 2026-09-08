@@ -56,61 +56,65 @@ class Walker:
         return 2.0 * self.length / self.speed
 
 
-# Six deliberately different straight trajectories in the free central hall.
-# Three cross the robot's northbound route x ~= 0; three stay lateral.  The
-# segments are separated in space and phase so the crowd never collapses into
-# one group.  Positions are computed analytically from simulation time.
+# Video 1 now deliberately uses the validated north-gallery target (0, 16).
+# All six pedestrians walk continuously INSIDE the north room (y > 10):
+# three cross the robot's centerline x ~= 0 at different depths, while three
+# remain on lateral paths.  This makes the encounter obvious on video without
+# allowing all six people to collapse into the same point.
+#
+# The supplied navigation proxy has the north-room entrance at y=10 with a
+# clear x=-3..3 opening; the paths below remain in the open x=-5..5 interior.
 WALKER_SPECS = (
     Walker(
         "visitor_marker",
         "visitor_1",
-        (-5.0, 1.0),
-        (-2.2, 4.0),
-        0.18,
-        0.06,
+        (-4.8, 11.8),
+        (-2.8, 17.5),
+        0.20,
+        0.08,
     ),
     Walker(
         "guest_marker_1",
         "guest_1",
-        (-3.2, 2.1),
-        (3.2, 2.4),
-        0.21,
-        0.31,
-        (-1.1, 2.2, 0.05),
+        (-2.8, 11.8),
+        (2.8, 12.2),
+        0.24,
+        0.34,
+        (-1.0, 12.0, 0.07),
     ),
     Walker(
         "staff_marker",
         "staff_1",
-        (4.4, 2.8),
-        (4.4, 7.6),
+        (4.5, 11.8),
+        (3.3, 18.0),
         0.22,
-        0.53,
+        0.56,
     ),
     Walker(
         "guest_marker_2",
         "guest_2",
-        (3.2, 3.6),
-        (-3.2, 5.0),
-        0.24,
-        0.76,
-        (1.2, 4.0, 2.93),
+        (2.8, 13.3),
+        (-2.8, 14.6),
+        0.27,
+        0.77,
+        (1.2, 13.7, 2.91),
     ),
     Walker(
         "guide_marker",
         "guide_1",
-        (-5.0, 6.0),
-        (-2.2, 9.0),
+        (-4.7, 14.2),
+        (-2.6, 19.0),
         0.25,
-        0.90,
+        0.91,
     ),
     Walker(
         "guest_marker_3",
         "guest_3",
-        (-3.2, 6.2),
-        (3.2, 7.3),
-        0.28,
-        0.64,
-        (0.8, 6.9, 0.17),
+        (-2.8, 14.8),
+        (2.8, 15.3),
+        0.30,
+        0.63,
+        (0.8, 15.1, 0.09),
     ),
 )
 
@@ -144,7 +148,7 @@ class DemoCrowdMotion(Node):
         self.create_timer(1.0 / UPDATE_HZ, self._update)
 
         self.get_logger().info(
-            f"Sketch 1 six-person choreography: count={count}, "
+            f"Sketch 1 north-gallery crowd: count={count}, "
             f"compatibility_seed={seed}, update_rate={UPDATE_HZ:.1f} Hz"
         )
         self.get_logger().info(
@@ -193,7 +197,7 @@ class DemoCrowdMotion(Node):
             self.start_time = now
             self.started = True
             self.get_logger().info(
-                "All six pedestrians present; continuous multi-direction motion started"
+                "All six pedestrians present; north-gallery walking started"
             )
 
         elapsed = max(now - self.start_time, 0.0)
