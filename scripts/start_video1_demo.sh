@@ -6,7 +6,7 @@ CONTAINER="museum_tiago"
 STATE_DIR="/tmp/tiago_video1_demo_${UID}"
 ROS_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash && source /root/exchange/exchange/museum_ws/install/setup.bash"
 BUILD_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash"
-GOAL_X="4.0"
+GOAL_X="0.0"
 GOAL_Y="8.0"
 GOAL_YAW="1.57"
 
@@ -284,15 +284,22 @@ printf '%s\n' \
 'Social critic: ANISOTROPIC' \
 'TIAGo controlled by Nav2: YES' \
 'TIAGo Nav2 speed limit: 0.20 m/s' \
-'Crowd SetEntityState allow-list: six human models only' \
+'Crowd layout: 3 crossing lanes + 3 lateral lanes' \
 'Crowd warm-up: 5 simulated seconds' \
 'Gazebo real-time factor: ${REAL_TIME_FACTOR}' \
+'Goal: (0.0, 8.0)' \
 '' \
 'Start the screen recording now.' \
 '' \
 'Press ENTER to start TIAGo navigation.' \
 '============================================'
 read -r _
+printf 'Starting in '
+for n in 3 2 1; do
+  printf '%s... ' "$n"
+  sleep 1
+done
+printf '\nNAVIGATION START\n'
 exec ros2 run museum_assistant send_nav_goal --x ${GOAL_X} --y ${GOAL_Y} --yaw ${GOAL_YAW}
 EOF
 CONTROL_REMOTE="${ROS_SETUP} && ${CONTROL_TEXT}"
