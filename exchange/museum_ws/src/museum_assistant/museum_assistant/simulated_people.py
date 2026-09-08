@@ -16,6 +16,7 @@ MODEL_TO_PUBLIC_ID = {
     "guest_marker_5": "guest_5",
     "guest_marker_6": "guest_6",
     "guest_marker_7": "guest_7",
+    "guest_marker_8": "guest_8",
 }
 
 
