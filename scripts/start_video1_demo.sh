@@ -85,10 +85,12 @@ docker exec "${CONTAINER}" bash -lc "
     -e 's/ProxemicForce.scale: 32.0/ProxemicForce.scale: 80.0/' \
     -e 's/ProxemicForce.comfort_distance: 1.0/ProxemicForce.comfort_distance: 3.0/' \
     -e 's/ProxemicForce.sigma: 0.4/ProxemicForce.sigma: 0.35/' \
-    -e 's/ProxemicForce.ignored_identifiers: \[visitor_1\]/ProxemicForce.ignored_identifiers: []/' \
+    -e 's/ProxemicForce.ignored_identifiers: \[visitor_1\]/ProxemicForce.ignored_identifiers: [__none__]/' \
     -e 's/PathAlign.scale: 16.0/PathAlign.scale: 10.0/' \
     -e 's/PathDist.scale: 20.0/PathDist.scale: 12.0/' \
     ${DEMO_NAV2_PARAMS}
+  echo 'Video profile:'
+  grep -E 'ProxemicForce.(scale|comfort_distance|sigma|ignored_identifiers)|PathAlign.scale|PathDist.scale' ${DEMO_NAV2_PARAMS}
 "
 
 SIMULATION_REMOTE="${ROS_SETUP} && exec ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py gzclient:=True publish_people:=True use_scripted_visitor:=False use_engagement:=False use_language:=False use_speech:=False nav2_params_file:=${DEMO_NAV2_PARAMS}"
@@ -121,9 +123,6 @@ MONITOR_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_social_
 printf -v monitor_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${MONITOR_REMOTE}"
 open_terminal "TIAGO - SOCIAL MONITOR" "monitor" "${monitor_command}"
 
-# The control terminal is opened immediately.  It performs its OWN readiness
-# checks, so the user always sees why TIAGo has not started yet instead of
-# waiting on an invisible gate in this parent script.
 read -r -d '' CONTROL_TEXT <<EOF || true
 clear
 printf '%s\n' \
@@ -139,24 +138,11 @@ printf '%s\n' \
 'Waiting for Nav2 + 10 people...' \
 '============================================'
 
-nav_ready=0
-people_ready=0
 while true; do
   controller="\$(ros2 lifecycle get /controller_server 2>/dev/null || true)"
   navigator="\$(ros2 lifecycle get /bt_navigator 2>/dev/null || true)"
-  if [[ "\$controller" == "active [3]" && "\$navigator" == "active [3]" ]]; then
-    nav_ready=1
-  else
-    nav_ready=0
-  fi
-
   snapshot="\$(timeout 5 ros2 topic echo /people --once 2>/dev/null || true)"
   people_count="\$(grep -c 'identifier:' <<<"\$snapshot" || true)"
-  if [[ "\$people_count" -eq 10 ]]; then
-    people_ready=1
-  else
-    people_ready=0
-  fi
 
   clear
   printf '%s\n' \
@@ -167,9 +153,9 @@ while true; do
   "bt_navigator:      \${navigator:-waiting}" \
   "people on /people: \$people_count / 10" \
   '' \
-  'Waiting until BOTH are ready...'
+  'Waiting until Nav2 is active and all people are visible...'
 
-  if [[ "\$nav_ready" -eq 1 && "\$people_ready" -eq 1 ]]; then
+  if [[ "\$controller" == "active [3]" && "\$navigator" == "active [3]" && "\$people_count" -eq 10 ]]; then
     break
   fi
   sleep 2
