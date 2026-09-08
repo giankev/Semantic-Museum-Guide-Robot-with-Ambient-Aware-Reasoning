@@ -14,9 +14,19 @@ for variable_name in GROQ_API_KEY GROQ_BASE_URL GROQ_MODEL GROQ_STT_MODEL; do
   fi
 done
 
+# Prefer real GPU/DRI rendering whenever the host exposes it.  The previous
+# fallback forced llvmpipe on every non-NVIDIA machine, which can make Gazebo
+# render at only a few FPS even when an Intel/AMD GPU is available through
+# /dev/dri.  Software rendering remains the final fallback.
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
+  echo "Rendering: NVIDIA GPU"
   GPU_ARGS=(--gpus all)
+elif [[ -d /dev/dri ]]; then
+  echo "Rendering: host DRI device (Intel/AMD hardware acceleration)"
+  GPU_ARGS=(--device=/dev/dri:/dev/dri)
+  RENDER_ENV=(-e LIBGL_ALWAYS_SOFTWARE=0)
 else
+  echo "Rendering: software llvmpipe fallback"
   RENDER_ENV=(-e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe)
 fi
 
