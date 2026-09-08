@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic six-lane crowd motion for final-video Sketch 1 only."""
+"""Deterministic six-person walking choreography for final-video Sketch 1."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ import rclpy
 from rclpy.node import Node
 
 
-UPDATE_HZ = 4.0
+UPDATE_HZ = 5.0
 CROWD_MODEL_ALLOWLIST = frozenset(
     {
         "visitor_marker",
@@ -36,9 +36,8 @@ GUEST_MODELS = frozenset(
 class Walker:
     name: str
     public_id: str
-    x_min: float
-    x_max: float
-    y: float
+    endpoint_a: tuple[float, float]
+    endpoint_b: tuple[float, float]
     speed: float
     phase_fraction: float
     spawn_pose: tuple[float, float, float] | None = None
@@ -47,83 +46,76 @@ class Walker:
 
     @property
     def length(self) -> float:
-        return self.x_max - self.x_min
+        return math.hypot(
+            self.endpoint_b[0] - self.endpoint_a[0],
+            self.endpoint_b[1] - self.endpoint_a[1],
+        )
 
     @property
     def period(self) -> float:
         return 2.0 * self.length / self.speed
 
 
-# The route used by Video 1 is approximately (0, 0) -> (0, 8).
-# Three pedestrians cross x=0 at different y values; three others move in
-# lateral lanes so all six remain visibly active without forming a wall.
-# All lanes stay inside the collision-free central region of museum_nav.world:
-# central obstacle panels are around x=+-7 and the north separator is at y=10.
+# Six deliberately different straight trajectories in the free central hall.
+# Three cross the robot's northbound route x ~= 0; three stay lateral.  The
+# segments are separated in space and phase so the crowd never collapses into
+# one group.  Positions are computed analytically from simulation time.
 WALKER_SPECS = (
     Walker(
         "visitor_marker",
         "visitor_1",
-        -5.0,
-        -2.4,
-        3.2,
+        (-5.0, 1.0),
+        (-2.2, 4.0),
         0.18,
-        0.05,
+        0.06,
     ),
     Walker(
         "guest_marker_1",
         "guest_1",
-        -2.4,
-        2.4,
-        2.2,
-        0.20,
-        0.37,
-        (-0.8, 2.2, 0.0),
+        (-3.2, 2.1),
+        (3.2, 2.4),
+        0.21,
+        0.31,
+        (-1.1, 2.2, 0.05),
     ),
     Walker(
         "staff_marker",
         "staff_1",
-        2.4,
-        5.0,
-        5.5,
+        (4.4, 2.8),
+        (4.4, 7.6),
         0.22,
-        0.18,
+        0.53,
     ),
     Walker(
         "guest_marker_2",
         "guest_2",
-        -2.4,
-        2.4,
-        4.4,
+        (3.2, 3.6),
+        (-3.2, 5.0),
         0.24,
-        0.79,
-        (1.3, 4.4, math.pi),
+        0.76,
+        (1.2, 4.0, 2.93),
     ),
     Walker(
         "guide_marker",
         "guide_1",
-        -5.0,
-        -2.4,
-        7.7,
-        0.26,
-        0.92,
+        (-5.0, 6.0),
+        (-2.2, 9.0),
+        0.25,
+        0.90,
     ),
     Walker(
         "guest_marker_3",
         "guest_3",
-        -2.4,
-        2.4,
-        6.6,
+        (-3.2, 6.2),
+        (3.2, 7.3),
         0.28,
-        0.61,
-        (0.6, 6.6, math.pi),
+        0.64,
+        (0.8, 6.9, 0.17),
     ),
 )
 
 if {walker.name for walker in WALKER_SPECS} != CROWD_MODEL_ALLOWLIST:
     raise RuntimeError("Crowd specifications must exactly match the safety allow-list")
-
-if len({walker.y for walker in WALKER_SPECS}) != len(WALKER_SPECS):
-    raise RuntimeError("Each demo pedestrian must have a distinct fixed Y lane")
 
 
 class DemoCrowdMotion(Node):
@@ -148,13 +140,11 @@ class DemoCrowdMotion(Node):
             SetEntityState, "/gazebo/set_entity_state"
         )
         self.spawn_client = self.create_client(SpawnEntity, "/spawn_entity")
-        self.create_subscription(
-            ModelStates, "/gazebo/model_states", self._models, 10
-        )
+        self.create_subscription(ModelStates, "/gazebo/model_states", self._models, 10)
         self.create_timer(1.0 / UPDATE_HZ, self._update)
 
         self.get_logger().info(
-            f"Sketch 1 analytical crowd requested: count={count}, "
+            f"Sketch 1 six-person choreography: count={count}, "
             f"compatibility_seed={seed}, update_rate={UPDATE_HZ:.1f} Hz"
         )
         self.get_logger().info(
@@ -162,11 +152,13 @@ class DemoCrowdMotion(Node):
             + ", ".join(sorted(CROWD_MODEL_ALLOWLIST))
         )
         for walker in self.walkers:
-            lane_kind = "CROSSING" if walker.x_min < 0.0 < walker.x_max else "LATERAL"
+            ax, ay = walker.endpoint_a
+            bx, by = walker.endpoint_b
+            crosses_route = min(ax, bx) <= 0.0 <= max(ax, bx)
             self.get_logger().info(
-                f"lane {walker.public_id}: y={walker.y:.1f}, "
-                f"x=[{walker.x_min:.1f},{walker.x_max:.1f}], "
-                f"speed={walker.speed:.2f} m/s, {lane_kind}"
+                f"{walker.public_id}: ({ax:.1f},{ay:.1f}) <-> "
+                f"({bx:.1f},{by:.1f}), {walker.speed:.2f} m/s, "
+                f"{'CROSSING' if crosses_route else 'LATERAL'}"
             )
 
     def _models(self, message: ModelStates) -> None:
@@ -175,9 +167,7 @@ class DemoCrowdMotion(Node):
         self.received_models = True
         for walker in self.walkers:
             pose = poses.get(walker.name)
-            if pose is None:
-                continue
-            if math.isfinite(pose.position.z):
+            if pose is not None and math.isfinite(pose.position.z):
                 walker.z = pose.position.z
 
     def _update(self) -> None:
@@ -185,7 +175,6 @@ class DemoCrowdMotion(Node):
             return
 
         self._spawn_missing_guest()
-
         if not all(walker.name in self.model_names for walker in self.walkers):
             return
 
@@ -204,7 +193,7 @@ class DemoCrowdMotion(Node):
             self.start_time = now
             self.started = True
             self.get_logger().info(
-                "All six pedestrians are present; analytical fixed-lane motion started"
+                "All six pedestrians present; continuous multi-direction motion started"
             )
 
         elapsed = max(now - self.start_time, 0.0)
@@ -215,9 +204,7 @@ class DemoCrowdMotion(Node):
                 try:
                     response = walker.future.result()
                 except Exception as error:
-                    self.get_logger().warning(
-                        f"Failed to move {walker.name}: {error}"
-                    )
+                    self.get_logger().warning(f"Failed to move {walker.name}: {error}")
                 else:
                     if response is None or not response.success:
                         self.get_logger().warning(
@@ -225,9 +212,10 @@ class DemoCrowdMotion(Node):
                         )
                 walker.future = None
 
-            x, heading, vx = _analytical_pose(walker, elapsed)
-            request = _state_request(walker, x, heading, vx)
-            walker.future = self.set_client.call_async(request)
+            x, y, heading, vx, vy = _analytical_pose(walker, elapsed)
+            walker.future = self.set_client.call_async(
+                _state_request(walker, x, y, heading, vx, vy)
+            )
 
     def _spawn_missing_guest(self) -> None:
         if self.spawn_future is not None:
@@ -283,23 +271,43 @@ class DemoCrowdMotion(Node):
         return self.get_clock().now().nanoseconds / 1.0e9
 
 
-def _analytical_pose(walker: Walker, elapsed: float) -> tuple[float, float, float]:
-    """Return x, yaw and vx from a triangle wave of simulation time."""
+def _analytical_pose(
+    walker: Walker, elapsed: float
+) -> tuple[float, float, float, float, float]:
+    """Return pose and velocity from a triangle wave along one line segment."""
+    ax, ay = walker.endpoint_a
+    bx, by = walker.endpoint_b
+    dx = bx - ax
+    dy = by - ay
+    length = walker.length
+    ux = dx / length
+    uy = dy / length
+
     phase_time = (elapsed + walker.phase_fraction * walker.period) % walker.period
-    half_period = walker.period / 2.0
+    one_way_time = length / walker.speed
 
-    if phase_time < half_period:
-        x = walker.x_min + walker.speed * phase_time
-        return x, 0.0, walker.speed
+    if phase_time < one_way_time:
+        distance = walker.speed * phase_time
+        x = ax + ux * distance
+        y = ay + uy * distance
+        heading = math.atan2(uy, ux)
+        return x, y, heading, walker.speed * ux, walker.speed * uy
 
-    return (
-        walker.x_max - walker.speed * (phase_time - half_period),
-        math.pi,
-        -walker.speed,
-    )
+    distance = walker.speed * (phase_time - one_way_time)
+    x = bx - ux * distance
+    y = by - uy * distance
+    heading = math.atan2(-uy, -ux)
+    return x, y, heading, -walker.speed * ux, -walker.speed * uy
 
 
-def _state_request(walker: Walker, x: float, heading: float, vx: float):
+def _state_request(
+    walker: Walker,
+    x: float,
+    y: float,
+    heading: float,
+    vx: float,
+    vy: float,
+):
     if walker.name not in CROWD_MODEL_ALLOWLIST:
         raise ValueError(f"Refusing SetEntityState for non-crowd model {walker.name!r}")
 
@@ -308,12 +316,12 @@ def _state_request(walker: Walker, x: float, heading: float, vx: float):
     state.name = walker.name
     state.reference_frame = "world"
     state.pose.position.x = x
-    state.pose.position.y = walker.y
+    state.pose.position.y = y
     state.pose.position.z = walker.z
     state.pose.orientation.z = math.sin(heading / 2.0)
     state.pose.orientation.w = math.cos(heading / 2.0)
     state.twist.linear.x = vx
-    state.twist.linear.y = 0.0
+    state.twist.linear.y = vy
     request.state = state
     return request
 
