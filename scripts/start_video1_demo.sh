@@ -6,10 +6,7 @@ CONTAINER="museum_tiago"
 STATE_DIR="/tmp/tiago_video1_demo_${UID}"
 ROS_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash && source /root/exchange/exchange/museum_ws/install/setup.bash"
 BUILD_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash"
-GOAL_X="0.0"
-GOAL_Y="16.0"
-GOAL_YAW="1.5708"
-DEMO_NAV2_PARAMS="/tmp/nav2_video1_static.yaml"
+NAV2_PARAMS="/root/exchange/exchange/museum_ws/src/museum_assistant/config/nav2_supplied_anisotropic.yaml"
 
 command -v docker >/dev/null || { echo "docker is required." >&2; exit 1; }
 
@@ -78,22 +75,9 @@ echo "Building museum_assistant and museum_social_critic..."
 docker exec "${CONTAINER}" bash -lc \
   "${BUILD_SETUP} && cd /root/exchange/exchange/museum_ws && colcon build --symlink-install --packages-select museum_assistant museum_social_critic"
 
-echo "Preparing Video 1 social-navigation profile (3.0 m comfort target)..."
-docker exec "${CONTAINER}" bash -lc "
-  cp /root/exchange/exchange/museum_ws/src/museum_assistant/config/nav2_supplied_anisotropic.yaml ${DEMO_NAV2_PARAMS} &&
-  sed -i \
-    -e 's/ProxemicForce.scale: 32.0/ProxemicForce.scale: 80.0/' \
-    -e 's/ProxemicForce.comfort_distance: 1.0/ProxemicForce.comfort_distance: 3.0/' \
-    -e 's/ProxemicForce.sigma: 0.4/ProxemicForce.sigma: 0.35/' \
-    -e 's/ProxemicForce.ignored_identifiers: \[visitor_1\]/ProxemicForce.ignored_identifiers: [__none__]/' \
-    -e 's/PathAlign.scale: 16.0/PathAlign.scale: 10.0/' \
-    -e 's/PathDist.scale: 20.0/PathDist.scale: 12.0/' \
-    ${DEMO_NAV2_PARAMS}
-  echo 'Video profile:'
-  grep -E 'ProxemicForce.(scale|comfort_distance|sigma|ignored_identifiers)|PathAlign.scale|PathDist.scale' ${DEMO_NAV2_PARAMS}
-"
-
-SIMULATION_REMOTE="${ROS_SETUP} && exec ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py gzclient:=True publish_people:=True use_scripted_visitor:=False use_engagement:=False use_language:=False use_speech:=False nav2_params_file:=${DEMO_NAV2_PARAMS}"
+# Use the validated anisotropic configuration unchanged.  The visible social
+# detour is encoded in the waypoint route rather than by over-amplifying DWB.
+SIMULATION_REMOTE="${ROS_SETUP} && exec ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py gzclient:=True publish_people:=True use_scripted_visitor:=False use_engagement:=False use_language:=False use_speech:=False nav2_params_file:=${NAV2_PARAMS}"
 printf -v simulation_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${SIMULATION_REMOTE}"
 open_terminal "TIAGO - SIMULATION" "simulation" "${simulation_command}"
 
@@ -103,7 +87,7 @@ gazebo_ready() {
   grep -Fxq "/gazebo/set_entity_state" <<<"${services}" && grep -Fxq "/spawn_entity" <<<"${services}"
 }
 
-echo "Waiting only for Gazebo services before opening ALL demo windows..."
+echo "Waiting for Gazebo services..."
 deadline=$((SECONDS + 180))
 until gazebo_ready; do
   if ((SECONDS >= deadline)); then
@@ -113,7 +97,7 @@ until gazebo_ready; do
   sleep 2
 done
 
-echo "Gazebo READY. Opening people, monitor and video-control windows now."
+echo "Gazebo READY. Opening people, monitor and video-control windows."
 
 STATIC_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_static_people.py --ros-args -p use_sim_time:=true"
 printf -v static_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${STATIC_REMOTE}"
@@ -123,39 +107,50 @@ MONITOR_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_social_
 printf -v monitor_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${MONITOR_REMOTE}"
 open_terminal "TIAGO - SOCIAL MONITOR" "monitor" "${monitor_command}"
 
-read -r -d '' CONTROL_TEXT <<EOF || true
+# Full route chosen from the actual museum collision proxy and the 10-person
+# layout.  It first leaves the centre to the LEFT, skirts Group A/B, crosses
+# the y=10 separator through its legal x=-3..3 opening, then threads the
+# north gallery between the two sides of Group C.
+read -r -d '' CONTROL_TEXT <<'EOF' || true
 clear
 printf '%s\n' \
 '============================================' \
-' TIAGO MUSEUM GUIDE - VIDEO 1 CONTROL' \
+' TIAGO MUSEUM GUIDE - VIDEO 1 WAYPOINT ROUTE' \
 '============================================' \
 '' \
-'Gazebo GUI: ON' \
-'People requested: 10 STATIC / 3 GROUPS' \
-'Social comfort target: 3.0 m' \
-'Goal: NORTH GALLERY (0.0, 16.0)' \
-'' \
 'Waiting for Nav2 + 10 people...' \
-'============================================'
+'' \
+'Route:' \
+'  W1  (-4.50,  3.00)' \
+'  W2  (-4.80,  6.50)' \
+'  W3  (-2.00,  9.20)' \
+'  W4  ( 0.25, 11.20)' \
+'  W5  ( 0.25, 14.50)' \
+'  GOAL( 0.00, 16.00)'
 
 while true; do
-  controller="\$(ros2 lifecycle get /controller_server 2>/dev/null || true)"
-  navigator="\$(ros2 lifecycle get /bt_navigator 2>/dev/null || true)"
-  snapshot="\$(timeout 5 ros2 topic echo /people --once 2>/dev/null || true)"
-  people_count="\$(grep -c 'identifier:' <<<"\$snapshot" || true)"
+  controller="$(ros2 lifecycle get /controller_server 2>/dev/null || true)"
+  navigator="$(ros2 lifecycle get /bt_navigator 2>/dev/null || true)"
+  actions="$(ros2 action list 2>/dev/null || true)"
+  snapshot="$(timeout 5 ros2 topic echo /people --once 2>/dev/null || true)"
+  people_count="$(grep -c 'identifier:' <<<"$snapshot" || true)"
 
   clear
   printf '%s\n' \
   '============================================' \
-  ' TIAGO MUSEUM GUIDE - VIDEO 1 CONTROL' \
+  ' TIAGO MUSEUM GUIDE - VIDEO 1 WAYPOINT ROUTE' \
   '============================================' \
-  "controller_server: \${controller:-waiting}" \
-  "bt_navigator:      \${navigator:-waiting}" \
-  "people on /people: \$people_count / 10" \
+  "controller_server: ${controller:-waiting}" \
+  "bt_navigator:      ${navigator:-waiting}" \
+  "people on /people: $people_count / 10" \
+  "through-poses:     $(grep -Fxq /navigate_through_poses <<<"$actions" && echo READY || echo waiting)" \
   '' \
-  'Waiting until Nav2 is active and all people are visible...'
+  'Full route: LEFT detour -> north opening -> north gallery'
 
-  if [[ "\$controller" == "active [3]" && "\$navigator" == "active [3]" && "\$people_count" -eq 10 ]]; then
+  if [[ "$controller" == "active [3]" \
+        && "$navigator" == "active [3]" \
+        && "$people_count" -eq 10 ]] \
+        && grep -Fxq "/navigate_through_poses" <<<"$actions"; then
     break
   fi
   sleep 2
@@ -164,24 +159,35 @@ done
 clear
 printf '%s\n' \
 '============================================' \
-' VIDEO 1 READY - AUTO START' \
+' VIDEO 1 READY - FULL WAYPOINT ROUTE' \
 '============================================' \
 'Nav2: ACTIVE' \
 'People: 10 / 10' \
-'Social comfort target: 3.0 m' \
-'Goal: NORTH GALLERY (0.0, 16.0)' \
+'' \
+'W1  (-4.50,  3.00)' \
+'W2  (-4.80,  6.50)' \
+'W3  (-2.00,  9.20)' \
+'W4  ( 0.25, 11.20)' \
+'W5  ( 0.25, 14.50)' \
+'GOAL( 0.00, 16.00)' \
 '============================================'
 for n in 8 7 6 5 4 3 2 1; do
-  printf '\rNavigation starts in %2d s ' "\$n"
+  printf '\rNavigation starts in %2d s ' "$n"
   sleep 1
 done
-printf '\nNAVIGATION GOAL SENT -> NORTH GALLERY\n'
-exec ros2 run museum_assistant send_nav_goal --x ${GOAL_X} --y ${GOAL_Y} --yaw ${GOAL_YAW}
+printf '\nFULL WAYPOINT ROUTE SENT\n'
+exec ros2 run museum_assistant send_nav_waypoints \
+  --pose -4.50 3.00 2.55 \
+  --pose -4.80 6.50 1.65 \
+  --pose -2.00 9.20 0.77 \
+  --pose 0.25 11.20 0.73 \
+  --pose 0.25 14.50 1.57 \
+  --pose 0.00 16.00 1.5708
 EOF
 CONTROL_REMOTE="${ROS_SETUP} && ${CONTROL_TEXT}"
 printf -v control_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${CONTROL_REMOTE}"
 open_terminal "TIAGO - VIDEO CONTROL" "control" "${control_command}"
 
-echo "All Video 1 windows have been opened."
-echo "VIDEO CONTROL now shows live Nav2 + people readiness and sends the goal automatically."
+echo "Video 1 full waypoint demo started."
+echo "Route forces the visible LEFT detour and then enters north_gallery through the valid opening."
 echo "Stop with: ./scripts/stop_video1_demo.sh"
