@@ -100,6 +100,7 @@ setup(
                 "museum_assistant.user_request_simulator_node:main"
             ),
             "send_nav_goal = museum_assistant.send_nav_goal:main",
+            "send_nav_waypoints = museum_assistant.send_nav_waypoints:main",
             "capture_nav_pose = museum_assistant.capture_nav_pose:main",
             (
                 "simulation_ground_truth_odom = "
