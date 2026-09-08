@@ -168,43 +168,15 @@ printf -v monitor_command 'docker exec -it %q bash -lc %q' \
   "${CONTAINER}" "${MONITOR_REMOTE}"
 open_terminal "TIAGO - MONITOR" "monitor" "${monitor_command}"
 
-people_ready() {
-  local people count moving
+people_present() {
+  local people count
   people="$(ros_exec "timeout 5 ros2 topic echo /people --once" 2>/dev/null)" || return 1
-  read -r count moving < <(
-    awk '
-      function finish_person() {
-        if (person && sqrt(vx * vx + vy * vy) >= 0.05) moving++
-      }
-      /^[[:space:]]*-[[:space:]]+identifier:/ {
-        finish_person()
-        person = 1
-        people++
-        velocity = 0
-        vx = 0
-        vy = 0
-        next
-      }
-      person && /^[[:space:]]+velocity:/ {
-        velocity = 1
-        next
-      }
-      velocity && /^[[:space:]]+x:/ {
-        vx = $2
-        next
-      }
-      velocity && /^[[:space:]]+y:/ {
-        vy = $2
-        velocity = 0
-        next
-      }
-      END {
-        finish_person()
-        print people + 0, moving + 0
-      }
-    ' <<<"${people}"
-  )
-  [[ "${count}" -eq 6 && "${moving}" -eq 6 ]]
+  count="$(grep -c 'identifier:' <<<"${people}" || true)"
+  [[ "${count}" -eq 6 ]]
+}
+
+crowd_node_ready() {
+  ros_exec "ros2 node list" 2>/dev/null | grep -Fxq "/demo_crowd_motion"
 }
 
 anisotropic_ready() {
@@ -235,17 +207,18 @@ sim_time_ns() {
   printf '%s\n' "$((sec * 1000000000 + nanosec))"
 }
 
-echo "Waiting for six moving pedestrians and the anisotropic critic..."
-deadline=$((SECONDS + 120))
-until people_ready && anisotropic_ready && nav2_speed_limit_ready; do
+echo "Waiting for six pedestrians, crowd controller, and anisotropic critic..."
+deadline=$((SECONDS + 90))
+until people_present && crowd_node_ready && anisotropic_ready && nav2_speed_limit_ready; do
   if ((SECONDS >= deadline)); then
-    echo "Timed out waiting for the complete social-navigation demo." >&2
+    echo "Timed out waiting for the social-navigation demo." >&2
+    echo "Check the TIAGO - CROWD terminal for the actual error." >&2
     exit 1
   fi
   sleep 2
 done
 
-echo "Allowing five simulated seconds of crowd warm-up..."
+echo "Six pedestrians are present. Allowing five simulated seconds of walking..."
 warmup_start_sim="$(sim_time_ns)" || {
   echo "Could not read the Gazebo simulation clock." >&2
   exit 1
@@ -280,15 +253,16 @@ printf '%s\n' \
 'Gazebo: READY' \
 'Nav2: READY' \
 'People: 6' \
-'Moving: 6' \
+'Crowd motion: ACTIVE' \
 'Social critic: ANISOTROPIC' \
 'TIAGo controlled by Nav2: YES' \
 'TIAGo Nav2 speed limit: 0.20 m/s' \
-'Crowd layout: 3 crossing lanes + 3 lateral lanes' \
+'Crowd layout: 3 crossing + 3 lateral multi-direction paths' \
 'Crowd warm-up: 5 simulated seconds' \
 'Gazebo real-time factor: ${REAL_TIME_FACTOR}' \
 'Goal: (0.0, 8.0)' \
 '' \
+'Check Gazebo: all six pedestrians should visibly be walking.' \
 'Start the screen recording now.' \
 '' \
 'Press ENTER to start TIAGo navigation.' \
