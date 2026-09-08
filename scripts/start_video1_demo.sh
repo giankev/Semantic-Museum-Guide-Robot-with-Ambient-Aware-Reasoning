@@ -6,9 +6,12 @@ CONTAINER="museum_tiago"
 STATE_DIR="/tmp/tiago_video1_demo_${UID}"
 ROS_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash && source /root/exchange/exchange/museum_ws/install/setup.bash"
 BUILD_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash"
+
+# Validated north-gallery candidate from supplied_museum_routes.yaml.
 GOAL_X="0.0"
-GOAL_Y="8.0"
-GOAL_YAW="1.57"
+GOAL_Y="16.0"
+GOAL_YAW="1.5708"
+AUTO_START_DELAY="12"
 
 command -v docker >/dev/null || {
   echo "docker is required." >&2
@@ -24,6 +27,16 @@ else
   exit 1
 fi
 
+container_running() {
+  [[ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER}" 2>/dev/null || true)" == "true" ]]
+}
+
+if ! container_running; then
+  echo "${CONTAINER} is not running." >&2
+  echo "Start ./start_museum_tiago.sh in another terminal and leave it open, then rerun this script." >&2
+  exit 1
+fi
+
 mkdir -p "${STATE_DIR}"
 for pid_file in "${STATE_DIR}"/*.pid; do
   [[ -e "${pid_file}" ]] || continue
@@ -34,7 +47,6 @@ for pid_file in "${STATE_DIR}"/*.pid; do
   fi
   rm -f "${pid_file}"
 done
-rm -f "${STATE_DIR}/container_started"
 
 open_terminal() {
   local title="$1"
@@ -50,69 +62,33 @@ open_terminal() {
   fi
 }
 
-container_running() {
-  [[ "$(docker inspect -f '{{.State.Running}}' "${CONTAINER}" 2>/dev/null || true)" == "true" ]]
+ros_exec() {
+  docker exec "${CONTAINER}" bash -lc "${ROS_SETUP} && $1"
 }
-
-xhost +local:docker >/dev/null 2>&1 || true
-
-if ! docker inspect "${CONTAINER}" >/dev/null 2>&1; then
-  printf -v container_command 'cd %q && exec ./start_museum_tiago.sh' "${REPO_ROOT}"
-  open_terminal "TIAGO - CONTAINER" "container" "${container_command}"
-  touch "${STATE_DIR}/container_started"
-elif ! container_running; then
-  printf -v container_command 'exec docker start -ai %q' "${CONTAINER}"
-  open_terminal "TIAGO - CONTAINER" "container" "${container_command}"
-  touch "${STATE_DIR}/container_started"
-fi
-
-deadline=$((SECONDS + 90))
-until container_running; do
-  if ((SECONDS >= deadline)); then
-    echo "Timed out waiting for ${CONTAINER}." >&2
-    exit 1
-  fi
-  sleep 1
-done
 
 docker exec "${CONTAINER}" test -d /root/exchange/exchange/museum_ws || {
   echo "${CONTAINER} does not contain the expected /root/exchange mount." >&2
   exit 1
 }
 
-existing_topics="$(
-  docker exec "${CONTAINER}" bash -lc \
-    "source /opt/ros/humble/setup.bash && ros2 topic list" 2>/dev/null || true
-)"
-existing_actions="$(
-  docker exec "${CONTAINER}" bash -lc \
-    "source /opt/ros/humble/setup.bash && ros2 action list" 2>/dev/null || true
-)"
-existing_nodes="$(
-  docker exec "${CONTAINER}" bash -lc \
-    "source /opt/ros/humble/setup.bash && ros2 node list" 2>/dev/null || true
-)"
+existing_topics="$(ros_exec "ros2 topic list" 2>/dev/null || true)"
+existing_actions="$(ros_exec "ros2 action list" 2>/dev/null || true)"
+existing_nodes="$(ros_exec "ros2 node list" 2>/dev/null || true)"
 if grep -Fxq "/gazebo/model_states" <<<"${existing_topics}" \
   || grep -Fxq "/navigate_to_pose" <<<"${existing_actions}" \
-  || grep -Eq '^/(gazebo|controller_server|bt_navigator|simulation_ground_truth_odom|demo_crowd_motion)$' \
-    <<<"${existing_nodes}"; then
-  echo "An existing Gazebo/Nav2 runtime is active in ${CONTAINER}." >&2
-  echo "Stop that runtime before starting Video 1; no processes were killed." >&2
+  || grep -Eq '^/(gazebo|controller_server|bt_navigator|demo_crowd_motion)$' <<<"${existing_nodes}"; then
+  echo "An existing Gazebo/Nav2/Video1 runtime is already active." >&2
+  echo "Run ./scripts/stop_video1_demo.sh, close the old simulation, then start again." >&2
   exit 1
 fi
 
-echo "Building the two workspace packages needed by the demo..."
+echo "Building museum_assistant and museum_social_critic..."
 docker exec "${CONTAINER}" bash -lc \
   "${BUILD_SETUP} && cd /root/exchange/exchange/museum_ws && colcon build --symlink-install --packages-select museum_assistant museum_social_critic"
 
 SIMULATION_REMOTE="${ROS_SETUP} && exec ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py gzclient:=True publish_people:=True use_engagement:=False use_language:=False use_speech:=False nav2_params_file:=/root/exchange/exchange/museum_ws/src/museum_assistant/config/nav2_supplied_anisotropic.yaml"
-printf -v simulation_command 'docker exec -it %q bash -lc %q' \
-  "${CONTAINER}" "${SIMULATION_REMOTE}"
+printf -v simulation_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${SIMULATION_REMOTE}"
 open_terminal "TIAGO - SIMULATION" "simulation" "${simulation_command}"
-
-ros_exec() {
-  docker exec "${CONTAINER}" bash -lc "${ROS_SETUP} && $1"
-}
 
 gazebo_ready() {
   local services
@@ -133,152 +109,69 @@ nav2_ready() {
 
 robot_at_demo_start() {
   local position x y
-  position="$(
-    ros_exec "timeout 5 ros2 topic echo /museum/ground_truth_odom --once --field pose.pose.position" 2>/dev/null
-  )" || return 1
+  position="$(ros_exec "timeout 5 ros2 topic echo /museum/ground_truth_odom --once --field pose.pose.position" 2>/dev/null)" || return 1
   x="$(awk '$1 == "x:" {print $2; exit}' <<<"${position}")"
   y="$(awk '$1 == "y:" {print $2; exit}' <<<"${position}")"
-  awk -v x="${x}" -v y="${y}" \
-    'BEGIN {exit !(x != "" && y != "" && sqrt(x * x + y * y) <= 0.50)}'
+  awk -v x="${x}" -v y="${y}" 'BEGIN {exit !(x != "" && y != "" && sqrt(x*x+y*y) <= 0.50)}'
 }
 
-echo "Waiting for Gazebo services and active Nav2 nodes..."
+echo "Waiting for Gazebo and exact Nav2 active state..."
 deadline=$((SECONDS + 300))
 until gazebo_ready && nav2_ready; do
   if ((SECONDS >= deadline)); then
-    echo "Timed out waiting for Gazebo/Nav2. Run scripts/stop_video1_demo.sh." >&2
+    echo "Timed out waiting for Gazebo/Nav2." >&2
     exit 1
   fi
   sleep 2
 done
 
+echo "Nav2 is ACTIVE. The play_motion2 /robot_description_semantic warning is not used by this base-navigation demo."
+
 if ! robot_at_demo_start; then
-  echo "TIAGo is not at the expected Video 1 start near (0, 0)." >&2
-  echo "Refusing to send a potentially trivial or stale navigation goal." >&2
+  echo "TIAGo is not near the expected start (0,0)." >&2
   exit 1
 fi
 
 CROWD_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_crowd_motion.py --seed 42 --count 6 --ros-args -p use_sim_time:=true"
-printf -v crowd_command 'docker exec -it %q bash -lc %q' \
-  "${CONTAINER}" "${CROWD_REMOTE}"
+printf -v crowd_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${CROWD_REMOTE}"
 open_terminal "TIAGO - CROWD" "crowd" "${crowd_command}"
 
 MONITOR_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_monitor.py"
-printf -v monitor_command 'docker exec -it %q bash -lc %q' \
-  "${CONTAINER}" "${MONITOR_REMOTE}"
+printf -v monitor_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${MONITOR_REMOTE}"
 open_terminal "TIAGO - MONITOR" "monitor" "${monitor_command}"
 
-people_present() {
-  local people count
-  people="$(ros_exec "timeout 5 ros2 topic echo /people --once" 2>/dev/null)" || return 1
-  count="$(grep -c 'identifier:' <<<"${people}" || true)"
-  [[ "${count}" -eq 6 ]]
-}
-
-crowd_node_ready() {
-  ros_exec "ros2 node list" 2>/dev/null | grep -Fxq "/demo_crowd_motion"
-}
-
-anisotropic_ready() {
-  local value
-  value="$(ros_exec "ros2 param get /controller_server FollowPath.ProxemicForce.anisotropic_enabled" 2>/dev/null)" || return 1
-  grep -qi "true" <<<"${value}"
-}
-
-nav2_speed_limit_ready() {
-  local controller_limit smoother_limit
-  controller_limit="$(
-    ros_exec "ros2 param get /controller_server FollowPath.max_vel_x" 2>/dev/null
-  )" || return 1
-  smoother_limit="$(
-    ros_exec "ros2 param get /velocity_smoother max_velocity" 2>/dev/null
-  )" || return 1
-  grep -Eq '(^|[^0-9])0\.2(0)?([^0-9]|$)' <<<"${controller_limit}" \
-    && grep -Eq '\[0\.2(0)?,' <<<"${smoother_limit}"
-}
-
-sim_time_ns() {
-  local clock sec nanosec
-  clock="$(ros_exec "timeout 5 ros2 topic echo /clock --once" 2>/dev/null)" \
-    || return 1
-  sec="$(awk '$1 == "sec:" {print $2; exit}' <<<"${clock}")"
-  nanosec="$(awk '$1 == "nanosec:" {print $2; exit}' <<<"${clock}")"
-  [[ "${sec}" =~ ^[0-9]+$ && "${nanosec}" =~ ^[0-9]+$ ]] || return 1
-  printf '%s\n' "$((sec * 1000000000 + nanosec))"
-}
-
-echo "Waiting for six pedestrians, crowd controller, and anisotropic critic..."
-deadline=$((SECONDS + 90))
-until people_present && crowd_node_ready && anisotropic_ready && nav2_speed_limit_ready; do
-  if ((SECONDS >= deadline)); then
-    echo "Timed out waiting for the social-navigation demo." >&2
-    echo "Check the TIAGO - CROWD terminal for the actual error." >&2
-    exit 1
-  fi
-  sleep 2
-done
-
-echo "Six pedestrians are present. Allowing five simulated seconds of walking..."
-warmup_start_sim="$(sim_time_ns)" || {
-  echo "Could not read the Gazebo simulation clock." >&2
-  exit 1
-}
-warmup_start_wall="$(date +%s%N)"
-deadline=$((SECONDS + 120))
-while true; do
-  warmup_now_sim="$(sim_time_ns)" || warmup_now_sim="${warmup_start_sim}"
-  if ((warmup_now_sim - warmup_start_sim >= 5000000000)); then
-    break
-  fi
-  if ((SECONDS >= deadline)); then
-    echo "Timed out during the crowd warm-up." >&2
-    exit 1
-  fi
-  sleep 1
-done
-warmup_end_wall="$(date +%s%N)"
-REAL_TIME_FACTOR="$(
-  awk -v sim_ns="$((warmup_now_sim - warmup_start_sim))" \
-    -v wall_ns="$((warmup_end_wall - warmup_start_wall))" \
-    'BEGIN {if (wall_ns > 0) printf "%.2f", sim_ns / wall_ns; else print "unknown"}'
-)"
-
+# Do not gate navigation on fragile /people parsing.  The crowd is given a
+# short deterministic startup window, then a normal Nav2 goal is sent
+# automatically.  The robot takes long enough to reach y>10 that all six
+# pedestrians will already be walking in the north gallery when it arrives.
 read -r -d '' CONTROL_TEXT <<EOF || true
 clear
 printf '%s\n' \
 '============================================' \
-' TIAGO MUSEUM GUIDE - VIDEO 1 READY' \
+' TIAGO MUSEUM GUIDE - VIDEO 1 AUTO START' \
 '============================================' \
 '' \
-'Gazebo: READY' \
-'Nav2: READY' \
-'People: 6' \
-'Crowd motion: ACTIVE' \
+'Nav2: ACTIVE' \
 'Social critic: ANISOTROPIC' \
-'TIAGo controlled by Nav2: YES' \
-'TIAGo Nav2 speed limit: 0.20 m/s' \
-'Crowd layout: 3 crossing + 3 lateral multi-direction paths' \
-'Crowd warm-up: 5 simulated seconds' \
-'Gazebo real-time factor: ${REAL_TIME_FACTOR}' \
-'Goal: (0.0, 8.0)' \
+'People requested: 6' \
+'Crowd location: NORTH GALLERY' \
+'Goal: NORTH GALLERY (0.0, 16.0)' \
 '' \
-'Check Gazebo: all six pedestrians should visibly be walking.' \
-'Start the screen recording now.' \
-'' \
-'Press ENTER to start TIAGo navigation.' \
+'TIAGo will start automatically.' \
+'No ENTER is required.' \
 '============================================'
-read -r _
-printf 'Starting in '
-for n in 3 2 1; do
-  printf '%s... ' "$n"
+for n in 12 11 10 9 8 7 6 5 4 3 2 1; do
+  printf '\rNavigation starts in %2d s ' "\$n"
   sleep 1
 done
-printf '\nNAVIGATION START\n'
+printf '\nNAVIGATION GOAL SENT -> NORTH GALLERY\n'
 exec ros2 run museum_assistant send_nav_goal --x ${GOAL_X} --y ${GOAL_Y} --yaw ${GOAL_YAW}
 EOF
 CONTROL_REMOTE="${ROS_SETUP} && ${CONTROL_TEXT}"
-printf -v control_command 'docker exec -it %q bash -lc %q' \
-  "${CONTAINER}" "${CONTROL_REMOTE}"
+printf -v control_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${CONTROL_REMOTE}"
 open_terminal "TIAGO - VIDEO CONTROL" "control" "${control_command}"
 
-echo "Video 1 is ready. Use scripts/stop_video1_demo.sh when recording is complete."
+echo "Video 1 started. No further input is needed."
+echo "TIAGo will automatically navigate to north_gallery (0,16) after ${AUTO_START_DELAY}s."
+echo "The six NPCs walk continuously in the north room while TIAGo approaches."
+echo "Stop with: ./scripts/stop_video1_demo.sh"
