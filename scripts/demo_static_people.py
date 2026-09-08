@@ -26,15 +26,15 @@ class StaticPerson:
 
 
 # Six people spread along the validated route from (0,0) to north_gallery
-# (0,16).  They alternate left/right of the nominal centerline and stay away
+# (0,16). They alternate left/right of the nominal centerline and stay away
 # from the narrow y=10 separator itself, whose free opening is x=-3..3.
 PEOPLE = (
     StaticPerson("visitor_marker", "visitor_1", -2.6, 2.3, 0.3),
-    StaticPerson("guest_marker_1", "guest_1", 1.7, 4.2, math.pi),
+    StaticPerson("guest_marker_1", "guest_1", 1.7, 4.2, math.pi, True),
     StaticPerson("staff_marker", "staff_1", -1.7, 6.7, 0.0),
-    StaticPerson("guest_marker_2", "guest_2", 1.7, 8.6, math.pi),
+    StaticPerson("guest_marker_2", "guest_2", 1.7, 8.6, math.pi, True),
     StaticPerson("guide_marker", "guide_1", -1.8, 12.4, 0.0),
-    StaticPerson("guest_marker_3", "guest_3", 1.8, 15.0, math.pi),
+    StaticPerson("guest_marker_3", "guest_3", 1.8, 15.0, math.pi, True),
 )
 
 ALLOWLIST = frozenset(person.model_name for person in PEOPLE)
