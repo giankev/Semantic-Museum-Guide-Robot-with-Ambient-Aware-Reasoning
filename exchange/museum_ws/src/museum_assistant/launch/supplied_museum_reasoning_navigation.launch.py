@@ -61,6 +61,11 @@ def generate_launch_description():
                 default_value="False",
                 choices=["True", "False"],
             ),
+            DeclareLaunchArgument(
+                "use_scripted_visitor",
+                default_value="True",
+                choices=["True", "False"],
+            ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(navigation_launch),
                 launch_arguments={
@@ -140,6 +145,7 @@ def generate_launch_description():
                 executable="scripted_visitor_node",
                 name="scripted_visitor_node",
                 output="screen",
+                condition=IfCondition(LaunchConfiguration("use_scripted_visitor")),
                 parameters=[{"use_sim_time": True}],
             ),
             Node(
