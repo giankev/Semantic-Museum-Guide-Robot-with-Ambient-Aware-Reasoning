@@ -9,7 +9,6 @@ BUILD_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/i
 GOAL_X="0.0"
 GOAL_Y="16.0"
 GOAL_YAW="1.5708"
-AUTO_START_DELAY="8"
 DEMO_NAV2_PARAMS="/tmp/nav2_video1_static.yaml"
 
 command -v docker >/dev/null || { echo "docker is required." >&2; exit 1; }
@@ -102,35 +101,7 @@ gazebo_ready() {
   grep -Fxq "/gazebo/set_entity_state" <<<"${services}" && grep -Fxq "/spawn_entity" <<<"${services}"
 }
 
-nav2_ready() {
-  local actions controller navigator
-  actions="$(ros_exec "ros2 action list" 2>/dev/null)" || return 1
-  grep -Fxq "/navigate_to_pose" <<<"${actions}" || return 1
-  controller="$(ros_exec "ros2 lifecycle get /controller_server" 2>/dev/null)" || return 1
-  navigator="$(ros_exec "ros2 lifecycle get /bt_navigator" 2>/dev/null)" || return 1
-  grep -Eq '^active \[3\]$' <<<"${controller}" && grep -Eq '^active \[3\]$' <<<"${navigator}"
-}
-
-print_nav2_state() {
-  local controller navigator
-  controller="$(ros_exec "ros2 lifecycle get /controller_server" 2>/dev/null || true)"
-  navigator="$(ros_exec "ros2 lifecycle get /bt_navigator" 2>/dev/null || true)"
-  echo "  controller_server: ${controller:-not available}"
-  echo "  bt_navigator:      ${navigator:-not available}"
-}
-
-robot_at_demo_start() {
-  local position x y
-  position="$(ros_exec "timeout 5 ros2 topic echo /museum/ground_truth_odom --once --field pose.pose.position" 2>/dev/null)" || return 1
-  x="$(awk '$1 == "x:" {print $2; exit}' <<<"${position}")"
-  y="$(awk '$1 == "y:" {print $2; exit}' <<<"${position}")"
-  awk -v x="${x}" -v y="${y}" 'BEGIN {exit !(x != "" && y != "" && sqrt(x*x+y*y) <= 0.50)}'
-}
-
-# Open the people and monitor windows as soon as Gazebo itself is alive.
-# Previously these were opened only AFTER Nav2 became active, so when Nav2
-# activation was slow/stuck the user saw only Gazebo and no other windows.
-echo "Waiting for Gazebo services..."
+echo "Waiting only for Gazebo services before opening ALL demo windows..."
 deadline=$((SECONDS + 180))
 until gazebo_ready; do
   if ((SECONDS >= deadline)); then
@@ -140,7 +111,7 @@ until gazebo_ready; do
   sleep 2
 done
 
-echo "Gazebo services READY. Opening static-people and social-monitor windows now."
+echo "Gazebo READY. Opening people, monitor and video-control windows now."
 
 STATIC_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_static_people.py --ros-args -p use_sim_time:=true"
 printf -v static_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${STATIC_REMOTE}"
@@ -150,66 +121,69 @@ MONITOR_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_social_
 printf -v monitor_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${MONITOR_REMOTE}"
 open_terminal "TIAGO - SOCIAL MONITOR" "monitor" "${monitor_command}"
 
-echo "Waiting for Nav2 to become ACTIVE..."
-deadline=$((SECONDS + 300))
-next_report=$SECONDS
-until nav2_ready; do
-  if ((SECONDS >= next_report)); then
-    print_nav2_state
-    next_report=$((SECONDS + 10))
-  fi
-  if ((SECONDS >= deadline)); then
-    echo "Timed out waiting for Nav2 ACTIVE." >&2
-    print_nav2_state >&2
-    echo "Gazebo, static people and monitor remain open for diagnosis." >&2
-    exit 1
-  fi
-  sleep 2
-done
-
-echo "Nav2 ACTIVE."
-
-if ! robot_at_demo_start; then
-  echo "TIAGo is not near the expected start (0,0)." >&2
-  echo "Gazebo, static people and monitor remain open for diagnosis." >&2
-  exit 1
-fi
-
-people_ready() {
-  local snapshot count
-  snapshot="$(ros_exec "timeout 5 ros2 topic echo /people --once" 2>/dev/null)" || return 1
-  count="$(grep -c 'identifier:' <<<"${snapshot}" || true)"
-  [[ "${count}" -eq 10 ]]
-}
-
-echo "Waiting for all 10 static pedestrians on /people..."
-deadline=$((SECONDS + 120))
-until people_ready; do
-  if ((SECONDS >= deadline)); then
-    echo "Timed out waiting for ten people. Check TIAGO - STATIC PEOPLE and TIAGO - SOCIAL MONITOR." >&2
-    exit 1
-  fi
-  sleep 2
-done
-
-echo "10 pedestrians READY. Opening Video Control."
-
+# The control terminal is opened immediately.  It performs its OWN readiness
+# checks, so the user always sees why TIAGo has not started yet instead of
+# waiting on an invisible gate in this parent script.
 read -r -d '' CONTROL_TEXT <<EOF || true
 clear
 printf '%s\n' \
 '============================================' \
-' TIAGO MUSEUM GUIDE - VIDEO 1 SOCIAL DEMO' \
+' TIAGO MUSEUM GUIDE - VIDEO 1 CONTROL' \
 '============================================' \
 '' \
 'Gazebo GUI: ON' \
-'Nav2: ACTIVE' \
-'People: 10 STATIC / 3 GROUPS' \
+'People requested: 10 STATIC / 3 GROUPS' \
 'Social comfort target: 3.0 m' \
-'ProxemicForce scale: 80' \
 'Goal: NORTH GALLERY (0.0, 16.0)' \
 '' \
-'Centre/right route is socially occupied.' \
-'TIAGo should prefer a visible leftward detour.' \
+'Waiting for Nav2 + 10 people...' \
+'============================================'
+
+nav_ready=0
+people_ready=0
+while true; do
+  controller="\$(ros2 lifecycle get /controller_server 2>/dev/null || true)"
+  navigator="\$(ros2 lifecycle get /bt_navigator 2>/dev/null || true)"
+  if [[ "\$controller" == "active [3]" && "\$navigator" == "active [3]" ]]; then
+    nav_ready=1
+  else
+    nav_ready=0
+  fi
+
+  snapshot="\$(timeout 5 ros2 topic echo /people --once 2>/dev/null || true)"
+  people_count="\$(grep -c 'identifier:' <<<"\$snapshot" || true)"
+  if [[ "\$people_count" -eq 10 ]]; then
+    people_ready=1
+  else
+    people_ready=0
+  fi
+
+  clear
+  printf '%s\n' \
+  '============================================' \
+  ' TIAGO MUSEUM GUIDE - VIDEO 1 CONTROL' \
+  '============================================' \
+  "controller_server: \${controller:-waiting}" \
+  "bt_navigator:      \${navigator:-waiting}" \
+  "people on /people: \$people_count / 10" \
+  '' \
+  'Waiting until BOTH are ready...'
+
+  if [[ "\$nav_ready" -eq 1 && "\$people_ready" -eq 1 ]]; then
+    break
+  fi
+  sleep 2
+done
+
+clear
+printf '%s\n' \
+'============================================' \
+' VIDEO 1 READY - AUTO START' \
+'============================================' \
+'Nav2: ACTIVE' \
+'People: 10 / 10' \
+'Social comfort target: 3.0 m' \
+'Goal: NORTH GALLERY (0.0, 16.0)' \
 '============================================'
 for n in 8 7 6 5 4 3 2 1; do
   printf '\rNavigation starts in %2d s ' "\$n"
@@ -222,7 +196,6 @@ CONTROL_REMOTE="${ROS_SETUP} && ${CONTROL_TEXT}"
 printf -v control_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${CONTROL_REMOTE}"
 open_terminal "TIAGO - VIDEO CONTROL" "control" "${control_command}"
 
-echo "Video 1 social demo started."
-echo "Gazebo GUI: ON | People: 10 static | Groups: 3 | Comfort target: 3.0 m"
-echo "TIAGo starts automatically after ${AUTO_START_DELAY}s."
+echo "All Video 1 windows have been opened."
+echo "VIDEO CONTROL now shows live Nav2 + people readiness and sends the goal automatically."
 echo "Stop with: ./scripts/stop_video1_demo.sh"
