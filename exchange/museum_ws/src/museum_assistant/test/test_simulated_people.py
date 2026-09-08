@@ -55,7 +55,7 @@ def test_non_positive_dt_is_safe(timestamp):
     assert (samples[0].vx, samples[0].vy) == (0.0, 0.0)
 
 
-def test_models_map_to_stable_public_ids():
+def test_original_models_map_to_stable_public_ids_when_guests_are_absent():
     samples, _ = observe(
         {
             "visitor_marker": (0.0, 0.0, 0.0),
@@ -71,6 +71,29 @@ def test_models_map_to_stable_public_ids():
         "staff_1",
     ]
     assert "marker" not in str(samples)
+
+
+def test_optional_guest_models_are_included_when_present():
+    samples, _ = observe(
+        {
+            "visitor_marker": (0.0, 0.0, 0.0),
+            "guide_marker": (1.0, 0.0, 0.0),
+            "staff_marker": (2.0, 0.0, 0.0),
+            "guest_marker_1": (3.0, 0.0, 0.0),
+            "guest_marker_2": (4.0, 0.0, 0.0),
+            "guest_marker_3": (5.0, 0.0, 0.0),
+        },
+        1.0,
+    )
+
+    assert [sample.identifier for sample in samples] == [
+        "visitor_1",
+        "guide_1",
+        "staff_1",
+        "guest_1",
+        "guest_2",
+        "guest_3",
+    ]
 
 
 def test_robot_model_is_never_a_pedestrian():

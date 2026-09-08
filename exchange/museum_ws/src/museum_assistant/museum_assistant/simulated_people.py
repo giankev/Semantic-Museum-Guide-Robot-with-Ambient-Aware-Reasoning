@@ -9,6 +9,9 @@ MODEL_TO_PUBLIC_ID = {
     "visitor_marker": "visitor_1",
     "guide_marker": "guide_1",
     "staff_marker": "staff_1",
+    "guest_marker_1": "guest_1",
+    "guest_marker_2": "guest_2",
+    "guest_marker_3": "guest_3",
 }
 
 
