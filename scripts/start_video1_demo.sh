@@ -7,7 +7,6 @@ STATE_DIR="/tmp/tiago_video1_demo_${UID}"
 ROS_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash && source /root/exchange/exchange/museum_ws/install/setup.bash"
 BUILD_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash"
 
-# Validated north-gallery candidate from supplied_museum_routes.yaml.
 GOAL_X="0.0"
 GOAL_Y="16.0"
 GOAL_YAW="1.5708"
@@ -76,7 +75,7 @@ existing_actions="$(ros_exec "ros2 action list" 2>/dev/null || true)"
 existing_nodes="$(ros_exec "ros2 node list" 2>/dev/null || true)"
 if grep -Fxq "/gazebo/model_states" <<<"${existing_topics}" \
   || grep -Fxq "/navigate_to_pose" <<<"${existing_actions}" \
-  || grep -Eq '^/(gazebo|controller_server|bt_navigator|demo_crowd_motion)$' <<<"${existing_nodes}"; then
+  || grep -Eq '^/(gazebo|controller_server|bt_navigator|demo_crowd_motion|demo_static_people)$' <<<"${existing_nodes}"; then
   echo "An existing Gazebo/Nav2/Video1 runtime is already active." >&2
   echo "Run ./scripts/stop_video1_demo.sh, close the old simulation, then start again." >&2
   exit 1
@@ -86,6 +85,7 @@ echo "Building museum_assistant and museum_social_critic..."
 docker exec "${CONTAINER}" bash -lc \
   "${BUILD_SETUP} && cd /root/exchange/exchange/museum_ws && colcon build --symlink-install --packages-select museum_assistant museum_social_critic"
 
+# IMPORTANT: visual Gazebo client enabled. This is NOT headless.
 SIMULATION_REMOTE="${ROS_SETUP} && exec ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py gzclient:=True publish_people:=True use_engagement:=False use_language:=False use_speech:=False nav2_params_file:=/root/exchange/exchange/museum_ws/src/museum_assistant/config/nav2_supplied_anisotropic.yaml"
 printf -v simulation_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${SIMULATION_REMOTE}"
 open_terminal "TIAGO - SIMULATION" "simulation" "${simulation_command}"
@@ -115,7 +115,7 @@ robot_at_demo_start() {
   awk -v x="${x}" -v y="${y}" 'BEGIN {exit !(x != "" && y != "" && sqrt(x*x+y*y) <= 0.50)}'
 }
 
-echo "Waiting for Gazebo and exact Nav2 active state..."
+echo "Waiting for Gazebo GUI/server and exact Nav2 active state..."
 deadline=$((SECONDS + 300))
 until gazebo_ready && nav2_ready; do
   if ((SECONDS >= deadline)); then
@@ -125,40 +125,36 @@ until gazebo_ready && nav2_ready; do
   sleep 2
 done
 
-echo "Nav2 is ACTIVE. The play_motion2 /robot_description_semantic warning is not used by this base-navigation demo."
+echo "Gazebo + Nav2 READY."
 
 if ! robot_at_demo_start; then
   echo "TIAGo is not near the expected start (0,0)." >&2
   exit 1
 fi
 
-CROWD_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_crowd_motion.py --seed 42 --count 6 --ros-args -p use_sim_time:=true"
-printf -v crowd_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${CROWD_REMOTE}"
-open_terminal "TIAGO - CROWD" "crowd" "${crowd_command}"
+# Static people: no moving pedestrian can walk into TIAGo and destabilize DWB.
+STATIC_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_static_people.py --ros-args -p use_sim_time:=true"
+printf -v static_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${STATIC_REMOTE}"
+open_terminal "TIAGO - STATIC PEOPLE" "crowd" "${static_command}"
 
 MONITOR_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_monitor.py"
 printf -v monitor_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${MONITOR_REMOTE}"
 open_terminal "TIAGO - MONITOR" "monitor" "${monitor_command}"
 
-# Do not gate navigation on fragile /people parsing.  The crowd is given a
-# short deterministic startup window, then a normal Nav2 goal is sent
-# automatically.  The robot takes long enough to reach y>10 that all six
-# pedestrians will already be walking in the north gallery when it arrives.
 read -r -d '' CONTROL_TEXT <<EOF || true
 clear
 printf '%s\n' \
 '============================================' \
-' TIAGO MUSEUM GUIDE - VIDEO 1 AUTO START' \
+' TIAGO MUSEUM GUIDE - VIDEO 1 STATIC DEMO' \
 '============================================' \
 '' \
+'Gazebo GUI: ON' \
 'Nav2: ACTIVE' \
-'Social critic: ANISOTROPIC' \
-'People requested: 6' \
-'Crowd location: NORTH GALLERY' \
+'People: 6 STATIC' \
+'Social critic: ENABLED' \
 'Goal: NORTH GALLERY (0.0, 16.0)' \
 '' \
 'TIAGo will start automatically.' \
-'No ENTER is required.' \
 '============================================'
 for n in 12 11 10 9 8 7 6 5 4 3 2 1; do
   printf '\rNavigation starts in %2d s ' "\$n"
@@ -171,7 +167,7 @@ CONTROL_REMOTE="${ROS_SETUP} && ${CONTROL_TEXT}"
 printf -v control_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${CONTROL_REMOTE}"
 open_terminal "TIAGO - VIDEO CONTROL" "control" "${control_command}"
 
-echo "Video 1 started. No further input is needed."
-echo "TIAGo will automatically navigate to north_gallery (0,16) after ${AUTO_START_DELAY}s."
-echo "The six NPCs walk continuously in the north room while TIAGo approaches."
+echo "Video 1 STATIC VISUAL demo started."
+echo "Gazebo GUI should be open. Six pedestrians are static and spread along the route."
+echo "TIAGo will navigate to north_gallery (0,16) after ${AUTO_START_DELAY}s."
 echo "Stop with: ./scripts/stop_video1_demo.sh"
