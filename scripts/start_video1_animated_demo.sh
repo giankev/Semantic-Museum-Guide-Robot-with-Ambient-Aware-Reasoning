@@ -39,10 +39,10 @@ DOMAIN="${VIDEO1_ROS_DOMAIN_ID:-107}"
 RUN_NAME="$(date -u +%Y%m%dT%H%M%SZ)_${MODE}"
 RUN_DIR="${REPO_ROOT}/log/video1_animated/${RUN_NAME}"
 REMOTE_RUN="/root/exchange/log/video1_animated/${RUN_NAME}"
-mkdir -p "${RUN_DIR}"
+mkdir -p "${RUN_DIR}/gazebo" "${RUN_DIR}/ros"
 GPU_ARGS=()
 if command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
-  GPU_ARGS=(--gpus all -e NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute,display)
+  GPU_ARGS=(--gpus all)
 elif [[ -d /dev/dri ]]; then
   GPU_ARGS=(--device=/dev/dri:/dev/dri -e LIBGL_ALWAYS_SOFTWARE=0)
 else
@@ -50,12 +50,9 @@ else
 fi
 GUI_ARGS=()
 if [[ "${GUI}" == True ]]; then
-  [[ -n "${DISPLAY:-}" ]] || { echo 'DISPLAY is unset. Use a desktop terminal or --headless.' >&2; exit 1; }
-  GUI_ARGS=(-e "DISPLAY=${DISPLAY}" -e QT_X11_NO_MITSHM=1 -v /tmp/.X11-unix:/tmp/.X11-unix:rw)
-  AUTH_FILE="${XAUTHORITY:-${HOME}/.Xauthority}"
-  if [[ -f "${AUTH_FILE}" && -r "${AUTH_FILE}" ]]; then
-    GUI_ARGS+=(-v "${AUTH_FILE}:/tmp/video1.Xauthority:ro" -e XAUTHORITY=/tmp/video1.Xauthority)
-  fi
+  # Match the validated desktop launcher, including its local X access rule.
+  xhost +local:docker >"${RUN_DIR}/xhost.txt" 2>&1 || true
+  GUI_ARGS=(-e "DISPLAY=${DISPLAY:-:0}" -e QT_X11_NO_MITSHM=1 -v /tmp/.X11-unix:/tmp/.X11-unix:rw)
 fi
 
 OWNED=0
@@ -79,8 +76,9 @@ cleanup_error() {
 trap cleanup_error EXIT
 trap 'exit 130' INT TERM
 docker run --rm -d --init --name "${CONTAINER}" --label org.museum.video1=animated-poc \
-  --network=host -e "ROS_DOMAIN_ID=${DOMAIN}" -e ROS_LOCALHOST_ONLY=1 \
+  --network=host -e "ROS_DOMAIN_ID=${DOMAIN}" \
   -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp "${GPU_ARGS[@]}" "${GUI_ARGS[@]}" \
+  -v "${RUN_DIR}/gazebo:/root/.gazebo" -v "${RUN_DIR}/ros:/root/.ros/log" \
   -v "${REPO_ROOT}:/root/exchange" -w /root/exchange museum-tiago:humble sleep infinity >/dev/null
 OWNED=1
 BUILD_SETUP='source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/install/setup.bash && source /root/social_nav_ws/install/setup.bash'
@@ -112,9 +110,23 @@ docker exec "${CONTAINER}" bash -c "${SETUP} && cd /root/exchange/exchange/museu
 docker exec "${CONTAINER}" bash -c 'version=$(pkg-config --modversion gazebo) || exit $?; [[ "${version}" == 11.* ]] || { echo "Gazebo Classic 11 required; found ${version}" >&2; exit 1; }'
 docker exec "${CONTAINER}" bash -c "${SETUP} && echo \"Gazebo Classic version: \$(pkg-config --modversion gazebo)\" && { dpkg-query -W gazebo libgazebo11 ros-humble-nav2-controller ros-humble-nav2-dwb-controller ros-humble-gazebo-ros || true; } && ros2 interface show social_nav_msgs/msg/Pedestrians && ros2 interface show social_nav_msgs/msg/Pedestrian" \
   >"${RUN_DIR}/versions.txt" 2>&1
-docker exec "${CONTAINER}" bash -c 'if command -v glxinfo >/dev/null; then timeout 10 glxinfo -B; else echo "glxinfo unavailable: actual renderer not measured"; fi
-if command -v nvidia-smi >/dev/null; then nvidia-smi; fi
-ls -l /dev/dri 2>/dev/null || true' >"${RUN_DIR}/graphics.txt" 2>&1
+# No extra graphics package is installed. Ogre logs below retain the actual
+# Gazebo renderer if it gets far enough to create a GL context.
+docker exec "${CONTAINER}" bash -c '
+printf "DISPLAY=%s\nXAUTHORITY=%s\nLIBGL_ALWAYS_SOFTWARE=%s\nGALLIUM_DRIVER=%s\n" "${DISPLAY:-unset}" "${XAUTHORITY:-unset}" "${LIBGL_ALWAYS_SOFTWARE:-unset}" "${GALLIUM_DRIVER:-unset}"
+id
+ls -ld /tmp/.X11-unix
+ls -l /tmp/.X11-unix /dev/dri 2>/dev/null || true
+if command -v glxinfo >/dev/null; then timeout 10 glxinfo -B; echo "glxinfo exit=$?"; else echo "glxinfo unavailable: renderer NOT_MEASURED; inspect gazebo/*/ogre.log after startup"; fi
+if command -v nvidia-smi >/dev/null; then nvidia-smi; echo "nvidia-smi exit=$?"; fi
+' >"${RUN_DIR}/graphics.txt" 2>&1
+docker exec "${CONTAINER}" bash -c '
+printf "ROS_DOMAIN_ID=%s\nROS_LOCALHOST_ONLY=%s\nRMW_IMPLEMENTATION=%s\nCYCLONEDDS_URI=%s\n" "${ROS_DOMAIN_ID:-unset}" "${ROS_LOCALHOST_ONLY:-unset}" "${RMW_IMPLEMENTATION:-unset}" "${CYCLONEDDS_URI:-unset}"
+for interface in /sys/class/net/*; do
+  echo "$(basename "$interface") flags=$(cat "$interface/flags") state=$(cat "$interface/operstate")"
+done
+dpkg-query -W ros-humble-cyclonedds ros-humble-rmw-cyclonedds-cpp
+' >"${RUN_DIR}/dds_environment.txt" 2>&1
 docker inspect -f 'GPU={{json .HostConfig.DeviceRequests}} Devices={{json .HostConfig.Devices}} Image={{.Image}}' "${CONTAINER}" >"${RUN_DIR}/container.txt"
 git -C "${REPO_ROOT}" rev-parse HEAD >"${RUN_DIR}/git_head.txt"
 git -C "${REPO_ROOT}" status --porcelain >"${RUN_DIR}/git_status.txt"
@@ -131,9 +143,20 @@ p["Window Geometry"].update({"X":680,"Y":30,"Width":680,"Height":740})
 Path(sys.argv[2]).write_text(yaml.safe_dump(p, sort_keys=False))' \
   /root/exchange/exchange/rviz/video1_social_navigation.rviz "${REMOTE_RUN}/video1.rviz"
 
+# Preserve PAL's scoped model/plugin environment and launch ordering. Its
+# gzclient command has no verbose argument, so add only that flag via PATH.
+docker exec "${CONTAINER}" python3 -c 'import pathlib,shlex,shutil,sys
+client=shutil.which("gzclient")
+if client is None:
+    raise SystemExit("gzclient executable missing")
+wrapper=pathlib.Path(sys.argv[1])/"gzclient"
+wrapper.parent.mkdir(parents=True, exist_ok=True)
+wrapper.write_text("#!/bin/sh\nexec "+shlex.quote(client)+" --verbose \"$@\"\n")
+wrapper.chmod(0o755)' "${REMOTE_RUN}/bin"
+
 # Keep the source world, laser, map, all critic values and the static launcher intact.
 # Gazebo reads its camera from the disposable world; no mouse/insert-model commands.
-LAUNCH="${SETUP} && export GAZEBO_PLUGIN_PATH=\"\$(ros2 pkg prefix museum_video1_actors)/lib:\${GAZEBO_PLUGIN_PATH:-}\" && exec ros2 launch museum_video1_actors video1.launch.py world_file:=${REMOTE_RUN}/museum.world mode:=${MODE} gzclient:=${GUI} rviz_config:=${REMOTE_RUN}/video1.rviz static_script:=/root/exchange/scripts/demo_static_people.py"
+LAUNCH="${SETUP} && export PATH=\"${REMOTE_RUN}/bin:\${PATH}\" && export GAZEBO_PLUGIN_PATH=\"\$(ros2 pkg prefix museum_video1_actors)/lib:\${GAZEBO_PLUGIN_PATH:-}\" && exec ros2 launch museum_video1_actors video1.launch.py world_file:=${REMOTE_RUN}/museum.world mode:=${MODE} gzclient:=${GUI} rviz_config:=${REMOTE_RUN}/video1.rviz static_script:=/root/exchange/scripts/demo_static_people.py"
 docker exec -d "${CONTAINER}" bash -c "${LAUNCH} >${REMOTE_RUN}/runtime.log 2>&1"
 RUNTIME_STARTED=1
 docker exec -d "${CONTAINER}" bash -c "${BUILD_SETUP} && timeout 1800 gz stats -p >${REMOTE_RUN}/gazebo_stats.csv 2>&1"

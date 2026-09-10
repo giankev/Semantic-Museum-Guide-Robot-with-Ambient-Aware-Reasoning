@@ -61,8 +61,8 @@ There is no crowd option or automatic promotion based on synthetic tests.
   without a TF transformation and does not expire old data. The new recorder
   performs frame-aware, timestamp-bounded comparisons.
 - The current start script attempts GPU forwarding, so software rendering
-  cannot be diagnosed from the repository alone. For NVIDIA the new isolated
-  launcher also requests graphics/display driver capabilities. This is a
+  cannot be diagnosed from the repository alone. The isolated
+  launcher now follows the stable launcher's NVIDIA/DRI selection. This is a
   launch configuration, not proof that OpenGL selected the GPU.
 - Nothing in the audited visualization code proves the reported cylinder at
   the mouse cursor was caused by it. The new camera comes from world SDF and
@@ -310,7 +310,8 @@ Gazebo starts with its bird's-eye camera; RViz requests a window to its right.
 Final window positioning depends on the desktop/window manager. The terminal
 running the command is the social control/monitor. If desktop authentication
 fails, inspect `runtime.log` and the host `DISPLAY`/`XAUTHORITY`; the script
-does not change X server access permissions. Use `--headless` for navigation
+uses the stable launcher's local Docker X access rule, recorded in `xhost.txt`.
+Use `--headless` for navigation
 measurements, then repeat the same accepted scenario with both GUIs for
 recording/performance checks.
 
@@ -412,3 +413,110 @@ with a Docker stub and checks that preparation failure stops its container,
 whereas recorder failure preserves it and returns the failure exit code.
 Python syntax, Bash syntax and `git diff --check` passed. This verifies build
 and infrastructure/API behavior, not a live Gazebo Actor/navigation/GUI run.
+
+## DDS startup repair after d992839
+
+The complete `20260910T213035Z_actor/runtime.log` (765 lines) and its graphics
+and container evidence were reviewed. `ROS_LOCALHOST_ONLY=1` forced CycloneDDS
+onto `lo`. Cyclone reported that this interface was not multicast-capable and
+fell back to automatic participant indexes. The installed versions are
+CycloneDDS `0.10.5-2jammy.20260226.013234` and rmw_cyclonedds_cpp
+`1.3.4-1jammy.20260605.121029`. In Cyclone 0.10.5 the default
+`MaxAutoParticipantIndex` is **9**, not a limit on the number of ROS node names.
+Exhaustion of the candidate unicast ports prevented new processes from
+creating DDS participants. The log shows `gzserver` itself aborting with
+`RCLError`/exit -6 at 21:30:54, before Nav2 startup. TIAGo's spawn process also
+failed to create a participant. The controller-manager, map and TF failures
+therefore do not establish separate controller or map defects.
+
+Sources: [Humble localhost interface selection](https://github.com/ros2/rmw_cyclonedds/blob/humble/rmw_cyclonedds_cpp/src/rmw_node.cpp),
+[Cyclone 0.10.5 fallback and socket allocation](https://github.com/eclipse-cyclonedds/cyclonedds/blob/0.10.5/src/core/ddsi/src/q_init.c),
+[0.10.5 default index limit](https://github.com/eclipse-cyclonedds/cyclonedds/blob/0.10.5/src/core/ddsi/include/dds/ddsi/ddsi_cfgelems.h).
+
+The POC launcher retains host networking, CycloneDDS, and dedicated domain
+107, but removes the localhost override. The existing image defaults to
+`ROS_LOCALHOST_ONLY=0`; host shell variables are not implicitly forwarded by
+Docker. This matches the validated `start_museum_tiago.sh` interface behavior.
+There is no production Cyclone XML, participant ceiling change, controller
+redesign or Nav2 change. An available host interface with working multicast is
+still a runtime prerequisite. `dds_environment.txt` records effective DDS
+variables, versions and interface flags so an offline/non-multicast host does
+not silently get described as validated.
+
+After all existing readiness checks succeed, the recorder starts
+`probe_dds.py` as a **new OS process**, with its own rclpy context and DDS
+participant. While the stack and recorder remain alive, it must receive an
+advancing `/clock`, a nonempty transient-local `/map`, the one `walker_1` on
+`/people`, and a response from `/controller_manager/list_controllers`. The
+recorder keeps spinning during this check and rechecks readiness afterwards.
+Only then may the original single scheduled goal be sent. `dds_probe.json`
+and `dds_probe.log` retain PID, admission/communication results and stderr;
+`summary.json` includes `dds_admission`. A process timeout, admission error or
+missing endpoint is not a pass. The recorder also detects the explicit
+participant-exhaustion error in `runtime.log` before readiness, rather than
+waiting for a generic timeout. These checks do not count ROS node names.
+
+### Gazebo GUI diagnosis and evidence
+
+**The precise gzclient exit-255 cause remains runtime-unknown.** Its exit
+occurs after the DDS-driven server abort, so loss of the server/master is a
+plausible explanation, not proof of a rendering defect. No gzclient stderr,
+Ogre exception or X authorization error precedes the exit in the supplied
+log. RViz initialized OpenGL 4.6; that demonstrates usable X/GL for RViz but
+does not establish Gazebo's renderer. `graphics.txt` says glxinfo is absent,
+so the GPU/vendor/renderer was not measured.
+
+`container.txt` shows the DRI path was selected, not NVIDIA device requests.
+The DRI nodes are present with root ownership and read/write access for the
+container's root user. Both launchers already used `--device=/dev/dri:/dev/dri`
+and `LIBGL_ALWAYS_SOFTWARE=0` (the false setting, not a request for software
+rendering); there is no evidence to change that working baseline choice.
+The POC now also matches the stable launcher's `xhost +local:docker`, DISPLAY
+fallback `:0`, X11 socket mount, Qt setting and `--gpus all` selection. It no
+longer imposes a separate Xauthority mount or extra NVIDIA capability setting.
+No blanket `xhost +` or host package installation is introduced.
+
+PAL's installed launch hardcodes plain `gzclient` and exposes no verbose flag.
+The POC generates a per-run PATH wrapper that execs the installed gzclient
+with `--verbose`. PAL still starts its original client in its scoped model/
+plugin environment and original order. No second GUI is launched; the PAL
+server/spawn/controller path is unchanged.
+Gazebo's actual stderr now reaches `runtime.log`; `/root/.gazebo` and ROS launch
+logs are persisted under the run's `gazebo/` and `ros/` directories. Inspect
+Ogre's `GL_VENDOR`/`GL_RENDERER` if GL initialization occurs. `graphics.txt`
+records effective DISPLAY/Xauthority/render settings, UID and device/socket
+permissions; `xhost.txt` preserves the access-rule command outcome. Missing
+renderer evidence stays explicitly NOT_MEASURED.
+
+New regression coverage includes separate-process admission and real topic/
+service communication, a deterministic exhausted-port rejection (test-only
+XML), empty-graph rejection, no goal after a failed admission check, immediate
+classification of DDS exhaustion in the log, and launcher checks retaining
+host networking/domain isolation without reintroducing localhost or custom
+Cyclone XML. Synthetic publishers in the DDS test are test fixtures only;
+they are never launched by the demo.
+
+Next real-machine run, from the repository root:
+
+```bash
+git fetch origin &&
+git switch codex/video1-actor-poc &&
+git pull --ff-only origin codex/video1-actor-poc &&
+./scripts/stop_video1_animated_demo.sh &&
+./scripts/start_video1_animated_demo.sh
+```
+
+Still required: real host DDS stability and CLI admission with the whole
+stack, Gazebo GUI alive, TIAGo spawned, advancing clock, controller manager,
+ACTIVE Nav2, map, one walking Actor, fresh people/velocity, exactly one goal
+at `(0,16,1.5708)` and the navigation outcome. No live runtime acceptance or
+crowd expansion follows from the container regression tests.
+
+DDS repair verification: sequential build of all three required packages in
+`museum-tiago:humble` PASS; CTest **4/4 PASS**, zero errors/failures/skips
+(C++ motion, eight geometry/world checks, 18 recorder/launcher checks, three
+DDS process/communication checks). Tests used a Docker bridge interface with
+normal multicast selection, a read-only repository mount and disposable
+build directories. After the final GUI wrapper adjustment, all 18 recorder/
+launcher checks were rerun successfully. Bash/Python syntax and full diff
+review passed. No Gazebo GUI, Actor runtime or navigation success is claimed.

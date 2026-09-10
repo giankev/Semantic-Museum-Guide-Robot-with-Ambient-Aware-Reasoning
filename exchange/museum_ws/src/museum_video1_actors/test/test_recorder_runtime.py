@@ -134,7 +134,8 @@ class RecorderTests(unittest.TestCase):
             future = Future()
             future.set_result(goal_handle)
             return future
-        with patch.object(self.node, 'ready', return_value=True), \
+        with patch.object(self.node, 'check_dds_admission'), \
+             patch.object(self.node, 'ready', return_value=True), \
              patch.object(self.node, 'now', side_effect=lambda: next(times, 60.)), \
              patch.object(self.node.action, 'send_goal_async', side_effect=send):
             self.assertEqual(self.node.run(), 'SUCCESS')
@@ -142,6 +143,23 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(self.node.goal_count, 1)
         self.assertEqual(sent[0].pose.pose.position.x, 0.)
         self.assertEqual(sent[0].pose.pose.position.y, 16.)
+
+    def test_dds_exhaustion_is_reported_before_readiness(self):
+        (Path(self.directory.name)/'runtime.log').write_text(
+            'gzserver: Failed to find a free participant index for domain 107\n')
+        with self.assertRaisesRegex(RuntimeError, 'DDS participant exhaustion'):
+            self.node.poll()
+        self.assertEqual(self.node.dds_probe['status'], 'FAIL')
+        self.assertEqual(self.node.goal_count, 0)
+
+    def test_failed_post_readiness_admission_never_sends_goal(self):
+        with patch.object(self.node, 'ready', return_value=True), \
+             patch.object(self.node, 'check_dds_admission', side_effect=RuntimeError('DDS admission failed')), \
+             patch.object(self.node.action, 'send_goal_async') as send:
+            with self.assertRaisesRegex(RuntimeError, 'DDS admission failed'):
+                self.node.run()
+            send.assert_not_called()
+        self.assertFalse(self.node.ready_reached)
 
     def test_service_timeout_releases_pending(self):
         future = Future()
@@ -231,7 +249,36 @@ if args[0] == 'exec':
                 self.assertEqual(result.returncode, code, result.stderr.decode())
                 self.assertEqual("['stop'," in calls.read_text(), stopped)
                 if not stopped:
+                    import ast
+                    run = next(ast.literal_eval(line) for line in calls.read_text().splitlines()
+                               if ast.literal_eval(line)[0] == 'run')
+                    self.assertIn('--network=host', run)
+                    self.assertIn('ROS_DOMAIN_ID=107', run)
+                    self.assertNotIn('ROS_LOCALHOST_ONLY=1', run)
+                    self.assertFalse(any('CYCLONEDDS_URI=' in arg for arg in run))
                     self.assertIn('Simulation remains open', result.stderr.decode())
+
+    def test_gui_uses_stable_x_access_and_transparent_verbose_wrapper(self):
+        source = (REPO/'scripts/start_video1_animated_demo.sh').read_text()
+        self.assertIn('xhost +local:docker', source)
+        self.assertNotIn('video1.Xauthority', source)
+        self.assertIn('/tmp/.X11-unix:/tmp/.X11-unix:rw', source)
+        self.assertIn('LIBGL_ALWAYS_SOFTWARE=0', source)
+        start = source.index('docker exec "${CONTAINER}" python3 -c \'import pathlib,shlex,shutil,sys')
+        command = shlex.split(source[start:source.index('\n\n', start)])
+        generator = command[command.index('-c')+1]
+        with tempfile.TemporaryDirectory() as directory:
+            fake_client = Path(directory)/'real-client'
+            fake_client.write_text('#!/bin/sh\nprintf "%s\\n" "$@" "$GAZEBO_MODEL_PATH"\n')
+            fake_client.chmod(0o755)
+            wrapper_dir = Path(directory)/'bin'
+            with patch('shutil.which', return_value=str(fake_client)), \
+                 patch.object(sys, 'argv', ['-c', str(wrapper_dir)]):
+                exec(compile(generator, 'wrapper_generator', 'exec'), {})
+            result = subprocess.run([str(wrapper_dir/'gzclient'), '--test-argument'],
+                env=dict(os.environ, GAZEBO_MODEL_PATH='scoped-PAL-models'), capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines(), ['--verbose', '--test-argument', 'scoped-PAL-models'])
 
     def test_version_probe_ignores_gazebo_cli_exit_255_but_checks_pkg_config(self):
         source = (REPO/'scripts/start_video1_animated_demo.sh').read_text()

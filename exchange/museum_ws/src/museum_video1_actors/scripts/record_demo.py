@@ -6,6 +6,8 @@ import json
 import math
 from pathlib import Path
 import re
+import subprocess
+import sys
 import time
 
 import rclpy
@@ -58,6 +60,8 @@ class Recorder(Node):
         self.diagnostics = {}
         self.fatal_error = None
         self.ready_reached = False
+        self.dds_probe = {'status': 'NOT_RUN'}
+        self.runtime_log_offset = 0
         self.state_times = {}
         self.pending_times = {}
         self.last_sim = 0.0
@@ -365,6 +369,19 @@ class Recorder(Node):
         if wall-self.last_poll < 1.0:
             return
         self.last_poll = wall
+        runtime_log = self.out/'runtime.log'
+        if runtime_log.exists():
+            try:
+                with runtime_log.open(errors='replace') as log:
+                    log.seek(self.runtime_log_offset)
+                    recent = log.read()
+                    self.runtime_log_offset = log.tell()
+            except OSError as exc:
+                self.diagnostic_error('runtime_log', exc)
+            else:
+                if 'Failed to find a free participant index' in recent:
+                    self.dds_probe = {'status': 'FAIL', 'error': 'DDS participant exhaustion in runtime.log'}
+                    raise RuntimeError('DDS participant exhaustion during startup; see runtime.log; experiment invalid')
         for key, sent in list(self.pending_times.items()):
             if wall-sent > 5.0:
                 future = self.pending.pop(key)
@@ -501,6 +518,37 @@ class Recorder(Node):
             raise RuntimeError('ROS action returned no result')
         return result
 
+    def check_dds_admission(self):
+        output = self.out/'dds_probe.json'
+        command = [sys.executable, str(Path(__file__).with_name('probe_dds.py')),
+                   '--mode', self.args.mode, '--output', str(output), '--timeout', '20']
+        self.dds_probe = {'status': 'RUNNING'}
+        print('Stack ready: testing a NEW DDS participant and /clock, /map, /people, controller_manager...', flush=True)
+        with (self.out/'dds_probe.log').open('w') as log:
+            child = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                deadline = time.monotonic()+25
+                while child.poll() is None:
+                    self.step()  # keep lifecycle polling, /people and diagnostics alive
+                    if time.monotonic() > deadline:
+                        raise RuntimeError('DDS admission probe process timed out')
+                if output.exists():
+                    self.dds_probe = json.loads(output.read_text())
+                if child.returncode != 0 or self.dds_probe.get('status') != 'PASS':
+                    raise RuntimeError('Fresh DDS participant check failed; see dds_probe.log and dds_probe.json; no goal sent')
+            except Exception as exc:
+                self.dds_probe.update(status='FAIL', error=str(exc))
+                raise
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                    try:
+                        child.wait(timeout=3)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.wait()
+        self.event('dds_admission', **self.dds_probe)
+
     def run(self):
         print('ONE-ACTOR PROOF OF CONCEPT — visual walking and final crowd are NOT yet accepted.', flush=True)
         print('ProxemicForce: scale=32.0 comfort_distance=1.0 sigma=0.4 anisotropic_enabled=true (runtime checked)', flush=True)
@@ -510,6 +558,9 @@ class Recorder(Node):
             self.step()
             if time.monotonic() > deadline:
                 raise RuntimeError('Readiness timeout; see runtime.log and observations.jsonl; no goal sent')
+        self.check_dds_admission()
+        if not self.ready():
+            raise RuntimeError('Stack readiness lost during DDS admission check; no goal sent')
         self.ready_reached = True
         self.event('ready', t=self.now(), actual_parameters=self.actual)
         if self.args.observe_only:
@@ -565,6 +616,7 @@ class Recorder(Node):
         observed_velocities = [((a[0]+b[0])/2, (b[1]-a[1])/(b[0]-a[0]), (b[2]-a[2])/(b[0]-a[0]))
                                for a, b in zip(self.observed_actor, self.observed_actor[1:]) if b[0] > a[0]]
         checks = {
+            'fresh_dds_participant_after_readiness': self.dds_probe.get('status') == 'PASS',
             'navigation_success': status == 'SUCCESS',
             'exactly_one_goal': self.goal_count == 1 and len(self.goal_ids) == 1,
             'accepted_parameters': self.actual == self.expected,
@@ -613,6 +665,7 @@ class Recorder(Node):
             self.diagnostic_error('topic_inventory', exc)
         runtime_pass = runtime_pass and not self.fatal_error
         summary = {'navigation': status, 'error': error,
+                   'dds_admission': self.dds_probe,
                    'mode': self.args.mode, 'readiness_reached': self.ready_reached,
                    'experiment_phase': 'NAVIGATION_ATTEMPTED' if self.goal_count else 'PRE_NAVIGATION',
                    'diagnostics': self.diagnostics, 'instrumentation_complete': instrumentation_complete, 'topic_inventory': topic_inventory,
