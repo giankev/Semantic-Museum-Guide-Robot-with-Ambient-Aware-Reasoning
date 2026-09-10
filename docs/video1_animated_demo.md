@@ -270,8 +270,8 @@ checks, not changes to the benchmark protocol. Human clearance is measured
 between planar centers; the disk estimate subtracts 0.28+0.35 m and is not a
 Gazebo contact measurement.
 
-The launcher returns nonzero when automated checks fail, retains evidence and
-stops only its own container. `--observe-only` never sends a navigation goal.
+The launcher returns nonzero when automated checks fail and retains evidence.
+After runtime starts it leaves its container and GUIs open for inspection. `--observe-only` never sends a navigation goal.
 Even a successful automatic run sets `final_scene_accepted=false`: visual
 walking, absence of mesh intersections, LiDAR attribution and recording
 quality require inspection. A curved path alone does not prove that the
@@ -330,3 +330,85 @@ The existing validated fallback remains:
 After the one-actor runtime and visual evidence pass, implement and validate
 three actors, then six, then evaluate whether 8–10 are practical. Do not
 describe any of those unimplemented stages as tested or ready to record.
+
+## Infrastructure repair after the real-machine startup crashes
+
+The reported build and original two tests passed on the real machine, but the
+recorder stopped at simulation time zero, before readiness and before sending
+any goal. Those summaries are **not evidence of navigation/Actor failures**.
+One-Actor runtime and visual acceptance are still pending.
+
+The launcher now probes Gazebo using `pkg-config --modversion gazebo` and
+checks its exit status as well as requiring version 11. It never uses the
+Gazebo executables' unreliable `--version` exit status. Recorder construction
+uses `lifecycle_clients`, avoiding the inherited read-only `Node.services`.
+Log severity uses numeric `rclpy.logging.LoggingSeverity.WARN`, with explicit
+single-byte conversion for generated message levels. It does not compare
+against the generated `Log.WARN` constant.
+
+Audit outcomes:
+
+- All recorder subscriptions have guarded callbacks. Optional log, scan,
+  costmap, world-pose, path, score and feedback errors get named diagnostics,
+  error counts and last-error text. They cannot terminate the experiment.
+  Invalid critical people/odometry/action-status inputs still fail clearly.
+  Missing optional evidence cannot produce an automated pass.
+- Lifecycle responses must be fresh and ACTIVE for all nine configured nodes.
+  Service futures handle exceptions, release pending requests and retry;
+  requests time out after five wall seconds. Parameter responses must contain
+  the complete accepted parameter set. No accepted parameters were changed.
+- Action readiness is checked before sending the single goal. Rejection,
+  result exceptions, timeout and cancellation acknowledgement are explicit.
+  There is no retry of goal submission and no new robot waypoint.
+- The recorder defaults to and requires simulation time. Zero clock cannot
+  pass readiness; pre-clock odometry is ignored. Backward time is detected
+  before odometry throttling, and a stalled clock has a wall-time deadline.
+- Data subscriptions use best-effort/volatile QoS, compatible with reliable
+  and sensor-data publishers. Action status keeps transient-local durability.
+  The Actor bridge can start before Gazebo: it waits for paired odometry and
+  a live actor stream. Pose polling waits for that stream and the service;
+  pose agreement must be recent before readiness.
+- Gazebo Classic's ROS2 `GetEntityState` response has `header.stamp`,
+  `state.pose`, and `success`; unsuccessful responses are never used as poses.
+  See the [upstream service definition](https://github.com/ros-simulation/gazebo_ros_pkgs/blob/ros2/gazebo_msgs/srv/GetEntityState.srv).
+- `/plan`, `/local_plan` and `/evaluation` are the expected unnamespaced Nav2
+  topics. DWB evaluation publication is conditional; absence is inconclusive,
+  and never gates goal submission. Topic names/types and per-topic message
+  counts are captured to expose differing runtime installations. See the
+  [Humble DWB publisher](https://github.com/ros-navigation/navigation2/blob/humble/nav2_dwb_controller/dwb_core/src/publisher.cpp).
+- RViz may start before its data publishers. Its disposable RobotModel config
+  requests transient-local robot description, and TF/map displays can recover
+  as publishers appear. GUI visibility still requires real-machine evidence;
+  no additional arbitrary startup sleep was added.
+- Empty people/path/evaluation streams cannot be mistaken for positive
+  evidence. Invalid costmap dimensions/resolution and nonfinite pose values
+  are diagnosed. Optional distance calculations cannot terminate odometry
+  handling. Final map conversion uses the observed odometry frame.
+- Preparation failures still stop the owned container. After runtime launch,
+  recorder failure or incomplete evidence leaves Gazebo/RViz running and
+  preserves the nonzero exit status. An interactive terminal waits for Enter
+  before returning to the shell; the explicit stop script closes the scene.
+
+`summary.json` now includes `experiment_phase`, `readiness_reached`, named
+`diagnostics`, and `topic_inventory`. Checks that were never exercised are
+`null` (NOT_MEASURED / INCONCLUSIVE), not false runtime results. A pre-goal
+crash marks all experiment checks unmeasured. Navigation outcome and evidence
+completeness are separate; visual walking is always a manual check.
+
+Focused regressions run as the additional `video1_recorder_runtime` CTest in
+the launcher's existing container build/test step. They construct a real Humble
+Node and use actual generated messages, including a simulated byte-constant
+regression. They also cover optional callback faults, critical input faults,
+service exceptions/timeouts, Gazebo response layout, zero/reset clock, QoS,
+action exceptions/single submission and pre-navigation summaries. No robotics
+packages are installed on the host.
+
+Repair verification completed in `museum-tiago:humble` (image ID prefix
+`be46ae0e5c16`) with networking disabled and repository mounted read-only:
+three-package sequential build PASS; CTest **3/3 PASS, zero errors/failures/
+skips**, including 15 recorder/launcher regressions and the original eight
+Python checks plus C++ motion test. The shell regression executes the launcher
+with a Docker stub and checks that preparation failure stops its container,
+whereas recorder failure preserves it and returns the failure exit code.
+Python syntax, Bash syntax and `git diff --check` passed. This verifies build
+and infrastructure/API behavior, not a live Gazebo Actor/navigation/GUI run.

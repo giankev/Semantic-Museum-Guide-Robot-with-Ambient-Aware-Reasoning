@@ -33,7 +33,7 @@ if docker container inspect "${CONTAINER}" >/dev/null 2>&1; then
 fi
 
 DOMAIN="${VIDEO1_ROS_DOMAIN_ID:-107}"
-[[ "${DOMAIN}" =~ ^[0-9]+$ ]] && ((DOMAIN > 0 && DOMAIN < 201)) || {
+[[ "${DOMAIN}" =~ ^[0-9]+$ ]] && ((10#${DOMAIN} > 0 && 10#${DOMAIN} < 201)) || {
   echo 'VIDEO1_ROS_DOMAIN_ID must be in 1..200 to isolate the experiment.' >&2; exit 2;
 }
 RUN_NAME="$(date -u +%Y%m%dT%H%M%SZ)_${MODE}"
@@ -59,6 +59,7 @@ if [[ "${GUI}" == True ]]; then
 fi
 
 OWNED=0
+RUNTIME_STARTED=0
 STATS_PID=''
 cleanup_error() {
   local code=$?
@@ -68,7 +69,11 @@ cleanup_error() {
     for logfile in preparation.log runtime.log; do
       if [[ -f "${RUN_DIR}/${logfile}" ]]; then tail -n 12 "${RUN_DIR}/${logfile}" >&2; fi
     done
-    docker stop --time 10 "${CONTAINER}" >/dev/null 2>&1 || true
+    if ((RUNTIME_STARTED == 0)); then
+      docker stop --time 10 "${CONTAINER}" >/dev/null 2>&1 || true
+    else
+      echo "Gazebo/RViz retained for inspection. Stop: ./scripts/stop_video1_animated_demo.sh" >&2
+    fi
   fi
 }
 trap cleanup_error EXIT
@@ -104,8 +109,8 @@ docker exec "${CONTAINER}" bash -c "${BUILD_SETUP} && cd /root/exchange/exchange
   2>&1 | tee "${RUN_DIR}/build.log"
 docker exec "${CONTAINER}" bash -c "${SETUP} && cd /root/exchange/exchange/museum_ws && colcon test --packages-select museum_video1_actors --event-handlers console_direct+ && colcon test-result --test-result-base build/museum_video1_actors --verbose" \
   2>&1 | tee "${RUN_DIR}/tests.log"
-docker exec "${CONTAINER}" bash -c 'version=$(pkg-config --modversion gazebo); [[ "${version}" == 11.* ]] || { echo "Gazebo Classic 11 required; found ${version}" >&2; exit 1; }'
-docker exec "${CONTAINER}" bash -c "${SETUP} && gazebo --version && { dpkg-query -W gazebo libgazebo11 ros-humble-nav2-controller ros-humble-nav2-dwb-controller ros-humble-gazebo-ros || true; } && ros2 interface show social_nav_msgs/msg/Pedestrians && ros2 interface show social_nav_msgs/msg/Pedestrian" \
+docker exec "${CONTAINER}" bash -c 'version=$(pkg-config --modversion gazebo) || exit $?; [[ "${version}" == 11.* ]] || { echo "Gazebo Classic 11 required; found ${version}" >&2; exit 1; }'
+docker exec "${CONTAINER}" bash -c "${SETUP} && echo \"Gazebo Classic version: \$(pkg-config --modversion gazebo)\" && { dpkg-query -W gazebo libgazebo11 ros-humble-nav2-controller ros-humble-nav2-dwb-controller ros-humble-gazebo-ros || true; } && ros2 interface show social_nav_msgs/msg/Pedestrians && ros2 interface show social_nav_msgs/msg/Pedestrian" \
   >"${RUN_DIR}/versions.txt" 2>&1
 docker exec "${CONTAINER}" bash -c 'if command -v glxinfo >/dev/null; then timeout 10 glxinfo -B; else echo "glxinfo unavailable: actual renderer not measured"; fi
 if command -v nvidia-smi >/dev/null; then nvidia-smi; fi
@@ -130,7 +135,8 @@ Path(sys.argv[2]).write_text(yaml.safe_dump(p, sort_keys=False))' \
 # Gazebo reads its camera from the disposable world; no mouse/insert-model commands.
 LAUNCH="${SETUP} && export GAZEBO_PLUGIN_PATH=\"\$(ros2 pkg prefix museum_video1_actors)/lib:\${GAZEBO_PLUGIN_PATH:-}\" && exec ros2 launch museum_video1_actors video1.launch.py world_file:=${REMOTE_RUN}/museum.world mode:=${MODE} gzclient:=${GUI} rviz_config:=${REMOTE_RUN}/video1.rviz static_script:=/root/exchange/scripts/demo_static_people.py"
 docker exec -d "${CONTAINER}" bash -c "${LAUNCH} >${REMOTE_RUN}/runtime.log 2>&1"
-docker exec -d "${CONTAINER}" bash -c "timeout 1800 gz stats -p >${REMOTE_RUN}/gazebo_stats.csv 2>&1"
+RUNTIME_STARTED=1
+docker exec -d "${CONTAINER}" bash -c "${BUILD_SETUP} && timeout 1800 gz stats -p >${REMOTE_RUN}/gazebo_stats.csv 2>&1"
 docker stats --format '{{json .}}' "${CONTAINER}" >"${RUN_DIR}/docker_stats.jsonl" 2>&1 &
 STATS_PID=$!
 
@@ -140,7 +146,15 @@ echo 'Navigation is scheduled at simulation time' "${GOAL_TIME}" 'seconds.'
 TTY=()
 [[ -t 0 && -t 1 ]] && TTY=(-t)
 printf -v OBSERVE_ARG '%s' "${OBSERVE[*]}"
-docker exec -i "${TTY[@]}" "${CONTAINER}" bash -c "${SETUP} && exec ros2 run museum_video1_actors record_demo.py --output ${REMOTE_RUN} --mode ${MODE} --goal-time ${GOAL_TIME} ${OBSERVE_ARG} --ros-args -p use_sim_time:=true"
+RECORDER_STATUS=0
+docker exec -i "${TTY[@]}" "${CONTAINER}" bash -c "${SETUP} && exec ros2 run museum_video1_actors record_demo.py --output ${REMOTE_RUN} --mode ${MODE} --goal-time ${GOAL_TIME} ${OBSERVE_ARG} --ros-args -p use_sim_time:=true" || RECORDER_STATUS=$?
 echo "Run finished. Gazebo/RViz remain open. Evidence: ${RUN_DIR}/summary.json"
 echo 'This result does not promote the POC to an accepted final crowd demo.'
 echo 'Stop: ./scripts/stop_video1_animated_demo.sh'
+if ((RECORDER_STATUS != 0)); then
+  echo "Recorder exited ${RECORDER_STATUS}; inspect summary.json and runtime.log. Simulation remains open." >&2
+fi
+if [[ -t 0 ]]; then
+  read -r -p 'Press Enter to return to the shell (Gazebo/RViz stay open)... ' _ || true
+fi
+exit "${RECORDER_STATUS}"

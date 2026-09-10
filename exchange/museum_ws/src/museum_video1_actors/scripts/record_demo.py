@@ -11,6 +11,8 @@ import time
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.logging import LoggingSeverity
+from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy
 from rclpy.time import Time
 from action_msgs.msg import GoalStatus, GoalStatusArray
@@ -40,7 +42,10 @@ def parameter_value(p):
 
 class Recorder(Node):
     def __init__(self, args):
-        super().__init__('video1_recording_control')
+        super().__init__('video1_recording_control',
+                         parameter_overrides=[Parameter('use_sim_time', value=True)])
+        if not self.get_parameter('use_sim_time').value:
+            raise RuntimeError('Recorder requires use_sim_time:=true')
         self.args = args
         self.out = Path(args.output)
         self.out.mkdir(parents=True, exist_ok=True)
@@ -50,9 +55,17 @@ class Recorder(Node):
         # Guard every accepted social parameter, plugin class, and critic list.
         self.expected = {'FollowPath.'+k: v for k, v in accepted.items()
                          if k.startswith('ProxemicForce.') or k in ('plugin', 'critics')}
+        self.diagnostics = {}
+        self.fatal_error = None
+        self.ready_reached = False
+        self.state_times = {}
+        self.pending_times = {}
+        self.last_sim = 0.0
+        self.last_clock_wall = time.monotonic()
+        self.robot_frame = None
         self.actual = None
         self.states, self.pending = {}, {}
-        self.services = {name: self.create_client(GetState, f'/{name}/get_state') for name in LIFECYCLES}
+        self.lifecycle_clients = {name: self.create_client(GetState, f'/{name}/get_state') for name in LIFECYCLES}
         self.param_client = self.create_client(GetParameters, '/controller_server/get_parameters')
         self.actor_client = self.create_client(GetEntityState, '/gazebo/get_entity_state')
         self.action = ActionClient(self, NavigateToPose, '/navigate_to_pose')
@@ -93,28 +106,81 @@ class Recorder(Node):
         self.first_sim = None
         self.last_poll = 0.0
         self.last_render = 0.0
-        self.create_subscription(Pedestrians, '/people', self.on_people, 20)
-        self.create_subscription(Pedestrians, '/museum/video1/actor_states', self.raw.append, 20)
-        self.create_subscription(Odometry, '/museum/ground_truth_odom', self.on_odom, 20)
-        self.create_subscription(Odometry, '/ground_truth_odom', self.on_raw_robot, 10)
-        self.create_subscription(LaserScan, '/scan_raw', self.on_scan, qos_profile_sensor_data)
-        self.create_subscription(OccupancyGrid, '/local_costmap/costmap', self.on_costmap, 5)
-        self.create_subscription(LocalPlanEvaluation, '/evaluation', self.on_evaluation, 5)
-        self.create_subscription(Log, '/rosout', self.on_log, 100)
+        # Best-effort readers match both reliable and sensor-data publishers.
+        # Critical streams still have explicit freshness/readiness gates.
+        for kind, topic, callback, critical in (
+            (Pedestrians, '/people', self.on_people, True),
+            (Pedestrians, '/museum/video1/actor_states', self.on_actor_state, True),
+            (Odometry, '/museum/ground_truth_odom', self.on_odom, True),
+            (Odometry, '/ground_truth_odom', self.on_raw_robot, False),
+            (LaserScan, '/scan_raw', self.on_scan, False),
+            (OccupancyGrid, '/local_costmap/costmap', self.on_costmap, False),
+            (LocalPlanEvaluation, '/evaluation', self.on_evaluation, False),
+            (Log, '/rosout', self.on_log, False),
+        ):
+            self.diagnostics[topic] = {'status': 'WAITING_FOR_MESSAGE', 'samples': 0, 'errors': 0}
+            self.create_subscription(kind, topic, self.guard(topic, callback, critical),
+                                     qos_profile_sensor_data)
         self.create_subscription(GoalStatusArray, '/navigate_to_pose/_action/status',
-                                 self.on_status, QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
+                                 self.guard('action_status', self.on_status, True),
+                                 QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         for topic in ('/plan', '/local_plan'):
-            self.create_subscription(NavPath, topic, lambda m, t=topic: self.on_path(t, m), 5)
+            self.diagnostics[topic] = {'status': 'WAITING_FOR_MESSAGE', 'samples': 0, 'errors': 0}
+            self.create_subscription(NavPath, topic,
+                                     self.guard(topic, lambda m, t=topic: self.on_path(t, m)),
+                                     qos_profile_sensor_data)
+
+    def diagnostic_error(self, name, exc):
+        entry = self.diagnostics.setdefault(name, {'samples': 0, 'errors': 0})
+        entry.update(status='ERROR', last_error=f'{type(exc).__name__}: {exc}')
+        entry['errors'] += 1
+        if entry['errors'] == 1:
+            print(f'Diagnostic {name}: {entry["last_error"]}', flush=True)
+        self.event('diagnostic_error', source=name, error=entry['last_error'])
+
+    def guard(self, name, callback, critical=False):
+        def guarded(message):
+            try:
+                callback(message)
+                entry = self.diagnostics.setdefault(name, {'samples': 0, 'errors': 0})
+                entry['samples'] += 1
+                entry['status'] = 'OBSERVED_WITH_ERRORS' if entry['errors'] else 'OBSERVED'
+            except Exception as exc:
+                self.diagnostic_error(name, exc)
+                if critical:
+                    self.fatal_error = f'Critical input {name}: {exc}'
+        return guarded
+
+    def on_actor_state(self, msg):
+        self.validate_people(msg)
+        self.raw.append(msg)
+
+    def validate_people(self, msg):
+        if not msg.header.frame_id or not math.isfinite(stamp_seconds(msg.header.stamp)):
+            raise ValueError('Missing frame or invalid timestamp')
+        for p in msg.pedestrians:
+            if not all(math.isfinite(v) for v in
+                       (p.pose.x, p.pose.y, p.pose.theta, p.velocity.x, p.velocity.y)):
+                raise ValueError('Nonfinite people sample')
+
+    def on_feedback(self, msg):
+        self.recoveries = max(self.recoveries, int(msg.feedback.number_of_recoveries))
 
     def now(self):
         return self.get_clock().now().nanoseconds / 1e9
 
     def on_raw_robot(self, msg):
         p = msg.pose.pose
-        self.raw_robot = (p.position.x, p.position.y, yaw(p.orientation))
+        pose = (p.position.x, p.position.y, yaw(p.orientation))
+        if not all(math.isfinite(v) for v in pose):
+            raise ValueError('Nonfinite world odometry')
+        self.raw_robot = pose
 
     def event(self, kind, **data):
-        self.events.write(json.dumps({'kind': kind, **data}, allow_nan=False)+'\n')
+        try:
+            self.events.write(json.dumps({'kind': kind, **data}, allow_nan=False)+'\n')
+        except (OSError, ValueError, TypeError) as exc:
+            self.fatal_error = f'Cannot record evidence: {exc}'
 
     def on_status(self, msg):
         self.goal_ids.update(bytes(s.goal_info.goal_id.uuid).hex() for s in msg.status_list)
@@ -128,10 +194,20 @@ class Recorder(Node):
             self.no_trajectories += 1
         if re.search('Failed to make progress', msg.msg, re.I):
             self.no_progress += 1
-        if msg.level >= Log.WARN:
-            self.event('ros_log', t=stamp_seconds(msg.stamp), node=msg.name, level=msg.level, text=msg.msg)
+        # Log's IDL byte constants can be bytes on Humble; rcutils severity
+        # is a numeric enum. Accept either generated representation of level.
+        level = msg.level
+        if isinstance(level, (bytes, bytearray)) and len(level) == 1:
+            level = level[0]
+        if not isinstance(level, int):
+            raise TypeError(f'Unexpected log severity {level!r}')
+        if level >= int(LoggingSeverity.WARN):
+            self.event('ros_log', t=stamp_seconds(msg.stamp), node=msg.name, level=level, text=msg.msg)
 
     def on_people(self, msg):
+        self.validate_people(msg)
+        if self.now() <= 0:
+            return
         t = stamp_seconds(msg.header.stamp)
         self.people.append(msg)
         self.people_stamps.append(t)
@@ -170,6 +246,16 @@ class Recorder(Node):
 
     def on_odom(self, msg):
         t = stamp_seconds(msg.header.stamp)
+        if self.now() <= 0 or t <= 0:
+            return
+        if self.robot_time is not None and t < self.robot_time:
+            raise RuntimeError('Odometry timestamp moved backwards')
+        p, q = msg.pose.pose.position, msg.pose.pose.orientation
+        if not msg.header.frame_id or not all(math.isfinite(v) for v in
+                (p.x, p.y, q.x, q.y, q.z, q.w, msg.twist.twist.linear.x,
+                 msg.twist.twist.linear.y, msg.twist.twist.angular.z)):
+            raise ValueError('Invalid odometry')
+        self.robot_frame = msg.header.frame_id
         if self.robot_time is not None and t-self.robot_time < 0.09:
             return
         dt = 0.0 if self.robot_time is None else min(t-self.robot_time, 0.5)
@@ -195,9 +281,12 @@ class Recorder(Node):
                 self.sign_candidate = None
         else:
             self.sign_candidate = None
-        for _, x, y in self.nearby_people(t, msg.header.frame_id):
-            d = math.hypot(x-p.x, y-p.y)
-            self.min_distance = d if self.min_distance is None else min(self.min_distance, d)
+        try:
+            for _, x, y in self.nearby_people(t, msg.header.frame_id):
+                d = math.hypot(x-p.x, y-p.y)
+                self.min_distance = d if self.min_distance is None else min(self.min_distance, d)
+        except Exception as exc:
+            self.diagnostic_error('person_separation', exc)
         self.event('robot', t=t, frame=msg.header.frame_id, x=p.x, y=p.y,
                    yaw=self.robot[2], speed=v, angular_speed=w)
 
@@ -221,8 +310,11 @@ class Recorder(Node):
     def on_costmap(self, msg):
         t = stamp_seconds(msg.header.stamp)
         origin = msg.info.origin
+        if (not math.isfinite(msg.info.resolution) or msg.info.resolution <= 0
+                or len(msg.data) != msg.info.width*msg.info.height):
+            raise ValueError('Empty or malformed costmap geometry')
         if abs(yaw(origin.orientation)) > 1e-6:
-            return
+            raise ValueError('Rotated costmap origin is unsupported')
         n = 0
         hits = []
         for name, x, y in self.nearby_people(t, msg.header.frame_id):
@@ -250,38 +342,59 @@ class Recorder(Node):
             self.critic_nonzero += int(max(raw) > 0.01)
             self.critic_varied += int(max(raw)-min(raw) > 1e-5)
 
-    def poll(self):
-        if time.monotonic()-self.last_poll < 1.0:
+    def request(self, key, client, request, callback):
+        if key in self.pending or not client.service_is_ready():
             return
-        self.last_poll = time.monotonic()
-        for name, client in self.services.items():
-            if name not in self.pending and client.service_is_ready():
-                future = client.call_async(GetState.Request())
-                self.pending[name] = future
-                def done(f, n=name):
-                    self.states[n] = f.result().current_state.id
-                    self.pending.pop(n, None)
-                future.add_done_callback(done)
-        if self.actual is None and 'params' not in self.pending and self.param_client.service_is_ready():
-            request = GetParameters.Request(names=list(self.expected))
-            future = self.param_client.call_async(request)
-            self.pending['params'] = future
-            def params_done(f):
-                values = dict(zip(self.expected, map(parameter_value, f.result().values)))
-                if all(v is not None for v in values.values()):
-                    self.actual = values
-                self.pending.pop('params', None)
-            future.add_done_callback(params_done)
-        if self.args.mode == 'actor' and 'actor' not in self.pending and self.actor_client.service_is_ready():
-            request = GetEntityState.Request(name='video1_walker_1', reference_frame='world')
-            future = self.actor_client.call_async(request)
-            self.pending['actor'] = future
-            future.add_done_callback(self.actor_observation)
+        try:
+            future = client.call_async(request)
+        except Exception as exc:
+            self.diagnostic_error(key, exc)
+            return
+        self.pending[key] = future
+        self.pending_times[key] = time.monotonic()
+        def done(f):
+            if self.pending.get(key) is not f:
+                return
+            self.pending.pop(key, None)
+            self.pending_times.pop(key, None)
+            self.guard(key, lambda value: callback(value.result()))(f)
+        future.add_done_callback(done)
 
-    def actor_observation(self, future):
-        self.pending.pop('actor', None)
-        response = future.result()
-        if not response.success or not self.raw:
+    def poll(self):
+        wall = time.monotonic()
+        if wall-self.last_poll < 1.0:
+            return
+        self.last_poll = wall
+        for key, sent in list(self.pending_times.items()):
+            if wall-sent > 5.0:
+                future = self.pending.pop(key)
+                self.pending_times.pop(key)
+                future.cancel()
+                self.diagnostic_error(key, TimeoutError('Service response exceeded 5 wall seconds'))
+        for name, client in self.lifecycle_clients.items():
+            def state_done(response, n=name):
+                self.states[n] = int(response.current_state.id)
+                self.state_times[n] = time.monotonic()
+            self.request(name, client, GetState.Request(), state_done)
+        if self.actual is None:
+            def params_done(response):
+                if len(response.values) != len(self.expected):
+                    raise ValueError('Incomplete parameter response')
+                values = dict(zip(self.expected, map(parameter_value, response.values)))
+                if any(v is None for v in values.values()):
+                    raise ValueError('Required critic parameter is unset or unsupported')
+                self.actual = values
+            self.request('params', self.param_client,
+                         GetParameters.Request(names=list(self.expected)), params_done)
+        if self.args.mode == 'actor' and self.now() > 0 and self.raw:
+            self.request('actor', self.actor_client,
+                         GetEntityState.Request(name='video1_walker_1', reference_frame='world'),
+                         self.actor_observation)
+
+    def actor_observation(self, response):
+        if not response.success:
+            raise ValueError('Gazebo GetEntityState did not find video1_walker_1')
+        if not self.raw:
             return
         t = stamp_seconds(response.header.stamp)
         raw = min(self.raw, key=lambda m: abs(stamp_seconds(m.header.stamp)-t))
@@ -291,18 +404,26 @@ class Recorder(Node):
         p = raw.pedestrians[0]
         actual = response.state.pose.position
         error = math.hypot(actual.x-p.pose.x-p.velocity.x*dt, actual.y-p.pose.y-p.velocity.y*dt)
+        if not all(math.isfinite(v) for v in (t, actual.x, actual.y, error)):
+            raise ValueError('Nonfinite Gazebo actor observation')
         self.pose_errors.append(error)
         self.observed_actor.append((t, actual.x, actual.y))
         self.event('actor_observation', t=t, world_x=actual.x, world_y=actual.y, extrapolated_pose_error=error)
 
+    def nav_active(self):
+        return all(self.states.get(n) == 3 and
+                   time.monotonic()-self.state_times.get(n, 0) < 5.0 for n in LIFECYCLES)
+
     def ready(self):
-        if len(self.states) != len(LIFECYCLES) or any(v != 3 for v in self.states.values()):
+        if self.fatal_error:
+            raise RuntimeError(self.fatal_error)
+        if self.now() <= 0 or not self.nav_active():
             return False
         if self.actual is None:
             return False
         if self.actual != self.expected:
             raise RuntimeError('Runtime critic parameters differ from the accepted YAML')
-        if self.robot_time is None or self.now()-self.robot_time > 0.5:
+        if self.robot_time is None or not -0.1 <= self.now()-self.robot_time <= 0.5:
             return False
         if not self.action.server_is_ready():
             return False
@@ -321,17 +442,30 @@ class Recorder(Node):
                 return False
             if any(math.hypot(vx, vy) <= 0.10 for _, vx, vy in recent):
                 raise RuntimeError('Moving actor does not sustain the anisotropy threshold')
-            if not self.pose_errors or max(self.pose_errors) > 0.05:
+            if (not self.pose_errors or max(self.pose_errors) > 0.05
+                    or not 0 <= self.now()-self.observed_actor[-1][0] < 3.0):
                 return False
         return True
 
     def step(self):
         rclpy.spin_once(self, timeout_sec=0.05)
-        if self.first_sim is None and self.now() > 0:
+        if self.fatal_error:
+            raise RuntimeError(self.fatal_error)
+        sim = self.now()
+        if sim < self.last_sim:
+            raise RuntimeError('Simulation clock reset; restart this experiment')
+        if sim > self.last_sim:
+            self.last_clock_wall = time.monotonic()
+        if self.first_sim is not None and time.monotonic()-self.last_clock_wall > 60:
+            raise RuntimeError('Simulation clock stalled for 60 wall seconds')
+        self.last_sim = sim
+        if self.first_sim is None and sim > 0:
             self.first_sim = (self.now(), time.monotonic())
         self.poll()
         if len(self.goal_ids) > 1:
             raise RuntimeError('More than one navigation goal observed')
+        if self.goal_count and not self.nav_active():
+            raise RuntimeError('Nav2 lifecycle readiness lost during navigation')
         if self.goal_count and self.args.mode == 'actor':
             if not self.people or self.now()-stamp_seconds(self.people[-1].header.stamp) > 0.8:
                 raise RuntimeError('Actor /people stream lost during navigation')
@@ -340,10 +474,18 @@ class Recorder(Node):
             moving = [] if not self.people else [p for p in self.people[-1].pedestrians
                        if p.identifier != 'visitor_1' and math.hypot(p.velocity.x, p.velocity.y) > 0.10]
             speed = max((math.hypot(p.velocity.x, p.velocity.y) for p in moving), default=0.0)
-            nav = 'ACTIVE' if len(self.states) == len(LIFECYCLES) and all(v == 3 for v in self.states.values()) else 'WAITING'
+            nav = 'ACTIVE' if self.nav_active() else 'WAITING'
             print(f'Nav2: {nav} | Animated people: {int(self.args.mode == "actor")} '
                   f'| Moving people: {len(moving)} | moving speed: {speed:.3f} m/s '
-                  f'| sim: {self.now():.1f}s | goal count: {self.goal_count}', flush=True)
+                  f'| sim: {self.now():.1f}s | goal count: {self.goal_count} '
+                  f'| actor pose samples: {len(self.pose_errors)} | diagnostics: '
+                  f'{sum(d["errors"] for d in self.diagnostics.values())}', flush=True)
+            if not self.goal_count:
+                waiting = [n for n in LIFECYCLES if self.states.get(n) != 3
+                           or time.monotonic()-self.state_times.get(n, 0) >= 5.0]
+                print(f'Readiness: lifecycle waiting={waiting}; parameters={self.actual is not None}; '
+                      f'odom={self.robot_time}; people messages={len(self.people_stamps)}; '
+                      f'action server={self.action.server_is_ready()}', flush=True)
 
     def wait_future(self, future, wall_timeout=20.0):
         deadline = time.monotonic()+wall_timeout
@@ -351,7 +493,13 @@ class Recorder(Node):
             self.step()
         if not future.done():
             raise RuntimeError('ROS operation timed out')
-        return future.result()
+        try:
+            result = future.result()
+        except Exception as exc:
+            raise RuntimeError(f'ROS action operation failed: {exc}') from exc
+        if result is None:
+            raise RuntimeError('ROS action returned no result')
+        return result
 
     def run(self):
         print('ONE-ACTOR PROOF OF CONCEPT — visual walking and final crowd are NOT yet accepted.', flush=True)
@@ -362,6 +510,7 @@ class Recorder(Node):
             self.step()
             if time.monotonic() > deadline:
                 raise RuntimeError('Readiness timeout; see runtime.log and observations.jsonl; no goal sent')
+        self.ready_reached = True
         self.event('ready', t=self.now(), actual_parameters=self.actual)
         if self.args.observe_only:
             start = self.now()
@@ -387,7 +536,7 @@ class Recorder(Node):
         self.goal_count += 1  # There is exactly one send_goal_async call.
         self.event('goal_sent', t=self.now(), x=0.0, y=16.0, yaw=1.5708)
         self.goal_handle = self.wait_future(self.action.send_goal_async(
-            goal, feedback_callback=lambda m: setattr(self, 'recoveries', max(self.recoveries, m.feedback.number_of_recoveries))))
+            goal, feedback_callback=self.guard('action_feedback', self.on_feedback)))
         if not self.goal_handle.accepted:
             return 'REJECTED'
         future = self.goal_handle.get_result_async()
@@ -399,13 +548,17 @@ class Recorder(Node):
             try:
                 future = self.goal_handle.cancel_goal_async()
                 rclpy.spin_until_future_complete(self, future, timeout_sec=3.0)
-            except Exception:
-                pass
+                if not future.done():
+                    raise TimeoutError('Goal cancellation not acknowledged')
+                response = future.result()
+                self.event('goal_cancel_response', goals_canceling=len(response.goals_canceling))
+            except Exception as exc:
+                self.diagnostic_error('action_cancel', exc)
         sim = self.now()
         rtf = None if self.first_sim is None else (sim-self.first_sim[0])/(time.monotonic()-self.first_sim[1])
         final_map = None
         if self.robot is not None:
-            tf = self.lookup('map', 'odom', self.robot_time)
+            tf = self.lookup('map', self.robot_frame, self.robot_time)
             if tf is not None:
                 final_map = (*transform(self.robot[0], self.robot[1], tf), wrap(self.robot[2]+tf[2]))
         speeds = {k: speed_stats(v) for k, v in self.speeds.items()}
@@ -437,9 +590,34 @@ class Recorder(Node):
                 'laser_association_observed': self.laser_associations > 0,
                 'costmap_association_observed': self.costmap_associations > 0,
             })
-        runtime_pass = all(checks.values())
+        # Missing optional evidence is inconclusive, never a measured failure.
+        if not self.goal_count:
+            checks = {name: None for name in checks}
+        else:
+            for name, observed in (
+                ('critic_observed_scoring', self.critic_samples),
+                ('laser_association_observed', self.laser_observations),
+                ('costmap_association_observed', self.costmap_observations),
+                ('global_and_local_paths_observed', self.paths['/plan'] and self.paths['/local_plan']),
+                ('physical_goal_position', self.raw_robot is not None),
+            ):
+                if name in checks and not observed:
+                    checks[name] = None
+        instrumentation_complete = not any(d['errors'] for d in self.diagnostics.values())
+        runtime_pass = all(value is True for value in checks.values()) and instrumentation_complete and not self.fatal_error
+        topic_inventory = []
+        try:
+            topic_inventory = self.get_topic_names_and_types()
+            self.event('topic_inventory', topics=topic_inventory)
+        except Exception as exc:
+            self.diagnostic_error('topic_inventory', exc)
+        runtime_pass = runtime_pass and not self.fatal_error
         summary = {'navigation': status, 'error': error,
-                   'mode': self.args.mode, 'automated_runtime_checks': checks,
+                   'mode': self.args.mode, 'readiness_reached': self.ready_reached,
+                   'experiment_phase': 'NAVIGATION_ATTEMPTED' if self.goal_count else 'PRE_NAVIGATION',
+                   'diagnostics': self.diagnostics, 'instrumentation_complete': instrumentation_complete, 'topic_inventory': topic_inventory,
+                   'null_check_meaning': 'NOT_MEASURED / INCONCLUSIVE; not a runtime failure',
+                   'automated_runtime_checks': checks,
                    'automated_runtime_checks_pass': runtime_pass,
                    'final_scene_accepted': False,
                    'visual_walking': 'MANUAL_CHECK_REQUIRED',
@@ -500,10 +678,13 @@ def main():
     except Exception as exc:
         error = str(exc)
     finally:
-        runtime_pass = node.finish(status, error)
-        node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        try:
+            runtime_pass = node.finish(status, error)
+        finally:
+            node.action.destroy()
+            node.destroy_node()
+            if rclpy.ok():
+                rclpy.shutdown()
     raise SystemExit(0 if runtime_pass or status == 'OBSERVATION_ONLY' else 1)
 
 

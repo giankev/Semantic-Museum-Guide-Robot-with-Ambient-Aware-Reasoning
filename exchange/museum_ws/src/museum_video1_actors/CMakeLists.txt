@@ -25,5 +25,7 @@ if(BUILD_TESTING)
   add_test(NAME video1_actor_motion COMMAND test_actor_motion)
   add_test(NAME video1_demo_tools COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_demo_tools.py)
+  add_test(NAME video1_recorder_runtime COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/test_recorder_runtime.py)
 endif()
 ament_package()
