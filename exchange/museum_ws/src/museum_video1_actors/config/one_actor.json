@@ -1,0 +1,11 @@
+{
+  "stage": "one_actor_poc_not_runtime_validated",
+  "name": "video1_walker_1",
+  "identifier": "walker_1",
+  "cx": 1.8,
+  "cy": 8.7,
+  "rx": 0.45,
+  "ry": 1.3,
+  "omega": 0.28,
+  "phase": 0.0
+}

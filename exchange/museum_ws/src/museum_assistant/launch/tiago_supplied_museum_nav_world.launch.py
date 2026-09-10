@@ -23,6 +23,10 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument(
+                "world_file", default_value=supplied_museum_nav_world_path(),
+                description="Optional isolated demo world; default is unchanged.",
+            ),
+            DeclareLaunchArgument(
                 "gzclient",
                 default_value="False",
                 choices=["True", "False"],
@@ -31,7 +35,7 @@ def generate_launch_description():
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(tiago_gazebo_launch),
                 launch_arguments={
-                    "world_name": supplied_museum_nav_world_path(),
+                    "world_name": LaunchConfiguration("world_file"),
                     "is_public_sim": "True",
                     "navigation": "False",
                     "advanced_navigation": "False",
