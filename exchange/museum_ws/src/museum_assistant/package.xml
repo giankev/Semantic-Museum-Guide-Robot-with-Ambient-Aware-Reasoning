@@ -24,6 +24,8 @@
   <exec_depend>gazebo_msgs</exec_depend>
   <exec_depend>social_nav_msgs</exec_depend>
   <exec_depend>people_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>rcl_interfaces</exec_depend>
   <exec_depend>nav2_social_costmap_plugin</exec_depend>
   <exec_depend>gazebo_ros</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>

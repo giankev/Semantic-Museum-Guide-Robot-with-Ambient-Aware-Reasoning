@@ -30,14 +30,22 @@ From the repository root on the host, start the complete Sketch 1 setup with:
 ./scripts/start_video1_demo.sh
 ```
 
-The starter opens the supplied museum and anisotropic Nav2 launch, a six-person
-deterministic crowd concentrated around the short video route, the terminal
-monitor, and a video-control prompt. The prompt appears only after all six
-people are moving and an additional five simulated seconds of warm-up. It also
-shows the Nav2 ownership, 0.20 m/s speed limit, human-only Gazebo state-setting
-allow-list, and measured Gazebo real-time factor. Start recording, then press
-`Enter` in the control terminal to send the known-free central-hall goal
-`(4.0, 8.0, 1.57)` through the normal Nav2 action.
+The starter opens Gazebo in a bird's-eye view, the dedicated Video 1 RViz view,
+the social monitor, and the video-control prompt. It places ten visible NPCs:
+nine remain static while only `guide_1` moves slowly along a bounded lateral
+lane. The control prompt waits for active Nav2 and ten `/people` entries, then
+sends exactly one normal `NavigateToPose` goal to north gallery
+`(0.0, 16.0, 1.5708)`.
+
+Use the validated all-static fallback without changing the navigation setup:
+
+```bash
+./scripts/start_video1_demo.sh --static-guide
+```
+
+The RViz view subscribes to `/map`, `/plan`, `/local_plan`, the local footprint,
+and the read-only `/museum/social_markers` visualization. RViz readiness is
+reported but never gates or commands navigation.
 
 Stop only the recorded Video 1 helper processes with:
 

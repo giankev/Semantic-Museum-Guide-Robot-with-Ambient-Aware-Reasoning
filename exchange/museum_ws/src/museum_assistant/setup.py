@@ -107,6 +107,10 @@ setup(
                 "museum_assistant.simulation_ground_truth_odom_node:main"
             ),
             (
+                "social_visualization_node = "
+                "museum_assistant.social_visualization_node:main"
+            ),
+            (
                 "supplied_museum_route_runner = "
                 "museum_assistant.supplied_museum_route_runner:main"
             ),

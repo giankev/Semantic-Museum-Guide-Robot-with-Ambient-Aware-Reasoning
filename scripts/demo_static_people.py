@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Place ten stationary pedestrians for the single-goal Video 1 demo."""
+"""Place Video 1 pedestrians, with an optional slowly moving guide."""
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 import math
 from pathlib import Path
@@ -27,40 +28,48 @@ class StaticPerson:
 
 
 # There is intentionally NO waypoint route in Video 1. TIAGo receives only
-# north_gallery (0,16). The first group lies on the nominal straight route,
-# but far enough from spawn that the robot visibly drives straight first and
-# only later reshapes its trajectory under the local social critic.
+# north_gallery (0,16). The central groups stay well outside the x=0 corridor;
+# guide_1 uses the accepted benchmark geometry to create one controlled social
+# influence near the north-gallery opening without physically blocking it.
 #
 # visitor_marker is explicitly deleted from Gazebo for this video because the
 # supplied world spawns it at (-1,0), visually next to TIAGo. Ten people are
 # still shown by using guest_marker_1..8 plus staff_marker and guide_marker.
 PEOPLE = (
-    # Group A: directly ahead, around six metres from the start.
-    StaticPerson("guest_marker_1", "guest_1", -0.75, 5.8, 0.20, True, "A"),
-    StaticPerson("guest_marker_2", "guest_2", 0.35, 6.1, math.pi, True, "A"),
-    StaticPerson("guest_marker_3", "guest_3", 1.35, 5.7, 2.80, True, "A"),
-    # Group B: farther ahead and biased right, leaving a feasible local detour.
-    StaticPerson("staff_marker", "staff_1", 1.0, 8.0, 0.0, False, "B"),
-    StaticPerson("guest_marker_4", "guest_4", 2.0, 8.3, math.pi, True, "B"),
-    StaticPerson("guest_marker_5", "guest_5", 2.8, 8.6, 2.60, True, "B"),
-    # Group C: north room population, away from the final goal.
-    StaticPerson("guide_marker", "guide_1", -4.0, 12.8, 0.35, False, "C"),
-    StaticPerson("guest_marker_6", "guest_6", -3.0, 13.8, 2.90, True, "C"),
-    StaticPerson("guest_marker_7", "guest_7", 3.4, 12.9, math.pi, True, "C"),
-    StaticPerson("guest_marker_8", "guest_8", 4.0, 14.2, 2.65, True, "C"),
+    # Three-person group on the left side of the central room.
+    StaticPerson("guest_marker_1", "guest_1", -5.0, 5.0, 0.20, True, "LEFT"),
+    StaticPerson("guest_marker_2", "guest_2", -4.4, 7.0, 0.0, True, "LEFT"),
+    StaticPerson("guest_marker_3", "guest_3", -5.6, 8.4, -0.20, True, "LEFT"),
+    # Three-person group on the right side of the central room.
+    StaticPerson("staff_marker", "staff_1", 4.7, 4.5, math.pi, False, "RIGHT"),
+    StaticPerson("guest_marker_4", "guest_4", 5.3, 6.5, math.pi, True, "RIGHT"),
+    StaticPerson("guest_marker_5", "guest_5", 4.5, 8.4, 2.90, True, "RIGHT"),
+    # The sole route-relevant person, lateral to the nominal x=0 path.
+    StaticPerson("guide_marker", "guide_1", 1.2, 9.0, math.pi, False, "GUIDE"),
+    # Three visitors spread laterally inside the north gallery.
+    StaticPerson("guest_marker_6", "guest_6", -5.0, 13.0, 0.35, True, "NORTH"),
+    StaticPerson("guest_marker_7", "guest_7", 5.0, 13.5, 2.80, True, "NORTH"),
+    StaticPerson("guest_marker_8", "guest_8", -4.5, 17.0, 0.15, True, "NORTH"),
 )
 
 ALLOWLIST = frozenset(person.model_name for person in PEOPLE)
 GUESTS = frozenset(person.model_name for person in PEOPLE if person.guest)
 REMOVED_NEAR_SPAWN_MODEL = "visitor_marker"
+GUIDE_MODEL = "guide_marker"
+GUIDE_MOTION_X = 1.4
+GUIDE_MOTION_MIN_Y = 8.2
+GUIDE_MOTION_MAX_Y = 9.2
+GUIDE_MOTION_INITIAL_Y = 9.0
+GUIDE_MOTION_SPEED = 0.12
 
 if len(PEOPLE) != 10 or len(ALLOWLIST) != 10:
     raise RuntimeError("Video 1 static demo must contain exactly ten unique people")
 
 
 class StaticPeopleDemo(Node):
-    def __init__(self) -> None:
+    def __init__(self, move_guide: bool = False) -> None:
         super().__init__("demo_static_people")
+        self.move_guide = move_guide
         mesh = (
             Path(get_package_share_directory("museum_assistant"))
             / "worlds/supplied_museum/humans/person_standing/meshes/standing.dae"
@@ -76,6 +85,8 @@ class StaticPeopleDemo(Node):
         self.delete_future = None
         self.delete_requested = False
         self.reported_ready = False
+        self.guide_motion_start = None
+        self.guide_motion_future = None
 
         self.set_client = self.create_client(SetEntityState, "/gazebo/set_entity_state")
         self.spawn_client = self.create_client(SpawnEntity, "/spawn_entity")
@@ -83,11 +94,17 @@ class StaticPeopleDemo(Node):
         self.create_subscription(ModelStates, "/gazebo/model_states", self._models, 10)
         self.create_timer(0.25, self._tick)
 
-        self.get_logger().info("Video 1: 10 static people, one single north-gallery goal")
+        mode = "9 static people + moving guide" if move_guide else "10 static people"
+        self.get_logger().info(f"Video 1: {mode}, one single north-gallery goal")
         for person in PEOPLE:
+            x, y, yaw = self._initial_pose(person)
             self.get_logger().info(
                 f"  group {person.group} | {person.public_id}: "
-                f"({person.x:.1f}, {person.y:.1f}) yaw={math.degrees(person.yaw):.0f} deg"
+                f"({x:.1f}, {y:.1f}) yaw={math.degrees(yaw):.0f} deg"
+            )
+        if move_guide:
+            self.get_logger().info(
+                "  guide_1 motion: x=1.4, y=8.2..9.2, speed=0.12 m/s"
             )
 
     def _models(self, msg: ModelStates) -> None:
@@ -109,25 +126,83 @@ class StaticPeopleDemo(Node):
             return
 
         for person in PEOPLE:
-            if person.model_name in self.placed or person.model_name in self.pending_set:
+            if (
+                person.model_name in self.placed
+                or person.model_name in self.pending_set
+            ):
                 continue
+            x, y, yaw = self._initial_pose(person)
             request = SetEntityState.Request()
             state = EntityState()
             state.name = person.model_name
             state.reference_frame = "world"
-            state.pose.position.x = person.x
-            state.pose.position.y = person.y
+            state.pose.position.x = x
+            state.pose.position.y = y
             state.pose.position.z = self.z_by_name.get(person.model_name, 0.0)
-            state.pose.orientation.z = math.sin(person.yaw / 2.0)
-            state.pose.orientation.w = math.cos(person.yaw / 2.0)
+            state.pose.orientation.z = math.sin(yaw / 2.0)
+            state.pose.orientation.w = math.cos(yaw / 2.0)
             request.state = state
             self.pending_set[person.model_name] = self.set_client.call_async(request)
 
         if len(self.placed) == len(PEOPLE) and not self.reported_ready:
             self.reported_ready = True
-            self.get_logger().info(
-                "STATIC PEOPLE READY: 10 people placed; near-spawn visitor removed"
+            if self.move_guide:
+                self.guide_motion_start = self.get_clock().now()
+                self.get_logger().info(
+                    "MOVING-GUIDE PEOPLE READY: 10 people placed; "
+                    "9 static and guide_1 moving"
+                )
+            else:
+                self.get_logger().info(
+                    "STATIC PEOPLE READY: 10 people placed; "
+                    "near-spawn visitor removed"
+                )
+
+        if self.reported_ready and self.move_guide:
+            self._move_guide()
+
+    def _initial_pose(self, person: StaticPerson) -> tuple[float, float, float]:
+        if self.move_guide and person.model_name == GUIDE_MODEL:
+            return GUIDE_MOTION_X, GUIDE_MOTION_INITIAL_Y, math.pi / 2.0
+        return person.x, person.y, person.yaw
+
+    def _move_guide(self) -> None:
+        if GUIDE_MODEL not in ALLOWLIST:
+            raise RuntimeError(
+                "Refusing to move a model outside the Video 1 allow-list"
             )
+        if self.guide_motion_future is not None:
+            if not self.guide_motion_future.done():
+                return
+            try:
+                response = self.guide_motion_future.result()
+            except Exception as exc:
+                self.get_logger().error(f"Guide motion update failed: {exc}")
+            else:
+                if response is None or not response.success:
+                    self.get_logger().error("Gazebo rejected guide motion update")
+            self.guide_motion_future = None
+
+        if self.guide_motion_start is None:
+            return
+        elapsed = (
+            self.get_clock().now() - self.guide_motion_start
+        ).nanoseconds / 1e9
+        y, direction = _guide_motion(elapsed)
+        yaw = math.pi / 2.0 if direction > 0.0 else -math.pi / 2.0
+
+        request = SetEntityState.Request()
+        state = EntityState()
+        state.name = GUIDE_MODEL
+        state.reference_frame = "world"
+        state.pose.position.x = GUIDE_MOTION_X
+        state.pose.position.y = y
+        state.pose.position.z = self.z_by_name.get(GUIDE_MODEL, 0.0)
+        state.pose.orientation.z = math.sin(yaw / 2.0)
+        state.pose.orientation.w = math.cos(yaw / 2.0)
+        state.twist.linear.y = direction * GUIDE_MOTION_SPEED
+        request.state = state
+        self.guide_motion_future = self.set_client.call_async(request)
 
     def _remove_near_spawn_visitor(self) -> None:
         if REMOVED_NEAR_SPAWN_MODEL not in self.model_names:
@@ -237,9 +312,30 @@ def _guest_sdf(name: str, mesh_uri: str) -> str:
 </sdf>"""
 
 
+def _guide_motion(elapsed: float) -> tuple[float, float]:
+    """Return analytic triangle-wave y and direction for simulation time."""
+    span = GUIDE_MOTION_MAX_Y - GUIDE_MOTION_MIN_Y
+    initial_offset = GUIDE_MOTION_INITIAL_Y - GUIDE_MOTION_MIN_Y
+    distance = (initial_offset + GUIDE_MOTION_SPEED * max(0.0, elapsed)) % (
+        2.0 * span
+    )
+    if distance < span:
+        return GUIDE_MOTION_MIN_Y + distance, 1.0
+    return GUIDE_MOTION_MAX_Y - (distance - span), -1.0
+
+
 def main() -> None:
-    rclpy.init()
-    node = StaticPeopleDemo()
+    parser = argparse.ArgumentParser(
+        description="Place the ten Video 1 people in Gazebo."
+    )
+    parser.add_argument(
+        "--move-guide",
+        action="store_true",
+        help="move only guide_1 along the bounded Video 1 lateral lane",
+    )
+    arguments, ros_arguments = parser.parse_known_args()
+    rclpy.init(args=ros_arguments)
+    node = StaticPeopleDemo(move_guide=arguments.move_guide)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

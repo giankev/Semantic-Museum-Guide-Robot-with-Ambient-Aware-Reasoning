@@ -9,7 +9,25 @@ BUILD_SETUP="source /opt/ros/humble/setup.bash && source /root/tiago_public_ws/i
 GOAL_X="0.0"
 GOAL_Y="16.0"
 GOAL_YAW="1.5708"
-DEMO_NAV2_PARAMS="/tmp/nav2_video1_single_goal.yaml"
+ACCEPTED_NAV2_PARAMS="/root/exchange/exchange/museum_ws/src/museum_assistant/config/nav2_supplied_anisotropic.yaml"
+RVIZ_CONFIG="/root/exchange/exchange/rviz/video1_social_navigation.rviz"
+MOVE_GUIDE="true"
+RVIZ_AVAILABLE="true"
+
+if [[ "${1:-}" == "--static-guide" ]]; then
+  MOVE_GUIDE="false"
+  shift
+elif [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+  echo "Usage: $0 [--static-guide]"
+  echo "Default: nine static people and one slowly moving guide."
+  echo "Fallback: --static-guide keeps all ten people stationary."
+  exit 0
+fi
+if (($#)); then
+  echo "Unknown argument: $1" >&2
+  echo "Usage: $0 [--static-guide]" >&2
+  exit 2
+fi
 
 command -v docker >/dev/null || { echo "docker is required." >&2; exit 1; }
 
@@ -54,8 +72,55 @@ open_terminal() {
   fi
 }
 
+start_background() {
+  local process_name="$1" command="$2"
+  local pid_file="${STATE_DIR}/${process_name}.pid"
+  bash -lc "exec ${command}" >"${STATE_DIR}/${process_name}.log" 2>&1 &
+  printf '%s\n' "$!" >"${pid_file}"
+}
+
 ros_exec() {
   docker exec "${CONTAINER}" bash -lc "${ROS_SETUP} && $1"
+}
+
+set_top_down_gazebo_camera() {
+  local topics attempt
+  local camera_topic="/gazebo/default/user_camera/joy_pose"
+  local camera_pose
+  camera_pose='position { x: 0 y: 8 z: 38 } orientation { x: -0.5 y: 0.5 z: 0.5 w: 0.5 }'
+  for attempt in {1..30}; do
+    topics="$(docker exec "${CONTAINER}" gz topic -l 2>/dev/null || true)"
+    if grep -Fxq "${camera_topic}" <<<"${topics}"; then
+      docker exec "${CONTAINER}" gz topic -p "${camera_topic}" \
+        -m "${camera_pose}" >/dev/null 2>&1
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+hide_gazebo_lidar_visual() {
+  local topics attempt
+  local scan_topic="/gazebo/default/tiago/base_footprint/base_laser/scan"
+  local visual_topic="/gazebo/default/visual"
+  local visual_message
+  visual_message="name: 'tiago::base_footprint::base_laser_GUIONLY_laser_vis' parent_name: 'tiago::base_footprint' visible: false"
+  for attempt in {1..60}; do
+    topics="$(docker exec "${CONTAINER}" gz topic -l 2>/dev/null || true)"
+    if grep -Fxq "${scan_topic}" <<<"${topics}"; then
+      # This targets Gazebo's _GUIONLY_ LaserVisual. It does not disable the
+      # sensor or alter /scan_raw, and only removes the blue ray overlay.
+      for _ in 1 2 3; do
+        docker exec "${CONTAINER}" gz topic -p "${visual_topic}" \
+          -m "${visual_message}" >/dev/null 2>&1 || return 1
+        sleep 1
+      done
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
 }
 
 docker exec "${CONTAINER}" test -d /root/exchange/exchange/museum_ws || {
@@ -78,25 +143,19 @@ echo "Building museum_assistant and museum_social_critic..."
 docker exec "${CONTAINER}" bash -lc \
   "${BUILD_SETUP} && cd /root/exchange/exchange/museum_ws && colcon build --symlink-install --packages-select museum_assistant museum_social_critic"
 
-# Single-goal social-navigation profile.  No intermediate waypoint is used.
-# The values are deliberately less aggressive than the previous 3m/scale80
-# experiment: TIAGo should drive straight first, then prefer a curved motion
-# when the first group enters the local social influence zone, rather than
-# finding in-place rotation cheaper than forward motion.
-echo "Preparing single-goal social-navigation profile..."
-docker exec "${CONTAINER}" bash -lc "
-  cp /root/exchange/exchange/museum_ws/src/museum_assistant/config/nav2_supplied_anisotropic.yaml ${DEMO_NAV2_PARAMS} &&
-  sed -i \
-    -e 's/ProxemicForce.scale: 32.0/ProxemicForce.scale: 45.0/' \
-    -e 's/ProxemicForce.comfort_distance: 1.0/ProxemicForce.comfort_distance: 2.4/' \
-    -e 's/ProxemicForce.sigma: 0.4/ProxemicForce.sigma: 0.50/' \
-    -e 's/ProxemicForce.ignored_identifiers: \[visitor_1\]/ProxemicForce.ignored_identifiers: [__none__]/' \
-    -e 's/sim_time: 1.7/sim_time: 2.5/' \
-    ${DEMO_NAV2_PARAMS}
-  grep -E 'ProxemicForce.(scale|comfort_distance|sigma|ignored_identifiers)|sim_time:' ${DEMO_NAV2_PARAMS}
-"
+# Use the accepted anisotropic profile directly and unchanged. Video 1 sends
+# one NavigateToPose goal; DWB and ProxemicForce choose the local trajectory.
+echo "Using accepted social-navigation profile: ${ACCEPTED_NAV2_PARAMS}"
+docker exec "${CONTAINER}" test -f "${ACCEPTED_NAV2_PARAMS}" || {
+  echo "Accepted Nav2 profile is missing inside ${CONTAINER}." >&2
+  exit 1
+}
+if ! docker exec "${CONTAINER}" test -f "${RVIZ_CONFIG}"; then
+  echo "WARNING: Video 1 RViz config is missing; navigation will continue." >&2
+  RVIZ_AVAILABLE="false"
+fi
 
-SIMULATION_REMOTE="${ROS_SETUP} && exec ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py gzclient:=True publish_people:=True use_scripted_visitor:=False use_engagement:=False use_language:=False use_speech:=False nav2_params_file:=${DEMO_NAV2_PARAMS}"
+SIMULATION_REMOTE="${ROS_SETUP} && exec ros2 launch museum_assistant supplied_museum_reasoning_navigation.launch.py gzclient:=True publish_people:=True use_scripted_visitor:=False use_engagement:=False use_language:=False use_speech:=False nav2_params_file:=${ACCEPTED_NAV2_PARAMS}"
 printf -v simulation_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${SIMULATION_REMOTE}"
 open_terminal "TIAGO - SIMULATION" "simulation" "${simulation_command}"
 
@@ -118,11 +177,41 @@ until gazebo_ready; do
   sleep 2
 done
 
-echo "Gazebo READY. Opening people, monitor and control."
+echo "Gazebo READY. Opening Video 1 visualization, monitor and control."
 
-STATIC_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_static_people.py --ros-args -p use_sim_time:=true"
-printf -v static_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${STATIC_REMOTE}"
-open_terminal "TIAGO - STATIC PEOPLE" "crowd" "${static_command}"
+if set_top_down_gazebo_camera; then
+  echo "Gazebo camera set to the Video 1 bird's-eye view."
+else
+  echo "WARNING: Gazebo camera topic was unavailable; set the view manually." >&2
+fi
+if hide_gazebo_lidar_visual; then
+  echo "Gazebo LiDAR ray overlay hidden; the /scan_raw sensor remains active."
+else
+  echo "WARNING: Gazebo LiDAR visual could not be hidden." >&2
+fi
+
+GUIDE_ARGUMENT=""
+PEOPLE_MODE="MOVING GUIDE"
+if [[ "${MOVE_GUIDE}" == "true" ]]; then
+  GUIDE_ARGUMENT="--move-guide"
+else
+  PEOPLE_MODE="STATIC FALLBACK"
+fi
+PEOPLE_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_static_people.py ${GUIDE_ARGUMENT} --ros-args -p use_sim_time:=true"
+printf -v people_command 'docker exec -i %q bash -lc %q' "${CONTAINER}" "${PEOPLE_REMOTE}"
+start_background "crowd" "${people_command}"
+
+VISUALIZER_REMOTE="${ROS_SETUP} && exec ros2 run museum_assistant social_visualization_node --ros-args -p use_sim_time:=true"
+printf -v visualizer_command 'docker exec -i %q bash -lc %q' "${CONTAINER}" "${VISUALIZER_REMOTE}"
+start_background "visualizer" "${visualizer_command}"
+
+RVIZ_REMOTE="${ROS_SETUP} && exec rviz2 -d ${RVIZ_CONFIG}"
+printf -v rviz_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${RVIZ_REMOTE}"
+if [[ "${RVIZ_AVAILABLE}" == "true" ]]; then
+  if ! open_terminal "TIAGO - RVIZ SOCIAL NAVIGATION" "rviz" "${rviz_command}"; then
+    echo "WARNING: RViz did not start; navigation will continue." >&2
+  fi
+fi
 
 MONITOR_REMOTE="${ROS_SETUP} && exec python3 /root/exchange/scripts/demo_social_monitor.py"
 printf -v monitor_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${MONITOR_REMOTE}"
@@ -149,6 +238,11 @@ while true; do
   snapshot="\$(timeout 5 ros2 topic echo /people --once 2>/dev/null || true)"
   people_count="\$(grep -c 'identifier:' <<<"\$snapshot" || true)"
   visitor_present="\$(ros2 topic echo /gazebo/model_states --once --field name 2>/dev/null | grep -c visitor_marker || true)"
+  nodes="\$(ros2 node list 2>/dev/null || true)"
+  topics="\$(ros2 topic list 2>/dev/null || true)"
+  rviz_ready="\$(grep -Ec '^/rviz(2)?(_[0-9]+)?$' <<<"\$nodes" || true)"
+  visualizer_ready="\$(grep -c '^/social_visualization_node$' <<<"\$nodes" || true)"
+  markers_ready="\$(grep -c '^/museum/social_markers$' <<<"\$topics" || true)"
 
   clear
   printf '%s\n' \
@@ -159,6 +253,9 @@ while true; do
   "bt_navigator:      \${navigator:-waiting}" \
   "people on /people: \$people_count / 10" \
   "near-spawn visitor removed: \$([[ \$visitor_present -eq 0 ]] && echo YES || echo waiting)" \
+  "RViz process:       \$([[ \$rviz_ready -gt 0 ]] && echo READY || echo optional/waiting)" \
+  "social visualizer:  \$([[ \$visualizer_ready -gt 0 ]] && echo READY || echo optional/waiting)" \
+  "social marker topic:\$([[ \$markers_ready -gt 0 ]] && echo ' READY' || echo ' optional/waiting')" \
   '' \
   'Single goal only: north_gallery (0,16)'
 
@@ -179,6 +276,8 @@ printf '%s\n' \
 'Nav2: ACTIVE' \
 'People: 10 / 10' \
 'Near-spawn visitor: REMOVED' \
+'People mode: ${PEOPLE_MODE}' \
+'RViz + social markers: checked (visualization is non-blocking)' \
 'Goal: north_gallery (0.0, 16.0)' \
 'Waypoints: NONE' \
 '============================================'
@@ -194,6 +293,7 @@ printf -v control_command 'docker exec -it %q bash -lc %q' "${CONTAINER}" "${CON
 open_terminal "TIAGO - VIDEO CONTROL" "control" "${control_command}"
 
 echo "Video 1 single-goal demo started."
+echo "People mode: ${PEOPLE_MODE}. Use --static-guide for the validated fallback."
 echo "Only north_gallery (0,16) is sent. No waypoint route exists in this script."
 echo "visitor_marker next to spawn is deleted before navigation starts."
 echo "Stop with: ./scripts/stop_video1_demo.sh"
