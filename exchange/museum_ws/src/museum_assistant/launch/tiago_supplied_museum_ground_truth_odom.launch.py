@@ -40,6 +40,11 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument(
+                "world_file",
+                default_value=str(package_share / "worlds" / "supplied_museum" / "museum_nav.world"),
+                description="Optional isolated demo world; default is unchanged.",
+            ),
+            DeclareLaunchArgument(
                 "gzclient",
                 default_value="False",
                 choices=["True", "False"],
@@ -47,7 +52,10 @@ def generate_launch_description():
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(str(world_launch)),
-                launch_arguments={"gzclient": LaunchConfiguration("gzclient")}.items(),
+                launch_arguments={
+                    "gzclient": LaunchConfiguration("gzclient"),
+                    "world_file": LaunchConfiguration("world_file"),
+                }.items(),
             ),
             ExecuteProcess(
                 cmd=["bash", "-lc", _controller_reloader_command()],
@@ -56,4 +64,3 @@ def generate_launch_description():
             ),
         ]
     )
-
