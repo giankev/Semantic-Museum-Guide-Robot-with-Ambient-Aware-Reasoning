@@ -50,7 +50,7 @@ class RuntimeAudit:
         self.listener = None
         if self.tf is None:
             self.tf = Buffer()
-            self.listener = TransformListener(self.tf, node)
+            self.listener = TransformListener(self.tf, node, qos=qos_profile_sensor_data)
         self.latest = {}
         self.last_snapshot = 0.0
         self.map_saved = False

@@ -8,6 +8,7 @@ GUI=True
 OBSERVE=()
 AUDIT=()
 GOAL_TIME=60
+BT_TIMEOUT_MS=200
 SERVER_RENDERER="${VIDEO1_SERVER_RENDERER:-auto}"
 [[ "${SERVER_RENDERER}" == auto || "${SERVER_RENDERER}" == software ]] || {
   echo 'VIDEO1_SERVER_RENDERER must be auto or software' >&2; exit 2;
@@ -19,9 +20,10 @@ for argument in "$@"; do
     --headless) GUI=False ;;
     --observe-only) OBSERVE=(--observe-only) ;;
     --runtime-audit) AUDIT=(--runtime-audit) ;;
+    --accepted-nav2) BT_TIMEOUT_MS=20 ;;
     --goal-time=*) GOAL_TIME="${argument#*=}" ;;
     --help|-h)
-      echo "Usage: $0 [--baseline|--static] [--headless] [--observe-only] [--runtime-audit] [--goal-time=60]"
+      echo "Usage: $0 [--baseline|--static] [--headless] [--observe-only] [--runtime-audit] [--accepted-nav2] [--goal-time=60]"
       echo 'Default: one walking-actor proof of concept, NOT an accepted final crowd.'
       echo 'No crowd expansion is enabled before the one-actor runtime test passes.'
       exit 0 ;;
@@ -115,7 +117,7 @@ if conflicts:
 PY"
 
 echo 'Building isolated actor POC and required museum packages (sequentially for 8 GB RAM)...'
-docker exec "${CONTAINER}" bash -c "${BUILD_SETUP} && cd /root/exchange/exchange/museum_ws && colcon build --symlink-install --executor sequential --packages-select museum_assistant museum_social_critic museum_video1_actors" \
+docker exec "${CONTAINER}" bash -c "${BUILD_SETUP} && cd /root/exchange/exchange/museum_ws && MAKEFLAGS='-j1 -l1' colcon build --symlink-install --executor sequential --packages-select museum_assistant museum_social_critic museum_video1_actors" \
   2>&1 | tee "${RUN_DIR}/build.log"
 docker exec "${CONTAINER}" bash -c "${SETUP} && cd /root/exchange/exchange/museum_ws && colcon test --packages-select museum_video1_actors --event-handlers console_direct+ && colcon test-result --test-result-base build/museum_video1_actors --verbose" \
   2>&1 | tee "${RUN_DIR}/tests.log"
@@ -145,6 +147,19 @@ git -C "${REPO_ROOT}" status --porcelain >"${RUN_DIR}/git_status.txt"
 
 docker exec "${CONTAINER}" bash -c "${SETUP} && python3 /root/exchange/scripts/prepare_video1_animated_world.py --source /root/exchange/exchange/museum_ws/src/museum_assistant/worlds/supplied_museum/museum_nav.world --output ${REMOTE_RUN}/museum.world --config ${PACKAGE}/config/one_actor.json --mode ${MODE}" \
   >"${RUN_DIR}/preparation.log" 2>&1
+docker exec "${CONTAINER}" python3 -c 'import hashlib,json,pathlib,sys,yaml
+source=pathlib.Path(sys.argv[1]); output=pathlib.Path(sys.argv[2])
+params=yaml.safe_load(source.read_text())
+before=params["bt_navigator"]["ros__parameters"]["default_server_timeout"]
+after=int(sys.argv[3])
+params["bt_navigator"]["ros__parameters"]["default_server_timeout"]=after
+output.write_text(yaml.safe_dump(params, sort_keys=False))
+print(json.dumps({"base_sha256":hashlib.sha256(source.read_bytes()).hexdigest(),
+ "effective_sha256":hashlib.sha256(output.read_bytes()).hexdigest(),
+ "changes":[] if before==after else [{"parameter":"bt_navigator.default_server_timeout","before_ms":before,"after_ms":after}],
+ "bt_timeout_ms":after}, indent=2))' \
+  /root/exchange/exchange/museum_ws/src/museum_assistant/config/nav2_supplied_anisotropic.yaml \
+  "${REMOTE_RUN}/nav2.yaml" "${BT_TIMEOUT_MS}" >"${RUN_DIR}/nav2_manifest.json"
 docker exec "${CONTAINER}" python3 -c 'import sys,yaml
 from pathlib import Path
 p=yaml.safe_load(Path(sys.argv[1]).read_text())
@@ -175,7 +190,7 @@ for program in ("gzclient", "gzserver"):
 
 # Keep the source world, laser, map, all critic values and the static launcher intact.
 # Gazebo reads its camera from the disposable world; no mouse/insert-model commands.
-LAUNCH="${SETUP} && export PATH=\"${REMOTE_RUN}/bin:\${PATH}\" && export GAZEBO_PLUGIN_PATH=\"\$(ros2 pkg prefix museum_video1_actors)/lib:\${GAZEBO_PLUGIN_PATH:-}\" && exec ros2 launch museum_video1_actors video1.launch.py world_file:=${REMOTE_RUN}/museum.world mode:=${MODE} gzclient:=${GUI} rviz_config:=${REMOTE_RUN}/video1.rviz static_script:=/root/exchange/scripts/demo_static_people.py"
+LAUNCH="${SETUP} && export PATH=\"${REMOTE_RUN}/bin:\${PATH}\" && export GAZEBO_PLUGIN_PATH=\"\$(ros2 pkg prefix museum_video1_actors)/lib:\${GAZEBO_PLUGIN_PATH:-}\" && exec ros2 launch museum_video1_actors video1.launch.py world_file:=${REMOTE_RUN}/museum.world mode:=${MODE} gzclient:=${GUI} rviz_config:=${REMOTE_RUN}/video1.rviz static_script:=/root/exchange/scripts/demo_static_people.py params_file:=${REMOTE_RUN}/nav2.yaml"
 docker exec -d "${CONTAINER}" bash -c "${LAUNCH} >${REMOTE_RUN}/runtime.log 2>&1"
 RUNTIME_STARTED=1
 docker exec -d "${CONTAINER}" bash -c "${BUILD_SETUP} && timeout 1800 gz stats -p >${REMOTE_RUN}/gazebo_stats.csv 2>&1"

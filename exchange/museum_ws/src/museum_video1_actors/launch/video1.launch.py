@@ -19,7 +19,7 @@ def setup(context):
         TimerAction(period=15.0, actions=[IncludeLaunchDescription(
             PythonLaunchDescriptionSource(str(nav)), launch_arguments={
                 'map': str(museum / 'maps/supplied_museum_nav.yaml'),
-                'params_file': str(museum / 'config/nav2_supplied_anisotropic.yaml'),
+                'params_file': LaunchConfiguration('params_file'),
                 'use_sim_time': 'true', 'autostart': 'true',
                 'use_composition': 'False', 'slam': 'False'}.items())])]
     if mode == 'actor':
@@ -46,6 +46,8 @@ def generate_launch_description():
         DeclareLaunchArgument('world_file'),
         DeclareLaunchArgument('rviz_config'),
         DeclareLaunchArgument('static_script'),
+        DeclareLaunchArgument('params_file', default_value=str(
+            Path(get_package_share_directory('museum_assistant')) / 'config/nav2_supplied_anisotropic.yaml')),
         DeclareLaunchArgument('mode', default_value='actor', choices=['baseline', 'static', 'actor']),
         DeclareLaunchArgument('gzclient', default_value='True', choices=['True', 'False']),
         OpaqueFunction(function=setup)])

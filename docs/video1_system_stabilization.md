@@ -115,6 +115,31 @@ defects are not claimed to have caused the historical PathDist/GoalDist errors.
 
 ## Running the diagnostic capture
 
+GUI run `20260911T171333Z_actor` recovered finite scans with software rendering
+only on gzserver, but reproduced ComputePathToPose / FollowPath acknowledgement
+timeouts and controller aborts. The first timeout sequence occurred with zero
+ProxemicForce cost and without a PathDist rejection. It was explicitly cancelled;
+this is retained negative evidence, not a successful Actor validation.
+
+The accepted BT acknowledgement deadline is 20 ms. A real Humble BtActionNode
+test with a server delaying acknowledgement 75 ms reproduces failure at 20 ms
+and success at 200 ms, three paired repetitions. The launcher now writes a
+per-run Nav2 YAML with only default_server_timeout changed to 200 ms, records
+source/effective hashes and the changed field, and checks the live parameter
+before sending a goal. `--accepted-nav2` retains the 20 ms counterfactual.
+Controller/critic parameters and historical benchmark inputs stay intact.
+Full-navigation comparisons at 200 ms remain necessary.
+
+The recorder's dynamic TF subscription now uses a depth-five sensor queue;
+the depth-100 default could leave its *observations* behind the robot under
+GUI load. Static TF retains transient-local durability. This does not alter
+the robot's TF publishers or Nav2 subscriptions. Comparisons must still use
+matched timestamps before attributing an apparent pose difference to AMCL.
+
+Package-level sequential builds did not bound compiler jobs: the installed
+colcon still passed `-j8`. Explicit `MAKEFLAGS='-j1 -l1'` bounds compilation
+on the 8 GB machine, independently of the package executor.
+
 ```
 ./scripts/start_video1_animated_demo.sh --baseline --headless --runtime-audit --observe-only
 ```

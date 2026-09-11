@@ -23,6 +23,13 @@ install(PROGRAMS scripts/people_bridge.py scripts/record_demo.py scripts/social_
 install(FILES scripts/demo_math.py scripts/runtime_audit.py DESTINATION lib/${PROJECT_NAME})
 if(BUILD_TESTING)
   enable_testing()
+  find_package(nav2_behavior_tree REQUIRED)
+  find_package(nav2_msgs REQUIRED)
+  find_package(rclcpp_action REQUIRED)
+  add_executable(test_bt_ack_timeout test/test_bt_ack_timeout.cpp)
+  ament_target_dependencies(test_bt_ack_timeout nav2_behavior_tree nav2_msgs rclcpp_action)
+  add_test(NAME video1_bt_ack_timeout COMMAND test_bt_ack_timeout)
+  set_tests_properties(video1_bt_ack_timeout PROPERTIES TIMEOUT 30)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
   add_executable(test_actor_motion test/test_actor_motion.cpp)
   target_include_directories(test_actor_motion PRIVATE include)
@@ -36,5 +43,10 @@ if(BUILD_TESTING)
   add_test(NAME video1_runtime_audit COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_runtime_audit.py)
   set_tests_properties(video1_dds_probe PROPERTIES TIMEOUT 45)
+  # Fixtures publish synthetic /clock and /people. Never inherit the live
+  # simulation's domain, including when tests are run during an audit.
+  set_tests_properties(video1_bt_ack_timeout video1_recorder_runtime video1_dds_probe
+    video1_runtime_audit PROPERTIES ENVIRONMENT "ROS_DOMAIN_ID=180;ROS_LOCALHOST_ONLY=1"
+    RUN_SERIAL TRUE)
 endif()
 ament_package()

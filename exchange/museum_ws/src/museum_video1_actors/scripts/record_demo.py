@@ -72,10 +72,14 @@ class Recorder(Node):
         self.states, self.pending = {}, {}
         self.lifecycle_clients = {name: self.create_client(GetState, f'/{name}/get_state') for name in LIFECYCLES}
         self.param_client = self.create_client(GetParameters, '/controller_server/get_parameters')
+        manifest = self.out/'nav2_manifest.json'
+        self.nav2_manifest = json.loads(manifest.read_text()) if manifest.exists() else None
+        self.bt_timeout_actual = None
+        self.bt_param_client = self.create_client(GetParameters, '/bt_navigator/get_parameters')
         self.actor_client = self.create_client(GetEntityState, '/gazebo/get_entity_state')
         self.action = ActionClient(self, NavigateToPose, '/navigate_to_pose')
         self.tf = Buffer()
-        self.listener = TransformListener(self.tf, self)
+        self.listener = TransformListener(self.tf, self, qos=qos_profile_sensor_data)
         self.people, self.raw = deque(maxlen=300), deque(maxlen=300)
         self.speeds = defaultdict(list)
         self.people_stamps = []
@@ -110,6 +114,7 @@ class Recorder(Node):
         self.goal_handle = None
         self.raw_robot = None
         self.started_wall = time.monotonic()
+        self.goal_started_wall = None
         self.first_sim = None
         self.last_poll = 0.0
         self.last_render = 0.0
@@ -407,6 +412,13 @@ class Recorder(Node):
                 self.states[n] = int(response.current_state.id)
                 self.state_times[n] = time.monotonic()
             self.request(name, client, GetState.Request(), state_done)
+        if self.nav2_manifest and self.bt_timeout_actual is None:
+            def bt_done(response):
+                if not response.values or response.values[0].type != 2:
+                    raise ValueError('BT action timeout parameter unavailable')
+                self.bt_timeout_actual = response.values[0].integer_value
+            self.request('bt_parameters', self.bt_param_client,
+                         GetParameters.Request(names=['default_server_timeout']), bt_done)
         if self.actual is None:
             def params_done(response):
                 if len(response.values) != len(self.expected):
@@ -452,6 +464,11 @@ class Recorder(Node):
             return False
         if self.actual is None:
             return False
+        if self.nav2_manifest:
+            if self.bt_timeout_actual is None:
+                return False
+            if self.bt_timeout_actual != self.nav2_manifest['bt_timeout_ms']:
+                raise RuntimeError('Runtime BT action timeout differs from the recorded configuration')
         if self.actual != self.expected:
             raise RuntimeError('Runtime critic parameters differ from the accepted YAML')
         if self.robot_time is None or not -0.1 <= self.now()-self.robot_time <= 0.5:
@@ -610,6 +627,7 @@ class Recorder(Node):
         goal.pose.pose.orientation.z = math.sin(1.5708/2)
         goal.pose.pose.orientation.w = math.cos(1.5708/2)
         self.goal_count += 1  # There is exactly one send_goal_async call.
+        self.goal_started_wall = time.monotonic()
         self.event('goal_sent', t=self.now(), x=0.0, y=16.0, yaw=1.5708)
         self.goal_handle = self.wait_future(self.action.send_goal_async(
             goal, feedback_callback=self.guard('action_feedback', self.on_feedback)))
@@ -690,6 +708,9 @@ class Recorder(Node):
             self.diagnostic_error('topic_inventory', exc)
         runtime_pass = runtime_pass and not self.fatal_error
         summary = {'navigation': status, 'error': error,
+                   'nav2_configuration': self.nav2_manifest,
+                   'bt_timeout_actual_ms': self.bt_timeout_actual,
+                   'navigation_wall_time_s': (time.monotonic()-self.goal_started_wall) if self.goal_started_wall else None,
                    'scan_health': self.scan_health,
                    'dds_admission': self.dds_probe,
                    'mode': self.args.mode, 'readiness_reached': self.ready_reached,

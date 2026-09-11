@@ -57,6 +57,46 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(set(self.node.lifecycle_clients), set(record_demo.LIFECYCLES))
         self.assertGreater(len(list(self.node.subscriptions)), 0)
 
+    def test_dynamic_tf_uses_short_sensor_queue_and_static_tf_stays_latched(self):
+        from rclpy.qos import DurabilityPolicy
+        dynamic = next(s for s in self.node.subscriptions if s.topic_name == '/tf')
+        static = next(s for s in self.node.subscriptions if s.topic_name == '/tf_static')
+        self.assertEqual(dynamic.qos_profile.depth, 5)
+        self.assertEqual(dynamic.qos_profile.reliability, ReliabilityPolicy.BEST_EFFORT)
+        self.assertEqual(static.qos_profile.durability, DurabilityPolicy.TRANSIENT_LOCAL)
+
+    def test_runtime_bt_parameter_must_match_manifest_before_goal(self):
+        self.node.nav2_manifest = {'bt_timeout_ms': 200}
+        self.node.actual = self.node.expected
+        with patch.object(self.node, 'now', return_value=60.), \
+             patch.object(self.node, 'nav_active', return_value=True):
+            self.assertFalse(self.node.ready())
+            self.node.bt_timeout_actual = 20
+            with self.assertRaisesRegex(RuntimeError, 'BT action timeout differs'):
+                self.node.ready()
+        self.assertEqual(self.node.goal_count, 0)
+
+    def test_effective_nav2_changes_only_ack_timeout(self):
+        import json
+        import yaml
+        source = (REPO/'scripts/start_video1_animated_demo.sh').read_text()
+        start = source.index("python3 -c 'import hashlib,json,pathlib,sys,yaml")
+        command = shlex.split(source[start:source.index('>"${RUN_DIR}/nav2_manifest.json"', start)])
+        generator = command[command.index('-c')+1]
+        accepted = PACKAGE.parent/'museum_assistant/config/nav2_supplied_anisotropic.yaml'
+        original = yaml.safe_load(accepted.read_text())
+        output = Path(self.directory.name)/'nav2.yaml'
+        for timeout in (20, 200):
+            result = subprocess.run([sys.executable, '-c', generator, str(accepted), str(output), str(timeout)],
+                                    capture_output=True, text=True, check=True)
+            manifest = json.loads(result.stdout)
+            effective = yaml.safe_load(output.read_text())
+            self.assertEqual(effective['bt_navigator']['ros__parameters']['default_server_timeout'], timeout)
+            effective['bt_navigator']['ros__parameters']['default_server_timeout'] = 20
+            self.assertEqual(effective, original)
+            self.assertEqual(manifest['bt_timeout_ms'], timeout)
+            self.assertEqual(len(manifest['changes']), int(timeout != 20))
+
     def test_warn_numeric_and_byte_levels_with_real_humble_constant(self):
         # Reproduce int >= bytes even on generators that expose int constants.
         with patch.object(record_demo, 'Log', SimpleNamespace(WARN=b'\x1e')):
@@ -260,7 +300,7 @@ if args[0] == 'exec':
             git.chmod(0o755)
             calls = root/'calls'
             env = dict(os.environ, PATH=str(root/'bin')+':'+os.environ['PATH'],
-                       CALLS=str(calls))
+                       CALLS=str(calls), DISPLAY=':1')
             for fail_build, code, stopped in [('0', 7, False), ('1', 8, True)]:
                 calls.write_text('')
                 result = subprocess.run(['bash', str(launcher), '--headless'],
@@ -289,16 +329,18 @@ if args[0] == 'exec':
         generator = command[command.index('-c')+1]
         with tempfile.TemporaryDirectory() as directory:
             fake_client = Path(directory)/'real-client'
-            fake_client.write_text('#!/bin/sh\nprintf "%s\\n" "$@" "$GAZEBO_MODEL_PATH"\n')
+            fake_client.write_text('#!/bin/sh\nprintf "%s\\n" "$@" "$GAZEBO_MODEL_PATH" "$LIBGL_ALWAYS_SOFTWARE"\n')
             fake_client.chmod(0o755)
             wrapper_dir = Path(directory)/'bin'
             with patch('shutil.which', return_value=str(fake_client)), \
-                 patch.object(sys, 'argv', ['-c', str(wrapper_dir)]):
+                 patch.object(sys, 'argv', ['-c', directory, 'software']):
                 exec(compile(generator, 'wrapper_generator', 'exec'), {})
-            result = subprocess.run([str(wrapper_dir/'gzclient'), '--test-argument'],
-                env=dict(os.environ, GAZEBO_MODEL_PATH='scoped-PAL-models'), capture_output=True, text=True)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(result.stdout.splitlines(), ['--verbose', '--test-argument', 'scoped-PAL-models'])
+            for program, renderer in [('gzclient', '0'), ('gzserver', '1')]:
+                result = subprocess.run([str(wrapper_dir/program), '--test-argument'],
+                    env=dict(os.environ, GAZEBO_MODEL_PATH='scoped-PAL-models', LIBGL_ALWAYS_SOFTWARE='0'),
+                    capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.splitlines(), ['--verbose', '--test-argument', 'scoped-PAL-models', renderer])
 
     def test_version_probe_ignores_gazebo_cli_exit_255_but_checks_pkg_config(self):
         source = (REPO/'scripts/start_video1_animated_demo.sh').read_text()
