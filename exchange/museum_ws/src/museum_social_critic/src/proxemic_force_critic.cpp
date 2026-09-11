@@ -15,6 +15,19 @@
 namespace museum_social_critic
 {
 
+bool advancePersonToNow(PersonState & person, double age, double timeout)
+{
+  if (!std::isfinite(age) || age < 0.0 || age > timeout ||
+    !std::isfinite(person.x) || !std::isfinite(person.y) ||
+    !std::isfinite(person.vx) || !std::isfinite(person.vy))
+  {
+    return false;
+  }
+  person.x += person.vx * age;
+  person.y += person.vy * age;
+  return std::isfinite(person.x) && std::isfinite(person.y);
+}
+
 double proxemicCost(double distance, double comfort_distance, double sigma)
 {
   if (!std::isfinite(distance) || distance < 0.0 ||
@@ -46,7 +59,7 @@ double effectiveProxemicDistance(
 {
   const double isotropic_distance = std::hypot(relative_x, relative_y);
   const double speed = std::hypot(velocity_x, velocity_y);
-  if (!anisotropic_enabled || speed < min_heading_speed) {
+  if (!anisotropic_enabled || speed == 0.0 || speed < min_heading_speed) {
     return isotropic_distance;
   }
 
@@ -196,12 +209,16 @@ bool ProxemicForceCritic::prepare(
     return true;
   }
 
+  if (snapshot->header.stamp.sec < 0 || snapshot->header.stamp.nanosec >= 1000000000U) {
+    RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000, "Ignoring invalid people timestamp");
+    return true;
+  }
   const rclcpp::Time stamp(snapshot->header.stamp);
   const double age = (clock_->now() - stamp).seconds();
-  if (!std::isfinite(age) || age > people_timeout_) {
+  if (stamp.nanoseconds() == 0 || !std::isfinite(age) || age < 0.0 || age > people_timeout_) {
     RCLCPP_WARN_THROTTLE(
       logger_, *clock_, 5000,
-      "Ignoring stale people snapshot (age %.3f s, timeout %.3f s)",
+      "Ignoring uninitialized, future or stale people snapshot (age %.3f s, timeout %.3f s)",
       age, people_timeout_);
     return true;
   }
@@ -260,6 +277,12 @@ bool ProxemicForceCritic::prepare(
       prepared.y = target_point.point.y;
       prepared.vx = target_velocity.vector.x;
       prepared.vy = target_velocity.vector.y;
+    }
+    // The received pose belongs to the message stamp. Trajectory offsets start
+    // at this control cycle, so first advance the person by the snapshot age.
+    if (!advancePersonToNow(prepared, age, people_timeout_)) {
+      RCLCPP_WARN_THROTTLE(logger_, *clock_, 5000, "Ignoring nonfinite person state");
+      continue;
     }
     prepared_people_.push_back(std::move(prepared));
   }

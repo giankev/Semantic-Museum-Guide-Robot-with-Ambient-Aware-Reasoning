@@ -31,6 +31,8 @@ struct PersonState
   double vy;
 };
 
+bool advancePersonToNow(PersonState & person, double age, double timeout);
+
 double proxemicCost(double distance, double comfort_distance, double sigma);
 
 double effectiveProxemicDistance(

@@ -1,12 +1,34 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <limits>
 #include <unordered_set>
 #include <vector>
 
 #include "museum_social_critic/proxemic_force_critic.hpp"
 
 namespace msc = museum_social_critic;
+
+TEST(ProxemicMath, StationaryPersonWithZeroHeadingThresholdIsIsotropic)
+{
+  EXPECT_DOUBLE_EQ(msc::effectiveProxemicDistance(3, 4, 0, 0, true, 1.4, 1, .8, 0), 5);
+}
+
+TEST(ProxemicMath, SnapshotAgeIsIncludedBeforeTrajectoryPrediction)
+{
+  msc::PersonState person{"walker_1", 2, 0, -1, 0};
+  ASSERT_TRUE(msc::advancePersonToNow(person, .4, 1));
+  EXPECT_NEAR(msc::maximumProxemicScore({{0, 0, .6}}, {person}, {}, 1, .4), .5, 1e-12);
+}
+
+TEST(ProxemicMath, FutureStaleAndNonfiniteStatesAreRejected)
+{
+  msc::PersonState person{"walker_1", 2, 0, -1, 0};
+  EXPECT_FALSE(msc::advancePersonToNow(person, -.01, 1));
+  EXPECT_FALSE(msc::advancePersonToNow(person, 1.01, 1));
+  person.vx = std::numeric_limits<double>::quiet_NaN();
+  EXPECT_FALSE(msc::advancePersonToNow(person, .1, 1));
+}
 
 TEST(ProxemicMath, FartherPersonHasLowerScore)
 {
