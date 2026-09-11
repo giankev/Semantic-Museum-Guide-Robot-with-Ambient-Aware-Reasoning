@@ -6,6 +6,7 @@ CONTAINER="museum_video1_animated_${UID}"
 MODE=actor
 GUI=True
 OBSERVE=()
+AUDIT=()
 GOAL_TIME=60
 for argument in "$@"; do
   case "${argument}" in
@@ -13,9 +14,10 @@ for argument in "$@"; do
     --static) MODE=static ;;
     --headless) GUI=False ;;
     --observe-only) OBSERVE=(--observe-only) ;;
+    --runtime-audit) AUDIT=(--runtime-audit) ;;
     --goal-time=*) GOAL_TIME="${argument#*=}" ;;
     --help|-h)
-      echo "Usage: $0 [--baseline|--static] [--headless] [--observe-only] [--goal-time=60]"
+      echo "Usage: $0 [--baseline|--static] [--headless] [--observe-only] [--runtime-audit] [--goal-time=60]"
       echo 'Default: one walking-actor proof of concept, NOT an accepted final crowd.'
       echo 'No crowd expansion is enabled before the one-actor runtime test passes.'
       exit 0 ;;
@@ -41,7 +43,9 @@ RUN_DIR="${REPO_ROOT}/log/video1_animated/${RUN_NAME}"
 REMOTE_RUN="/root/exchange/log/video1_animated/${RUN_NAME}"
 mkdir -p "${RUN_DIR}/gazebo" "${RUN_DIR}/ros"
 GPU_ARGS=()
-if command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
+if [[ "${VIDEO1_SOFTWARE_RENDERING:-0}" == 1 ]]; then
+  GPU_ARGS=(-e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe)
+elif command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
   GPU_ARGS=(--gpus all)
 elif [[ -d /dev/dri ]]; then
   GPU_ARGS=(--device=/dev/dri:/dev/dri -e LIBGL_ALWAYS_SOFTWARE=0)
@@ -49,10 +53,14 @@ else
   GPU_ARGS=(-e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe)
 fi
 GUI_ARGS=()
-if [[ "${GUI}" == True ]]; then
+if [[ "${GUI}" == True || -n "${DISPLAY:-}" ]]; then
   # Match the validated desktop launcher, including its local X access rule.
   xhost +local:docker >"${RUN_DIR}/xhost.txt" 2>&1 || true
   GUI_ARGS=(-e "DISPLAY=${DISPLAY:-:0}" -e QT_X11_NO_MITSHM=1 -v /tmp/.X11-unix:/tmp/.X11-unix:rw)
+fi
+if [[ "${GUI}" == False && -z "${DISPLAY:-}" ]]; then
+  echo 'GPU LiDAR requires an X display even without GUI. Set DISPLAY to the simulation desktop.' >&2
+  exit 2
 fi
 
 OWNED=0
@@ -169,8 +177,9 @@ echo 'Navigation is scheduled at simulation time' "${GOAL_TIME}" 'seconds.'
 TTY=()
 [[ -t 0 && -t 1 ]] && TTY=(-t)
 printf -v OBSERVE_ARG '%s' "${OBSERVE[*]}"
+printf -v AUDIT_ARG '%s' "${AUDIT[*]}"
 RECORDER_STATUS=0
-docker exec -i "${TTY[@]}" "${CONTAINER}" bash -c "${SETUP} && exec ros2 run museum_video1_actors record_demo.py --output ${REMOTE_RUN} --mode ${MODE} --goal-time ${GOAL_TIME} ${OBSERVE_ARG} --ros-args -p use_sim_time:=true" || RECORDER_STATUS=$?
+docker exec -i "${TTY[@]}" "${CONTAINER}" bash -c "${SETUP} && exec ros2 run museum_video1_actors record_demo.py --output ${REMOTE_RUN} --mode ${MODE} --goal-time ${GOAL_TIME} ${OBSERVE_ARG} ${AUDIT_ARG} --ros-args -p use_sim_time:=true" || RECORDER_STATUS=$?
 echo "Run finished. Gazebo/RViz remain open. Evidence: ${RUN_DIR}/summary.json"
 echo 'This result does not promote the POC to an accepted final crowd demo.'
 echo 'Stop: ./scripts/stop_video1_animated_demo.sh'

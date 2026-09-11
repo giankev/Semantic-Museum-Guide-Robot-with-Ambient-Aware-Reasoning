@@ -16,7 +16,7 @@ install(TARGETS video1_actor LIBRARY DESTINATION lib)
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
 install(PROGRAMS scripts/people_bridge.py scripts/record_demo.py scripts/social_markers.py scripts/probe_dds.py
   DESTINATION lib/${PROJECT_NAME})
-install(FILES scripts/demo_math.py DESTINATION lib/${PROJECT_NAME})
+install(FILES scripts/demo_math.py scripts/runtime_audit.py DESTINATION lib/${PROJECT_NAME})
 if(BUILD_TESTING)
   enable_testing()
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
@@ -29,6 +29,8 @@ if(BUILD_TESTING)
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_recorder_runtime.py)
   add_test(NAME video1_dds_probe COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dds_probe.py)
+  add_test(NAME video1_runtime_audit COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/test_runtime_audit.py)
   set_tests_properties(video1_dds_probe PROPERTIES TIMEOUT 45)
 endif()
 ament_package()

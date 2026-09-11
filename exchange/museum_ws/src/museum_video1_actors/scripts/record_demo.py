@@ -31,6 +31,7 @@ from tf2_ros import Buffer, TransformListener, TransformException
 import yaml
 from ament_index_python.packages import get_package_share_directory
 from demo_math import stamp_seconds, speed_stats, transform, wrap, yaw
+from runtime_audit import RuntimeAudit
 
 LIFECYCLES = ('amcl', 'map_server', 'controller_server', 'planner_server',
               'smoother_server', 'behavior_server', 'bt_navigator',
@@ -81,6 +82,8 @@ class Recorder(Node):
         self.people_wall_stamps = []
         self.robot = None
         self.robot_time = None
+        self.scan_health = {'status': 'WAITING_FOR_MESSAGE', 'last_usable_sim': None,
+                            'invalid_since_sim': None, 'finite_returns': 0}
         self.min_distance = None
         self.pose_errors = []
         self.observed_actor = []
@@ -110,6 +113,7 @@ class Recorder(Node):
         self.first_sim = None
         self.last_poll = 0.0
         self.last_render = 0.0
+        self.runtime_audit = RuntimeAudit(self, self.out) if getattr(args, 'runtime_audit', False) else None
         # Best-effort readers match both reliable and sensor-data publishers.
         # Critical streams still have explicit freshness/readiness gates.
         for kind, topic, callback, critical in (
@@ -296,6 +300,16 @@ class Recorder(Node):
 
     def on_scan(self, msg):
         t = stamp_seconds(msg.header.stamp)
+        finite = sum(math.isfinite(v) and msg.range_min <= v <= msg.range_max for v in msg.ranges)
+        self.scan_health['finite_returns'] = finite
+        if finite:
+            self.scan_health.update(status='USABLE', last_usable_sim=t, invalid_since_sim=None)
+        else:
+            self.scan_health['status'] = 'NO_FINITE_RETURNS'
+            if self.scan_health['invalid_since_sim'] is None:
+                self.scan_health['invalid_since_sim'] = t
+        # Association with people is optional. Sensor usability is independent
+        # of people, including the empty baseline in this enclosed museum.
         people = self.nearby_people(t, msg.header.frame_id)
         if not people:
             return
@@ -444,6 +458,9 @@ class Recorder(Node):
             return False
         if not self.action.server_is_ready():
             return False
+        scan_time = self.scan_health['last_usable_sim']
+        if scan_time is None or not -0.1 <= self.now()-scan_time <= 1.0:
+            return False
         if self.args.mode == 'baseline':
             return not self.people or not self.people[-1].pedestrians
         expected = 10 if self.args.mode == 'static' else 1
@@ -466,6 +483,8 @@ class Recorder(Node):
 
     def step(self):
         rclpy.spin_once(self, timeout_sec=0.05)
+        if self.runtime_audit is not None:
+            self.runtime_audit.tick()
         if self.fatal_error:
             raise RuntimeError(self.fatal_error)
         sim = self.now()
@@ -476,6 +495,12 @@ class Recorder(Node):
         if self.first_sim is not None and time.monotonic()-self.last_clock_wall > 60:
             raise RuntimeError('Simulation clock stalled for 60 wall seconds')
         self.last_sim = sim
+        invalid_since = self.scan_health['invalid_since_sim']
+        if invalid_since is not None and sim - invalid_since > 5.0:
+            raise RuntimeError('LiDAR has no finite returns for 5 simulation seconds in the enclosed museum; navigation cannot be validated')
+        if self.goal_count and (self.scan_health['last_usable_sim'] is None or
+                                sim - self.scan_health['last_usable_sim'] > 1.0):
+            raise RuntimeError('Usable LiDAR stream lost during navigation')
         if self.first_sim is None and sim > 0:
             self.first_sim = (self.now(), time.monotonic())
         self.poll()
@@ -665,6 +690,7 @@ class Recorder(Node):
             self.diagnostic_error('topic_inventory', exc)
         runtime_pass = runtime_pass and not self.fatal_error
         summary = {'navigation': status, 'error': error,
+                   'scan_health': self.scan_health,
                    'dds_admission': self.dds_probe,
                    'mode': self.args.mode, 'readiness_reached': self.ready_reached,
                    'experiment_phase': 'NAVIGATION_ATTEMPTED' if self.goal_count else 'PRE_NAVIGATION',
@@ -717,6 +743,7 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--mode', choices=['baseline', 'static', 'actor'], default='actor')
     parser.add_argument('--observe-only', action='store_true')
+    parser.add_argument('--runtime-audit', action='store_true', help='Record TF, scan and plan geometry at 1 Hz wall time')
     parser.add_argument('--goal-time', type=float, default=60.0)
     args, ros_args = parser.parse_known_args()
     if not math.isfinite(args.goal_time) or args.goal_time < 10:
@@ -734,6 +761,8 @@ def main():
         try:
             runtime_pass = node.finish(status, error)
         finally:
+            if node.runtime_audit is not None:
+                node.runtime_audit.close()
             node.action.destroy()
             node.destroy_node()
             if rclpy.ok():

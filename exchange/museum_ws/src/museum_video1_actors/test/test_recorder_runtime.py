@@ -19,6 +19,7 @@ from rclpy.logging import LoggingSeverity
 from rclpy.qos import ReliabilityPolicy
 from rcl_interfaces.msg import Log
 from nav_msgs.msg import OccupancyGrid, Odometry
+from sensor_msgs.msg import LaserScan
 from social_nav_msgs.msg import Pedestrians
 from gazebo_msgs.srv import GetEntityState
 import record_demo
@@ -87,6 +88,25 @@ class RecorderTests(unittest.TestCase):
         self.callback('/people', Pedestrians())  # no frame
         with self.assertRaisesRegex(RuntimeError, 'Critical input /people'):
             self.node.step()
+
+    def test_all_negative_infinity_scan_blocks_blind_navigation_even_without_people(self):
+        scan = LaserScan()
+        scan.header.frame_id = 'base_laser_link'
+        scan.header.stamp.sec = 1
+        scan.range_min, scan.range_max = .05, 25.0
+        scan.ranges = [float('-inf')] * 666
+        self.callback('/scan_raw', scan)
+        self.assertEqual(self.node.scan_health['status'], 'NO_FINITE_RETURNS')
+        self.assertIsNone(self.node.scan_health['last_usable_sim'])
+        with patch.object(self.node, 'now', return_value=7.0):
+            with self.assertRaisesRegex(RuntimeError, 'LiDAR has no finite returns'):
+                self.node.step()
+        self.assertEqual(self.node.goal_count, 0)
+        scan.header.stamp.sec = 8
+        scan.ranges = [1.6] * 666
+        self.callback('/scan_raw', scan)
+        self.assertEqual(self.node.scan_health['status'], 'USABLE')
+        self.assertEqual(self.node.scan_health['last_usable_sim'], 8.0)
 
     def test_failed_service_future_releases_pending_and_can_retry(self):
         future = Future()
