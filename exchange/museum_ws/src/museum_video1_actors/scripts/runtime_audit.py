@@ -5,7 +5,6 @@ No goals, controller changes or entity-state writes. Can also inspect a running
 POC independently: python3 runtime_audit.py --output DIR --seconds 15.
 """
 import argparse
-from collections import defaultdict
 import json
 import math
 from pathlib import Path
@@ -20,7 +19,6 @@ from rclpy.parameter import Parameter
 from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import LaserScan
-from tf2_msgs.msg import TFMessage
 from tf2_ros import Buffer, TransformListener
 from demo_math import stamp_seconds, yaw
 
@@ -48,10 +46,12 @@ class RuntimeAudit:
         self.output = Path(output)
         self.output.mkdir(parents=True, exist_ok=True)
         self.file = (self.output / 'runtime_audit.jsonl').open('w', buffering=1)
-        self.tf = Buffer()
-        self.listener = TransformListener(self.tf, node)
+        self.tf = getattr(node, 'tf', None)
+        self.listener = None
+        if self.tf is None:
+            self.tf = Buffer()
+            self.listener = TransformListener(self.tf, node)
         self.latest = {}
-        self.edges = defaultdict(set)
         self.last_snapshot = 0.0
         self.map_saved = False
         for kind, topic in ((Odometry, '/ground_truth_odom'),
@@ -59,6 +59,7 @@ class RuntimeAudit:
                             (Odometry, '/mobile_base_controller/odom'),
                             (PoseWithCovarianceStamped, '/amcl_pose'),
                             (NavPath, '/plan'), (NavPath, '/local_plan'),
+                            (NavPath, '/received_global_plan'), (NavPath, '/transformed_global_plan'),
                             (OccupancyGrid, '/local_costmap/costmap'),
                             (OccupancyGrid, '/global_costmap/costmap'),
                             (LaserScan, '/scan_raw')):
@@ -67,14 +68,11 @@ class RuntimeAudit:
                                      qos_profile_sensor_data)
         node.create_subscription(OccupancyGrid, '/map', self.save_map,
                                  QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
-        # Early Humble executors discard MessageInfo. Drain this unspun node's
-        # subscriptions explicitly to retain publisher GIDs; never guess an
-        # authority from the topic publisher list alone.
-        self.tap = Node('video1_tf_authority_tap')
-        self.tf_taps = [self.tap.create_subscription(TFMessage, topic, lambda m: None, qos)
-                       for topic, qos in (('/tf', qos_profile_sensor_data),
-                           ('/tf_static', QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)))]
-        node.create_subscription(Log, '/rosout', self.on_log, qos_profile_sensor_data)
+        # Publisher attribution uses tf_authority_audit (rclcpp MessageInfo),
+        # because early Humble rclpy discards the publisher GID.
+        callback = (node.guard('runtime_audit/rosout', self.on_log)
+                    if hasattr(node, 'guard') else self.on_log)
+        node.create_subscription(Log, '/rosout', callback, qos_profile_sensor_data)
         # Wall-time throttling is checked by tick, including when /clock pauses.
 
     def write(self, kind, **data):
@@ -95,12 +93,6 @@ class RuntimeAudit:
         except Exception as exc:
             self.write('diagnostic_error', source='save_map', error=str(exc))
 
-    def on_tf(self, msg, info):
-        gid = (bytes(info['publisher_gid']).hex() if 'publisher_gid' in info
-               else 'UNAVAILABLE_IN_INSTALLED_RCLPY')
-        for t in msg.transforms:
-            self.edges[(t.header.frame_id, t.child_frame_id)].add(gid)
-
     def on_log(self, msg):
         if any(s in msg.msg for s in ('No valid trajectories', 'Critic', 'zero length',
                                      'acknowledge goal', 'Aborting handle', 'time allowance')):
@@ -114,13 +106,6 @@ class RuntimeAudit:
         return dict(pose=[p.x, p.y, yaw(q)], stamp=stamp_seconds(t.header.stamp))
 
     def tick(self, force=False):
-        for sub in self.tf_taps:
-            for _ in range(200):
-                with sub.handle:
-                    sample = sub.handle.take_message(sub.msg_type, sub.raw)
-                if sample is None:
-                    break
-                self.on_tf(*sample)
         now = time.monotonic()
         if now - self.last_snapshot < (0.1 if force else 1.0):
             return
@@ -186,10 +171,8 @@ class RuntimeAudit:
                                     gid=bytes(i.endpoint_gid).hex())
                                  for i in self.node.get_publishers_info_by_topic(topic)]
         self.write('tf_authorities', tree=self.tf.all_frames_as_yaml(), publishers=publishers,
-                   edges=[dict(parent=p, child=c, gids=sorted(gids))
-                          for (p, c), gids in sorted(self.edges.items())])
+                   authority_status='USE_TF_AUTHORITY_AUDIT_FOR_PER_EDGE_GIDS')
         self.file.close()
-        self.tap.destroy_node()
 
 
 def main():

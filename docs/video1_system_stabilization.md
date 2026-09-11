@@ -58,6 +58,61 @@ though it were a world-frame velocity would introduce a bug. The 100 Hz raw
 world pose is aligned once to the initial odometry origin. AMCL remains the
 map-to-odom authority. No localization architecture change has been made yet.
 
+## Renderer isolation and first clean navigation
+
+The same positive-control rig under llvmpipe returned 100/100 finite values
+for both GPU sensor types (minimum 1.800082 m), matching the CPU reference
+(1.800023 m). The real TIAGo box test also recovered its expected front
+return: approximately 1.57–1.60 m with noise and finite angular sampling.
+The Intel rendering path's unusable GPU ranges are therefore a reproduced
+root cause; Actor presence is not necessary for it. Blue ray visualization
+and the GPU LiDAR sensor type remain enabled.
+
+`VIDEO1_SERVER_RENDERER=software` applies llvmpipe only to gzserver. Gazebo
+GUI and RViz keep the regular hardware renderer. Separate server/client
+Ogre logs preserve the actual renderer. The all-software option remains
+available as a controlled comparison.
+
+No-people run `20260911T084717Z_baseline`, with working GPU LiDAR and the
+unchanged accepted Nav2 YAML:
+
+| Measurement | Result |
+|---|---|
+| Navigation | SUCCESS; exactly one goal |
+| Navigation simulated duration | 141.715 s |
+| Total recorder wall duration | 302.333 s |
+| Final world pose | (0.01255, 15.92353, 1.91191) |
+| Final map pose | (0.09692, 15.82968, 1.91302) |
+| World goal position error | 0.0775 m |
+| Map/world position difference | 0.1262 m |
+| Recoveries / no-valid trajectories | 0 / 0 |
+| RTF | 0.677 |
+
+One clean baseline alone does not establish repeatability or Actor acceptance.
+The global mesh and simplified collision map are not identical (a stationary
+scan/map endpoint comparison confirms differences), but this baseline has
+consistent localization and no DWB failures. No map change is justified by
+this result alone.
+
+Native TF attribution confirms one observed authority for each main edge:
+AMCL for map→odom, simulation_ground_truth_odom for odom→base_footprint, and
+robot_state_publisher for the robot links. mobile_base_controller advertises
+a TF endpoint but did not publish that edge after its override. Endpoint
+presence alone would have produced a false duplicate-TF diagnosis. This
+Cyclone version exposes instance handles in native message metadata, while
+its graph exposes GUIDs; the read-only Fast DDS probe provides matching wire
+GUIDs. See `tf_authorities_guid.jsonl`.
+
+## ProxemicForce corrections
+
+Math tests reproduce three ingestion/prediction defects: a permitted zero
+heading threshold divided stationary velocity by zero; future/nonfinite
+states were not rejected; prediction started at the old message pose rather
+than advancing it to the control-cycle time. Corrections retain the logistic
+cost, anisotropic geometry, MAX aggregation, ignored identifiers and every
+accepted parameter. Static people are unchanged by age projection. These
+defects are not claimed to have caused the historical PathDist/GoalDist errors.
+
 ## Running the diagnostic capture
 
 ```

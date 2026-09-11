@@ -8,6 +8,10 @@ GUI=True
 OBSERVE=()
 AUDIT=()
 GOAL_TIME=60
+SERVER_RENDERER="${VIDEO1_SERVER_RENDERER:-auto}"
+[[ "${SERVER_RENDERER}" == auto || "${SERVER_RENDERER}" == software ]] || {
+  echo 'VIDEO1_SERVER_RENDERER must be auto or software' >&2; exit 2;
+}
 for argument in "$@"; do
   case "${argument}" in
     --baseline) MODE=baseline ;;
@@ -154,13 +158,20 @@ Path(sys.argv[2]).write_text(yaml.safe_dump(p, sort_keys=False))' \
 # Preserve PAL's scoped model/plugin environment and launch ordering. Its
 # gzclient command has no verbose argument, so add only that flag via PATH.
 docker exec "${CONTAINER}" python3 -c 'import pathlib,shlex,shutil,sys
-client=shutil.which("gzclient")
-if client is None:
-    raise SystemExit("gzclient executable missing")
-wrapper=pathlib.Path(sys.argv[1])/"gzclient"
-wrapper.parent.mkdir(parents=True, exist_ok=True)
-wrapper.write_text("#!/bin/sh\nexec "+shlex.quote(client)+" --verbose \"$@\"\n")
-wrapper.chmod(0o755)' "${REMOTE_RUN}/bin"
+root=pathlib.Path(sys.argv[1])
+for program in ("gzclient", "gzserver"):
+    executable=shutil.which(program)
+    if executable is None:
+        raise SystemExit(program+" executable missing")
+    wrapper=root/"bin"/program
+    wrapper.parent.mkdir(parents=True, exist_ok=True)
+    logs=root/(program+"_logs")
+    logs.mkdir(exist_ok=True)
+    environment="export GAZEBO_LOG_PATH="+shlex.quote(str(logs))+"\n"
+    if program=="gzserver" and sys.argv[2]=="software":
+        environment+="export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe\n"
+    wrapper.write_text("#!/bin/sh\n"+environment+"exec "+shlex.quote(executable)+" --verbose \"$@\"\n")
+    wrapper.chmod(0o755)' "${REMOTE_RUN}" "${SERVER_RENDERER}"
 
 # Keep the source world, laser, map, all critic values and the static launcher intact.
 # Gazebo reads its camera from the disposable world; no mouse/insert-model commands.
@@ -168,6 +179,8 @@ LAUNCH="${SETUP} && export PATH=\"${REMOTE_RUN}/bin:\${PATH}\" && export GAZEBO_
 docker exec -d "${CONTAINER}" bash -c "${LAUNCH} >${REMOTE_RUN}/runtime.log 2>&1"
 RUNTIME_STARTED=1
 docker exec -d "${CONTAINER}" bash -c "${BUILD_SETUP} && timeout 1800 gz stats -p >${REMOTE_RUN}/gazebo_stats.csv 2>&1"
+docker exec -d "${CONTAINER}" python3 /root/exchange/scripts/audit_video1_resources.py \
+  --output "${REMOTE_RUN}/resources.jsonl" --seconds 1800
 docker stats --format '{{json .}}' "${CONTAINER}" >"${RUN_DIR}/docker_stats.jsonl" 2>&1 &
 STATS_PID=$!
 

@@ -9,6 +9,7 @@
   <depend>gazebo_ros</depend>
   <depend>gazebo_dev</depend>
   <depend>rclcpp</depend>
+  <depend>tf2_msgs</depend>
   <depend>social_nav_msgs</depend>
   <exec_depend>museum_assistant</exec_depend>
   <exec_depend>museum_social_critic</exec_depend>

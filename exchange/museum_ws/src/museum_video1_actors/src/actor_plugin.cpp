@@ -31,6 +31,7 @@ public:
         sdf->Get<double>("rx"), sdf->Get<double>("ry"),
         sdf->Get<double>("omega"), sdf->Get<double>("phase")};
       path_.validate();
+      stationary_ = sdf->HasElement("stationary") && sdf->Get<bool>("stationary");
       auto animations = actor_->SkeletonAnimations();
       if (!animations.count("walking") || !animations.at("walking")) {
         throw std::runtime_error("walk.dae skeleton animation did not load");
@@ -73,10 +74,16 @@ public:
     last_update_ = epoch_;
     last_publish_ = epoch_;
     actor_->SetScriptTime(0.0);
-    Apply(path_.at(0.0));
+    Apply(SampleAt(0.0));
   }
 
 private:
+  Sample SampleAt(double time) const
+  {
+    auto sample = path_.at(stationary_ ? 0.0 : time);
+    if (stationary_) {sample.vx = 0.0; sample.vy = 0.0;}
+    return sample;
+  }
   void Apply(const Sample & s)
   {
     // Gazebo's shipped walk.dae uses the same roll/yaw convention as
@@ -92,7 +99,7 @@ private:
     const double now = info.simTime.Double();
     if (now < last_update_) {Reset(); return;}
     if (now <= last_update_) {return;}
-    const Sample s = path_.at(now - epoch_);
+    const Sample s = SampleAt(now - epoch_);
     const auto old = actor_->WorldPose().Pos();
     Apply(s);
     // Read back the actual actor pose; missing/failed actors cannot create a
@@ -124,6 +131,7 @@ private:
   gazebo::event::ConnectionPtr update_;
   rclcpp::Publisher<social_nav_msgs::msg::Pedestrians>::SharedPtr publisher_;
   Ellipse path_{};
+  bool stationary_{false};  // Explicit positive-control mode for the LiDAR audit.
   double epoch_{0.0}, last_update_{0.0}, last_publish_{0.0}, animation_factor_{0.0};
 };
 GZ_REGISTER_MODEL_PLUGIN(ActorPlugin)
