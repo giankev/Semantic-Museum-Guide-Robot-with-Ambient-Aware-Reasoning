@@ -12,6 +12,7 @@ import time
 
 import rclpy
 from rclpy.action import ActionClient
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from rclpy.logging import LoggingSeverity
 from rclpy.parameter import Parameter
@@ -154,6 +155,16 @@ class Recorder(Node):
             self.create_subscription(NavPath, topic,
                                      self.guard(topic, lambda m, t=topic: self.on_path(t, m)),
                                      qos_profile_sensor_data)
+
+        self.spin_executor = SingleThreadedExecutor()
+        self.spin_executor.add_node(self)
+
+    def destroy_node(self):
+        executor = getattr(self, 'spin_executor', None)
+        if executor is not None:
+            executor.remove_node(self)
+            executor.shutdown()
+        return super().destroy_node()
 
     def diagnostic_error(self, name, exc):
         entry = self.diagnostics.setdefault(name, {'samples': 0, 'errors': 0})
@@ -546,11 +557,11 @@ class Recorder(Node):
         return True
 
     def step(self):
-        rclpy.spin_once(self, timeout_sec=0.05)
+        self.spin_executor.spin_once(timeout_sec=0.05)
         # Drain a bounded batch before filesystem/polling/monitor work; a lone
         # callback per iteration under-reported the independently measured 20 Hz stream.
         for _ in range(7):
-            rclpy.spin_once(self, timeout_sec=0.0)
+            self.spin_executor.spin_once(timeout_sec=0.0)
         if self.runtime_audit is not None:
             self.runtime_audit.tick()
         if self.fatal_error:

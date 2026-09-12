@@ -101,3 +101,12 @@ slowdown but no required stop; therefore its social stop/resume acceptance
 check correctly failed. Independent subscribers measured every Actor and
 aggregated /people at 20 Hz, with a maximum 0.05 s gap. Recorder batching and
 a larger bounded best-effort queue address its lower observed sample rate.
+
+Run `20260912T154908Z_actor` was cancelled at 61.27 s by the recorder's LiDAR
+freshness gate. The sensor was still publishing: the audit subscription had a
+60.696 s scan while the main subscription remained at 60.243 s. Humble's
+convenience `rclpy.spin_once(node)` adds/removes the node on each call. A persistent
+SingleThreadedExecutor now owns the recorder, with bounded callback batches and
+unchanged sensor freshness limits. A real DDS test exercises busy and later
+subscriptions and verifies persistent executor membership; all 25 recorder
+tests pass. Runtime confirmation of this scheduling correction follows.

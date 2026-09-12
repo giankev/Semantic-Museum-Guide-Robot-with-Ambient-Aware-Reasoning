@@ -97,6 +97,41 @@ class RecorderTests(unittest.TestCase):
             self.assertEqual(manifest['bt_timeout_ms'], timeout)
             self.assertEqual(len(manifest['changes']), int(timeout != 20))
 
+    def test_persistent_executor_services_both_busy_and_late_subscribers(self):
+        import threading
+        import time
+        from std_msgs.msg import UInt32
+        fixture = Node('recorder_fairness_fixture')
+        counts = [0, 0]
+        def receive(index):
+            counts[index] += 1
+        for index in range(2):
+            self.node.create_subscription(UInt32, f'/recorder_fairness/stream_{index}',
+                lambda _, i=index: receive(i), 100)
+        pubs = [fixture.create_publisher(UInt32, f'/recorder_fairness/stream_{i}', 100) for i in range(2)]
+        stop = threading.Event()
+        def publish():
+            tick = 0
+            while not stop.is_set():
+                pubs[0].publish(UInt32(data=tick))
+                if tick % 5 == 0:
+                    pubs[1].publish(UInt32(data=tick))
+                tick += 1
+                time.sleep(.002)
+        thread = threading.Thread(target=publish)
+        thread.start()
+        try:
+            deadline = time.monotonic()+2.
+            while time.monotonic() < deadline:
+                self.node.step()
+                self.assertIn(self.node, self.node.spin_executor.get_nodes())
+            self.assertGreater(counts[0], 20)
+            self.assertGreater(counts[1], 10)
+        finally:
+            stop.set()
+            thread.join()
+            fixture.destroy_node()
+
     def test_warn_numeric_and_byte_levels_with_real_humble_constant(self):
         # Reproduce int >= bytes even on generators that expose int constants.
         with patch.object(record_demo, 'Log', SimpleNamespace(WARN=b'\x1e')):
