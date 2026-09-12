@@ -110,3 +110,14 @@ SingleThreadedExecutor now owns the recorder, with bounded callback batches and
 unchanged sensor freshness limits. A real DDS test exercises busy and later
 subscriptions and verifies persistent executor membership; all 25 recorder
 tests pass. Runtime confirmation of this scheduling correction follows.
+
+Runs `20260912T155716Z_actor` and `20260912T204626Z_actor` exposed recorder
+service starvation after navigation started. The latter distinguished delayed
+GetState RPCs from a reported inactive node, but its 15 s monitoring deadline
+correctly stopped the experiment. Installed Humble executor inspection found
+that alternating spin timeouts resets the ready-callback iterator. The recorder
+now uses the same 5 ms timeout throughout each bounded eight-callback batch.
+The DDS fairness regression now exercises 20 busy subscriptions, exceeding one
+batch; all 26 recorder tests pass. Startup still requires fresh ACTIVE replies;
+an observed inactive state fails immediately and missing monitoring remains
+bounded. These negative runs are retained and do not validate the final scene.

@@ -102,20 +102,19 @@ class RecorderTests(unittest.TestCase):
         import time
         from std_msgs.msg import UInt32
         fixture = Node('recorder_fairness_fixture')
-        counts = [0, 0]
+        counts = [0] * 20
         def receive(index):
             counts[index] += 1
-        for index in range(2):
+        for index in range(len(counts)):
             self.node.create_subscription(UInt32, f'/recorder_fairness/stream_{index}',
                 lambda _, i=index: receive(i), 100)
-        pubs = [fixture.create_publisher(UInt32, f'/recorder_fairness/stream_{i}', 100) for i in range(2)]
+        pubs = [fixture.create_publisher(UInt32, f'/recorder_fairness/stream_{i}', 100) for i in range(len(counts))]
         stop = threading.Event()
         def publish():
             tick = 0
             while not stop.is_set():
-                pubs[0].publish(UInt32(data=tick))
-                if tick % 5 == 0:
-                    pubs[1].publish(UInt32(data=tick))
+                for pub in pubs:
+                    pub.publish(UInt32(data=tick))
                 tick += 1
                 time.sleep(.002)
         thread = threading.Thread(target=publish)
@@ -125,8 +124,7 @@ class RecorderTests(unittest.TestCase):
             while time.monotonic() < deadline:
                 self.node.step()
                 self.assertIn(self.node, self.node.spin_executor.get_nodes())
-            self.assertGreater(counts[0], 20)
-            self.assertGreater(counts[1], 10)
+            self.assertTrue(all(n > 10 for n in counts), counts)
         finally:
             stop.set()
             thread.join()

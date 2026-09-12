@@ -575,11 +575,11 @@ class Recorder(Node):
         return True
 
     def step(self):
-        self.spin_executor.spin_once(timeout_sec=0.05)
-        # Drain a bounded batch before filesystem/polling/monitor work; a lone
-        # callback per iteration under-reported the independently measured 20 Hz stream.
-        for _ in range(7):
-            self.spin_executor.spin_once(timeout_sec=0.0)
+        # Humble recreates its ready-callback iterator when timeout arguments
+        # change. Keep one timeout across batches so later services cannot starve
+        # behind busy subscriptions. Eight idle waits total at most 40 ms.
+        for _ in range(8):
+            self.spin_executor.spin_once(timeout_sec=0.005)
         if self.runtime_audit is not None:
             self.runtime_audit.tick()
         if self.fatal_error:
