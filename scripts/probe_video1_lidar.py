@@ -50,9 +50,9 @@ def main():
         if not response.success and not allow_missing:
             raise RuntimeError(response.status_message)
         return response
-    def sample():
+    def sample(duration=8):
         scans.clear()
-        end = time.monotonic() + 8
+        end = time.monotonic() + duration
         while time.monotonic() < end:
             rclpy.spin_once(node, timeout_sec=.05)
         if not scans or 'odom' not in state:
@@ -61,7 +61,7 @@ def main():
         if math.hypot(o.twist.twist.linear.x, o.twist.twist.linear.y) > .01 or abs(o.twist.twist.angular.z) > .02:
             raise RuntimeError('Robot is moving: run --observe-only')
         result = []
-        for scan, actor_msg, odom in scans[-20:]:
+        for scan, actor_msg, odom in scans:
             sector = [v for i, v in enumerate(scan.ranges)
                       if abs(scan.angle_min + i*scan.angle_increment) < .15 and math.isfinite(v)]
             item = dict(stamp=scan.header.stamp.sec + scan.header.stamp.nanosec*1e-9,
@@ -75,6 +75,24 @@ def main():
                 item['actor'] = dict(x=actor.pose.x, y=actor.pose.y,
                     vx=actor.velocity.x, vy=actor.velocity.y,
                     stamp=actor_msg.header.stamp.sec + actor_msg.header.stamp.nanosec*1e-9)
+                if odom is not None:
+                    robot = odom.pose.pose
+                    q = robot.orientation
+                    heading = math.atan2(2*(q.w*q.z+q.x*q.y), 1-2*(q.y*q.y+q.z*q.z))
+                    # Audited base_laser_link translation: (0.202, 0, 0.195).
+                    laser_x = robot.position.x + .202*math.cos(heading)
+                    laser_y = robot.position.y + .202*math.sin(heading)
+                    dx, dy = actor.pose.x-laser_x, actor.pose.y-laser_y
+                    distance = math.hypot(dx, dy)
+                    angle = math.atan2(math.sin(math.atan2(dy, dx)-heading),
+                                       math.cos(math.atan2(dy, dx)-heading))
+                    indices = [i for i in range(len(scan.ranges)) if abs(
+                        scan.angle_min+i*scan.angle_increment-angle) <= math.atan2(.35, distance)]
+                    ranges = [scan.ranges[i] for i in indices if math.isfinite(scan.ranges[i])]
+                    item['actor_sector'] = dict(distance=distance, angle=angle, beam_indices=indices,
+                        min_range=min(ranges) if ranges else None,
+                        near_actor_returns=sum(abs(v-distance) < .5 for v in ranges))
+            item['ranges'] = [v if math.isfinite(v) else None for v in scan.ranges]
             result.append(item)
         last_scan = scans[-1][0]
         result[-1]['ranges'] = [v if math.isfinite(v) else None for v in last_scan.ranges]
@@ -151,7 +169,9 @@ def main():
                     if time.monotonic() >= deadline:
                         raise RuntimeError('Native Actor factory did not create the Actor')
                     rclpy.spin_once(node, timeout_sec=.1)
-                report[phase] = sample()
+                # At low RTF eight wall seconds only covers a small arc. Keep
+                # full beam arrays and measured poses through multiple crossings.
+                report[phase] = sample(60 if phase == 'moving_actor' else 8)
                 request = GetEntityState.Request()
                 request.name, request.reference_frame = spawned_name, 'world'
                 response = call(entity, request)

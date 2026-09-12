@@ -115,6 +115,34 @@ defects are not claimed to have caused the historical PathDist/GoalDist errors.
 
 ## Running the diagnostic capture
 
+### Controlled Actor / LiDAR result
+
+`actor_lidar_fresh_plugin.json` completed with the freshly loaded plugin and
+no control errors. TIAGo stayed stationary. The known box changed the front
+return from 6.67 m to 1.57–1.60 m and populated the local obstacle layer.
+After deleting the box, a frozen Actor at (2.000, -0.001) was observed for
+6.41 simulation seconds, then a walking Actor crossed the front beams for
+51.77 simulation seconds (more than four complete circular laps).
+
+Across 64 frozen and 516 moving scan samples, **zero** returns were within
+0.5 m of the Actor's expected range. Moving range was 1.10–2.50 m and bearing
+covered -0.400 to +0.400 rad. Matched-beam changes against the no-Actor median
+were 0.0069 m median / 0.0492 m maximum, consistent with the configured scan
+noise rather than a human-sized foreground return. Full scans are retained.
+
+The frozen Actor's vicinity contained two lethal cells, but they were the
+*same two box cells already present after box deletion*, persisting even
+after both Actors were removed. Attributing those cells to the Actor would
+be false. This is a ray-clearing gap in the stationary synthetic deletion
+control, not evidence of Actor obstacle marking.
+
+Conclusion for this exact walk.dae/plugin/GPU-LiDAR configuration: the Actor
+produces no detectable returns in the robot's 0.195 m laser plane.
+Social avoidance comes from /people and ProxemicForce, while LiDAR remains
+enabled for the museum geometry. This does not generalize to ordinary human
+models, other Actor assets, or other sensor heights. Positive laser/costmap
+association is consequently an observation, not an Actor acceptance gate.
+
 GUI run `20260911T171333Z_actor` recovered finite scans with software rendering
 only on gzserver, but reproduced ComputePathToPose / FollowPath acknowledgement
 timeouts and controller aborts. The first timeout sequence occurred with zero
