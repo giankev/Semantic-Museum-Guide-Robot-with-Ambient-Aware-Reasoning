@@ -15,7 +15,7 @@ from rosgraph_msgs.msg import Clock
 from social_nav_msgs.msg import Pedestrians
 
 
-def probe(mode, timeout):
+def probe(mode, timeout, actor_count=1):
     evidence = {'status': 'FAIL', 'pid': os.getpid(),
                 'domain': os.environ.get('ROS_DOMAIN_ID', '0'),
                 'participant_created': False, 'clock_advancing': False,
@@ -39,7 +39,7 @@ def probe(mode, timeout):
                 and msg.info.resolution > 0 and len(msg.data) == msg.info.width*msg.info.height)
         def people(msg):
             identifiers = [p.identifier for p in msg.pedestrians]
-            evidence['people_received'] = (identifiers == ['walker_1'] if mode == 'actor'
+            evidence['people_received'] = (identifiers == [f'walker_{i}' for i in range(1, actor_count+1)] if mode == 'actor'
                                            else len(identifiers) == 10)
         node.create_subscription(Clock, '/clock', clock, qos_profile_sensor_data)
         node.create_subscription(OccupancyGrid, '/map', map_received,
@@ -77,10 +77,11 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--mode', choices=('actor', 'static', 'baseline'), default='actor')
     parser.add_argument('--timeout', type=float, default=20.0)
+    parser.add_argument('--actor-count', type=int, choices=range(1,9), default=1)
     args = parser.parse_args()
     if not 0 < args.timeout <= 60:
         parser.error('--timeout must be in (0, 60] wall seconds')
-    evidence = probe(args.mode, args.timeout)
+    evidence = probe(args.mode, args.timeout, args.actor_count)
     Path(args.output).write_text(json.dumps(evidence, indent=2)+'\n')
     print(json.dumps(evidence), flush=True)
     return 0 if evidence['status'] == 'PASS' else 1

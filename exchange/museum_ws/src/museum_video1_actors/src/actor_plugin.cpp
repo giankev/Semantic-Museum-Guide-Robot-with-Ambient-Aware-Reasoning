@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <stdexcept>
+#include <regex>
 #include <gazebo/common/common.hh>
 #include <gazebo/common/Mesh.hh>
 #include <gazebo/common/Skeleton.hh>
@@ -15,15 +16,15 @@
 namespace museum_video1_actors
 {
 // A MODEL plugin attached only to an <actor>. Never moves a robot model.
-// One actor is deliberately the only supported stage until runtime acceptance.
+// Each plugin controls only its named Actor; the bridge combines physics-stamped samples.
 class ActorPlugin : public gazebo::ModelPlugin
 {
 public:
   void Load(gazebo::physics::ModelPtr model, sdf::ElementPtr sdf) override
   {
     actor_ = boost::dynamic_pointer_cast<gazebo::physics::Actor>(model);
-    if (!actor_ || actor_->GetName() != "video1_walker_1") {
-      gzerr << "Video 1 plugin requires the allowlisted actor video1_walker_1\n";
+    if (!actor_ || !std::regex_match(actor_->GetName(), std::regex("video1_walker_[1-8]"))) {
+      gzerr << "Video 1 plugin requires an allowlisted video1_walker_1..8 Actor\n";
       return;
     }
     try {
@@ -50,7 +51,7 @@ public:
       animation_factor_ = duration / stride;
       node_ = gazebo_ros::Node::Get(sdf);
       publisher_ = node_->create_publisher<social_nav_msgs::msg::Pedestrians>(
-        "/museum/video1/actor_states", rclcpp::QoS(10));
+        "/museum/video1/actor_samples", rclcpp::QoS(10));
       Reset();
       update_ = gazebo::event::Events::ConnectWorldUpdateBegin(
         std::bind(&ActorPlugin::OnUpdate, this, std::placeholders::_1));
@@ -114,7 +115,7 @@ private:
     output.header.stamp.nanosec = info.simTime.nsec;
     output.header.frame_id = "world";
     social_nav_msgs::msg::Pedestrian person;
-    person.identifier = "walker_1";
+    person.identifier = actor_->GetName().substr(7);
     person.pose.x = actual.X();
     person.pose.y = actual.Y();
     person.pose.theta = s.yaw;

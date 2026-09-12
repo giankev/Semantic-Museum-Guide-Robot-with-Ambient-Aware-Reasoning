@@ -11,7 +11,7 @@ WALK_SHA256 = '49af0df3a319d1cb8ca2cebf02dbd00f625e5d5bec820bc5e109925b18b65c6e'
 REMOVED = {'visitor_marker', 'guide_marker', 'staff_marker'}
 
 
-def prepare(source, output, mode, config, walk_asset=None):
+def prepare(source, output, mode, config, walk_asset=None, actor_count=1):
     source, output = Path(source).resolve(), Path(output).resolve()
     if source == output:
         raise ValueError('Refusing to overwrite the accepted world')
@@ -33,37 +33,42 @@ def prepare(source, output, mode, config, walk_asset=None):
     camera.find('pose').text = '0 8 32 0 1.50 1.57079632679'
     asset_hash = None
     if mode == 'actor':
-        if config['name'] != 'video1_walker_1' or config['identifier'] != 'walker_1':
-            raise ValueError('Only the single-actor POC is supported before runtime validation')
+        configs = config.get('actors', [config])[:actor_count]
+        if not 1 <= actor_count <= 8 or len(configs) != actor_count:
+            raise ValueError('Actor configuration must contain the requested 1..8 Actors')
+        for i, item in enumerate(configs, 1):
+            if item['name'] != f'video1_walker_{i}' or item['identifier'] != f'walker_{i}':
+                raise ValueError('Actor names and identifiers must be unique and sequential')
         walk_asset = Path(walk_asset).resolve()
         asset_hash = hashlib.sha256(walk_asset.read_bytes()).hexdigest()
         if asset_hash != WALK_SHA256:
             raise ValueError(f'Unverified walk.dae asset: {asset_hash}; see docs/video1_animated_demo.md')
-        a = config['phase']
-        x = config['cx'] + config['rx'] * math.cos(a)
-        y = config['cy'] + config['ry'] * math.sin(a)
-        heading = math.atan2(config['ry'] * config['omega'] * math.cos(a),
-                             -config['rx'] * config['omega'] * math.sin(a))
-        actor = ET.SubElement(world, 'actor', name=config['name'])
-        ET.SubElement(actor, 'pose').text = f'{x} {y} 1.2138 1.57079632679 0 {heading + math.pi/2}'
-        skin = ET.SubElement(actor, 'skin')
-        ET.SubElement(skin, 'filename').text = str(walk_asset)
-        ET.SubElement(skin, 'scale').text = '1.0'
-        animation = ET.SubElement(actor, 'animation', name='walking')
-        ET.SubElement(animation, 'filename').text = str(walk_asset)
-        ET.SubElement(animation, 'scale').text = '1.0'
-        ET.SubElement(animation, 'interpolate_x').text = 'true'
-        plugin = ET.SubElement(actor, 'plugin', name='video1_actor', filename='libvideo1_actor.so')
-        for key in ('cx', 'cy', 'rx', 'ry', 'omega', 'phase'):
-            if not math.isfinite(config[key]):
-                raise ValueError('Nonfinite trajectory')
-            ET.SubElement(plugin, key).text = str(config[key])
+        for config in configs:
+            a = config['phase']
+            x = config['cx'] + config['rx'] * math.cos(a)
+            y = config['cy'] + config['ry'] * math.sin(a)
+            heading = math.atan2(config['ry'] * config['omega'] * math.cos(a),
+                                 -config['rx'] * config['omega'] * math.sin(a))
+            actor = ET.SubElement(world, 'actor', name=config['name'])
+            ET.SubElement(actor, 'pose').text = f'{x} {y} 1.2138 1.57079632679 0 {heading + math.pi/2}'
+            skin = ET.SubElement(actor, 'skin')
+            ET.SubElement(skin, 'filename').text = str(walk_asset)
+            ET.SubElement(skin, 'scale').text = '1.0'
+            animation = ET.SubElement(actor, 'animation', name='walking')
+            ET.SubElement(animation, 'filename').text = str(walk_asset)
+            ET.SubElement(animation, 'scale').text = '1.0'
+            ET.SubElement(animation, 'interpolate_x').text = 'true'
+            plugin = ET.SubElement(actor, 'plugin', name=config['name']+'_controller', filename='libvideo1_actor.so')
+            for key in ('cx', 'cy', 'rx', 'ry', 'omega', 'phase'):
+                if not math.isfinite(config[key]):
+                    raise ValueError('Nonfinite trajectory')
+                ET.SubElement(plugin, key).text = str(config[key])
     output.parent.mkdir(parents=True, exist_ok=True)
     tree.write(output, encoding='utf-8', xml_declaration=True)
-    return {'mode': mode, 'actor_count': int(mode == 'actor'),
+    return {'mode': mode, 'actor_count': actor_count if mode == 'actor' else 0,
             'source_world_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
             'generated_world_sha256': hashlib.sha256(output.read_bytes()).hexdigest(),
-            'walk_sha256': asset_hash, 'trajectory': config if mode == 'actor' else None,
+            'walk_sha256': asset_hash, 'trajectory': configs if mode == 'actor' else None,
             'runtime_validation': 'NOT_RUN', 'visual_walking': 'NOT_VERIFIED'}
 
 
@@ -74,6 +79,7 @@ def main():
     parser.add_argument('--config', required=True)
     parser.add_argument('--mode', choices=('baseline', 'static', 'actor'), default='actor')
     parser.add_argument('--walk-asset')
+    parser.add_argument('--actor-count', type=int, default=1)
     args = parser.parse_args()
     if args.mode == 'actor' and not args.walk_asset:
         assets = sorted(Path('/usr/share').glob('gazebo-11*/media/models/walk.dae'))
@@ -81,7 +87,7 @@ def main():
             parser.error('Gazebo 11 walk.dae is missing INSIDE Docker; see the asset instructions')
         args.walk_asset = str(assets[0])
     manifest = prepare(args.source, args.output, args.mode,
-                       json.loads(Path(args.config).read_text()), args.walk_asset)
+                       json.loads(Path(args.config).read_text()), args.walk_asset, args.actor_count)
     Path(args.output).with_suffix('.manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
     print(json.dumps(manifest, indent=2))
 

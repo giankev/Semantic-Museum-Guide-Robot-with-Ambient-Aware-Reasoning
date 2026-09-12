@@ -9,6 +9,12 @@ OBSERVE=()
 AUDIT=()
 GOAL_TIME=60
 BT_TIMEOUT_MS=200
+ACTOR_COUNT="${VIDEO1_ACTOR_COUNT:-1}"
+SOCIAL_YIELD="${VIDEO1_SOCIAL_YIELD:-false}"
+[[ "${ACTOR_COUNT}" =~ ^[1-8]$ ]] || { echo 'Actor count must be 1..8' >&2; exit 2; }
+[[ "${SOCIAL_YIELD}" == true || "${SOCIAL_YIELD}" == false ]] || exit 2
+ACTOR_CONFIG=one_actor.json
+((ACTOR_COUNT > 1)) && ACTOR_CONFIG=eight_actors.json
 SERVER_RENDERER="${VIDEO1_SERVER_RENDERER:-auto}"
 [[ "${SERVER_RENDERER}" == auto || "${SERVER_RENDERER}" == software ]] || {
   echo 'VIDEO1_SERVER_RENDERER must be auto or software' >&2; exit 2;
@@ -147,7 +153,7 @@ docker inspect -f 'GPU={{json .HostConfig.DeviceRequests}} Devices={{json .HostC
 git -C "${REPO_ROOT}" rev-parse HEAD >"${RUN_DIR}/git_head.txt"
 git -C "${REPO_ROOT}" status --porcelain >"${RUN_DIR}/git_status.txt"
 
-docker exec "${CONTAINER}" bash -c "${SETUP} && python3 /root/exchange/scripts/prepare_video1_animated_world.py --source /root/exchange/exchange/museum_ws/src/museum_assistant/worlds/supplied_museum/museum_nav.world --output ${REMOTE_RUN}/museum.world --config ${PACKAGE}/config/one_actor.json --mode ${MODE}" \
+docker exec "${CONTAINER}" bash -c "${SETUP} && python3 /root/exchange/scripts/prepare_video1_animated_world.py --source /root/exchange/exchange/museum_ws/src/museum_assistant/worlds/supplied_museum/museum_nav.world --output ${REMOTE_RUN}/museum.world --config ${PACKAGE}/config/${ACTOR_CONFIG} --actor-count ${ACTOR_COUNT} --mode ${MODE}" \
   >"${RUN_DIR}/preparation.log" 2>&1
 docker exec "${CONTAINER}" python3 -c 'import hashlib,json,pathlib,sys,yaml
 source=pathlib.Path(sys.argv[1]); output=pathlib.Path(sys.argv[2])
@@ -192,7 +198,7 @@ for program in ("gzclient", "gzserver"):
 
 # Keep the source world, laser, map, all critic values and the static launcher intact.
 # Gazebo reads its camera from the disposable world; no mouse/insert-model commands.
-LAUNCH="${SETUP} && export PATH=\"${REMOTE_RUN}/bin:\${PATH}\" && export GAZEBO_PLUGIN_PATH=\"\$(ros2 pkg prefix museum_video1_actors)/lib:\${GAZEBO_PLUGIN_PATH:-}\" && exec ros2 launch museum_video1_actors video1.launch.py world_file:=${REMOTE_RUN}/museum.world mode:=${MODE} gzclient:=${GUI} rviz_config:=${REMOTE_RUN}/video1.rviz static_script:=/root/exchange/scripts/demo_static_people.py params_file:=${REMOTE_RUN}/nav2.yaml"
+LAUNCH="${SETUP} && export PATH=\"${REMOTE_RUN}/bin:\${PATH}\" && export GAZEBO_PLUGIN_PATH=\"\$(ros2 pkg prefix museum_video1_actors)/lib:\${GAZEBO_PLUGIN_PATH:-}\" && exec ros2 launch museum_video1_actors video1.launch.py world_file:=${REMOTE_RUN}/museum.world mode:=${MODE} gzclient:=${GUI} rviz_config:=${REMOTE_RUN}/video1.rviz static_script:=/root/exchange/scripts/demo_static_people.py params_file:=${REMOTE_RUN}/nav2.yaml actor_count:=${ACTOR_COUNT} social_yield:=${SOCIAL_YIELD}"
 docker exec -d "${CONTAINER}" bash -c "${LAUNCH} >${REMOTE_RUN}/runtime.log 2>&1"
 RUNTIME_STARTED=1
 docker exec -d "${CONTAINER}" bash -c "${BUILD_SETUP} && timeout 1800 gz stats -p >${REMOTE_RUN}/gazebo_stats.csv 2>&1"
@@ -208,8 +214,10 @@ TTY=()
 [[ -t 0 && -t 1 ]] && TTY=(-t)
 printf -v OBSERVE_ARG '%s' "${OBSERVE[*]}"
 printf -v AUDIT_ARG '%s' "${AUDIT[*]}"
+YIELD_ARG=
+[[ "${SOCIAL_YIELD}" == true ]] && YIELD_ARG=--social-yield
 RECORDER_STATUS=0
-docker exec -i "${TTY[@]}" "${CONTAINER}" bash -c "${SETUP} && exec ros2 run museum_video1_actors record_demo.py --output ${REMOTE_RUN} --mode ${MODE} --goal-time ${GOAL_TIME} ${OBSERVE_ARG} ${AUDIT_ARG} --ros-args -p use_sim_time:=true" || RECORDER_STATUS=$?
+docker exec -i "${TTY[@]}" "${CONTAINER}" bash -c "${SETUP} && exec ros2 run museum_video1_actors record_demo.py --output ${REMOTE_RUN} --mode ${MODE} --actor-count ${ACTOR_COUNT} ${YIELD_ARG} --goal-time ${GOAL_TIME} ${OBSERVE_ARG} ${AUDIT_ARG} --ros-args -p use_sim_time:=true" || RECORDER_STATUS=$?
 echo "Run finished. Gazebo/RViz remain open. Evidence: ${RUN_DIR}/summary.json"
 echo 'This result does not promote the POC to an accepted final crowd demo.'
 echo 'Stop: ./scripts/stop_video1_animated_demo.sh'

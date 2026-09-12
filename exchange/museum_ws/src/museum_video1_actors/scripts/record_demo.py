@@ -26,6 +26,7 @@ from nav_msgs.msg import OccupancyGrid, Odometry, Path as NavPath
 from rcl_interfaces.msg import Log
 from rcl_interfaces.srv import GetParameters
 from sensor_msgs.msg import LaserScan
+from std_msgs.msg import String
 from social_nav_msgs.msg import Pedestrians
 from tf2_ros import Buffer, TransformListener, TransformException
 import yaml
@@ -50,6 +51,12 @@ class Recorder(Node):
         if not self.get_parameter('use_sim_time').value:
             raise RuntimeError('Recorder requires use_sim_time:=true')
         self.args = args
+        self.actor_count = getattr(args, 'actor_count', 1)
+        self.actor_ids = {f'walker_{i}' for i in range(1, self.actor_count+1)}
+        self.yield_enabled = getattr(args, 'social_yield', False)
+        self.yield_status = None
+        self.yield_samples = []
+        self.actor_pose_samples = defaultdict(list)
         self.out = Path(args.output)
         self.out.mkdir(parents=True, exist_ok=True)
         self.events = (self.out / 'observations.jsonl').open('w', buffering=1)
@@ -121,6 +128,9 @@ class Recorder(Node):
         self.last_poll = 0.0
         self.last_render = 0.0
         self.runtime_audit = RuntimeAudit(self, self.out) if getattr(args, 'runtime_audit', False) else None
+        if self.yield_enabled:
+            self.create_subscription(String, '/museum/social_yield/status',
+                self.guard('social_yield', self.on_yield, True), QoSProfile(depth=20))
         # Best-effort readers match both reliable and sensor-data publishers.
         # Critical streams still have explicit freshness/readiness gates.
         for kind, topic, callback, critical in (
@@ -135,7 +145,7 @@ class Recorder(Node):
         ):
             self.diagnostics[topic] = {'status': 'WAITING_FOR_MESSAGE', 'samples': 0, 'errors': 0}
             self.create_subscription(kind, topic, self.guard(topic, callback, critical),
-                                     qos_profile_sensor_data)
+                QoSProfile(depth=20, reliability=qos_profile_sensor_data.reliability) if topic in ('/people', '/museum/video1/actor_states') else qos_profile_sensor_data)
         self.create_subscription(GoalStatusArray, '/navigate_to_pose/_action/status',
                                  self.guard('action_status', self.on_status, True),
                                  QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
@@ -177,6 +187,14 @@ class Recorder(Node):
             if not all(math.isfinite(v) for v in
                        (p.pose.x, p.pose.y, p.pose.theta, p.velocity.x, p.velocity.y)):
                 raise ValueError('Nonfinite people sample')
+
+    def on_yield(self, msg):
+        sample = json.loads(msg.data)
+        if sample['state'] in ('INVALID_INPUT', 'STALE_INPUT') and self.goal_count:
+            raise RuntimeError('Social-yield input lost: '+str(sample))
+        self.yield_status = sample
+        self.yield_samples.append(sample)
+        self.event('social_yield', **sample)
 
     def on_feedback(self, msg):
         self.recoveries = max(self.recoveries, int(msg.feedback.number_of_recoveries))
@@ -229,6 +247,9 @@ class Recorder(Node):
 
     def on_people(self, msg):
         self.validate_people(msg)
+        if self.args.mode == 'actor' and (len(msg.pedestrians) != self.actor_count or
+                {p.identifier for p in msg.pedestrians} != self.actor_ids):
+            raise RuntimeError('Actor identifiers/count do not match the configured scene')
         if self.now() <= 0:
             return
         t = stamp_seconds(msg.header.stamp)
@@ -408,6 +429,8 @@ class Recorder(Node):
             except OSError as exc:
                 self.diagnostic_error('runtime_log', exc)
             else:
+                if '[ERROR] [launch]: Caught exception' in recent:
+                    raise RuntimeError('Required launch failed; see runtime.log; no valid experiment')
                 if 'Failed to find a free participant index' in recent:
                     self.dds_probe = {'status': 'FAIL', 'error': 'DDS participant exhaustion in runtime.log'}
                     raise RuntimeError('DDS participant exhaustion during startup; see runtime.log; experiment invalid')
@@ -440,28 +463,33 @@ class Recorder(Node):
             self.request('params', self.param_client,
                          GetParameters.Request(names=list(self.expected)), params_done)
         if self.args.mode == 'actor' and self.now() > 0 and self.raw:
-            self.request('actor', self.actor_client,
-                         GetEntityState.Request(name='video1_walker_1', reference_frame='world'),
-                         self.actor_observation)
+            for name in sorted(self.actor_ids):
+                self.request('actor/'+name, self.actor_client,
+                    GetEntityState.Request(name='video1_'+name, reference_frame='world'),
+                    lambda response, identifier=name: self.actor_observation(response, identifier))
 
-    def actor_observation(self, response):
+    def actor_observation(self, response, identifier="walker_1"):
         if not response.success:
-            raise ValueError('Gazebo GetEntityState did not find video1_walker_1')
+            raise ValueError('Gazebo GetEntityState did not find '+identifier)
         if not self.raw:
             return
         t = stamp_seconds(response.header.stamp)
         raw = min(self.raw, key=lambda m: abs(stamp_seconds(m.header.stamp)-t))
         dt = t-stamp_seconds(raw.header.stamp)
-        if abs(dt) > 0.15 or len(raw.pedestrians) != 1:
+        if abs(dt) > 0.15:
             return
-        p = raw.pedestrians[0]
+        p = next((p for p in raw.pedestrians if p.identifier == identifier), None)
+        if p is None:
+            return
         actual = response.state.pose.position
         error = math.hypot(actual.x-p.pose.x-p.velocity.x*dt, actual.y-p.pose.y-p.velocity.y*dt)
         if not all(math.isfinite(v) for v in (t, actual.x, actual.y, error)):
             raise ValueError('Nonfinite Gazebo actor observation')
         self.pose_errors.append(error)
-        self.observed_actor.append((t, actual.x, actual.y))
-        self.event('actor_observation', t=t, world_x=actual.x, world_y=actual.y, extrapolated_pose_error=error)
+        self.actor_pose_samples[identifier].append((t, error))
+        if identifier == 'walker_1':
+            self.observed_actor.append((t, actual.x, actual.y))
+        self.event('actor_observation', identifier=identifier, t=t, world_x=actual.x, world_y=actual.y, extrapolated_pose_error=error)
 
     def nav_active(self):
         return all(self.states.get(n) == 3 and
@@ -490,31 +518,47 @@ class Recorder(Node):
             return False
         if self.args.mode == 'baseline':
             return not self.people or not self.people[-1].pedestrians
-        expected = 10 if self.args.mode == 'static' else 1
+        expected = 10 if self.args.mode == 'static' else self.actor_count
         if not self.people or len(self.people[-1].pedestrians) != expected or self.count_publishers('/people') != 1:
             return False
         age = self.now()-stamp_seconds(self.people[-1].header.stamp)
         if not -0.1 <= age < (1.1 if self.args.mode == 'static' else 0.3):
             return False
         if self.args.mode == 'actor':
-            samples = self.speeds.get('walker_1', [])
-            recent = [s for s in samples if s[0] >= self.now()-3.0]
-            if len(recent) < 30 or recent[-1][0]-recent[0][0] < 2.0:
+            for identifier in self.actor_ids:
+                recent = [s for s in self.speeds.get(identifier, []) if s[0] >= self.now()-3.0]
+                if len(recent) < 30 or recent[-1][0]-recent[0][0] < 2.0:
+                    return False
+                if any(math.hypot(vx, vy) <= .10 for _, vx, vy in recent):
+                    raise RuntimeError(identifier+' does not sustain the anisotropy threshold')
+                observations = self.actor_pose_samples[identifier]
+                if not observations or max(e for _, e in observations) > .05 or not 0 <= self.now()-observations[-1][0] < 3.:
+                    return False
+        if self.yield_enabled:
+            if not self.yield_status or not 0 <= self.now()-self.yield_status['t'] <= .4:
                 return False
-            if any(math.hypot(vx, vy) <= 0.10 for _, vx, vy in recent):
-                raise RuntimeError('Moving actor does not sustain the anisotropy threshold')
-            if (not self.pose_errors or max(self.pose_errors) > 0.05
-                    or not 0 <= self.now()-self.observed_actor[-1][0] < 3.0):
+            if self.yield_status['state'] not in ('CLEAR', 'SLOW', 'YIELDING'):
                 return False
+            outputs = self.get_publishers_info_by_topic('/cmd_vel')
+            sources = self.get_publishers_info_by_topic('/museum/nav_cmd_vel')
+            if len(outputs) != 1 or outputs[0].node_name != 'social_yield' or len(sources) != 1 or sources[0].node_name != 'velocity_smoother':
+                raise RuntimeError('Social-yield velocity wiring is not exclusive; no goal sent')
         return True
 
     def step(self):
         rclpy.spin_once(self, timeout_sec=0.05)
+        # Drain a bounded batch before filesystem/polling/monitor work; a lone
+        # callback per iteration under-reported the independently measured 20 Hz stream.
+        for _ in range(7):
+            rclpy.spin_once(self, timeout_sec=0.0)
         if self.runtime_audit is not None:
             self.runtime_audit.tick()
         if self.fatal_error:
             raise RuntimeError(self.fatal_error)
         sim = self.now()
+        if self.goal_count and self.yield_enabled and (self.yield_status is None or
+                sim-self.yield_status['t'] > .5):
+            raise RuntimeError('Social-yield status lost during navigation')
         if sim < self.last_sim:
             raise RuntimeError('Simulation clock reset; restart this experiment')
         if sim > self.last_sim:
@@ -544,17 +588,36 @@ class Recorder(Node):
                        if p.identifier != 'visitor_1' and math.hypot(p.velocity.x, p.velocity.y) > 0.10]
             speed = max((math.hypot(p.velocity.x, p.velocity.y) for p in moving), default=0.0)
             nav = 'ACTIVE' if self.nav_active() else 'WAITING'
-            print(f'Nav2: {nav} | Animated people: {int(self.args.mode == "actor")} '
-                  f'| Moving people: {len(moving)} | moving speed: {speed:.3f} m/s '
-                  f'| sim: {self.now():.1f}s | goal count: {self.goal_count} '
-                  f'| actor pose samples: {len(self.pose_errors)} | diagnostics: '
-                  f'{sum(d["errors"] for d in self.diagnostics.values())}', flush=True)
-            if not self.goal_count:
-                waiting = [n for n in LIFECYCLES if self.states.get(n) != 3
-                           or time.monotonic()-self.state_times.get(n, 0) >= 5.0]
-                print(f'Readiness: lifecycle waiting={waiting}; parameters={self.actual is not None}; '
-                      f'odom={self.robot_time}; people messages={len(self.people_stamps)}; '
-                      f'action server={self.action.server_is_ready()}', flush=True)
+            if self.yield_enabled:
+                social = self.yield_status or {}
+                stamps = self.people_stamps[-61:]
+                hz = (len(stamps)-1)/(stamps[-1]-stamps[0]) if len(stamps)>1 and stamps[-1]>stamps[0] else 0.
+                distance = social.get('distance')
+                distance_text = f'{distance:.2f} m' if distance is not None else '--'
+                observed = len(self.people[-1].pedestrians) if self.people else 0
+                if sys.stdout.isatty():
+                    print('\033[2J\033[H', end='')
+                print('VIDEO 1 - ANIMATED SOCIAL NAVIGATION\n'
+                      f'Nav2:          {nav}\nActors:        {observed} / {self.actor_count}\n'
+                      f'Moving actors: {len(moving)}\nPeople stream: {hz:.1f} Hz\n'
+                      f'ProxemicForce: {"ACTIVE" if self.critic_samples else "READY" if self.actual else "WAITING"}\n'
+                      f'Social state:  {social.get("state", "WAITING")}\n'
+                      f'Nearest person:{social.get("nearest_person") or "--"}\nDistance:      {distance_text}\n'
+                      f'Goal:          north_gallery (0,16,1.5708)\nGoal count:    {self.goal_count}\n'
+                      f'Navigation:    {"RUNNING" if self.goal_count else "WAITING"}\n'
+                      f'Sim time:      {self.now():.1f} s', flush=True)
+            else:
+                print(f'Nav2: {nav} | Animated people: {(self.actor_count if self.args.mode == "actor" else 0)} '
+                      f'| Moving people: {len(moving)} | moving speed: {speed:.3f} m/s '
+                      f'| sim: {self.now():.1f}s | goal count: {self.goal_count} '
+                      f'| actor pose samples: {len(self.pose_errors)} | diagnostics: '
+                      f'{sum(d["errors"] for d in self.diagnostics.values())}', flush=True)
+                if not self.goal_count:
+                    waiting = [n for n in LIFECYCLES if self.states.get(n) != 3
+                               or time.monotonic()-self.state_times.get(n, 0) >= 5.0]
+                    print(f'Readiness: lifecycle waiting={waiting}; parameters={self.actual is not None}; '
+                          f'odom={self.robot_time}; people messages={len(self.people_stamps)}; '
+                          f'action server={self.action.server_is_ready()}', flush=True)
 
     def wait_future(self, future, wall_timeout=20.0):
         deadline = time.monotonic()+wall_timeout
@@ -573,7 +636,7 @@ class Recorder(Node):
     def check_dds_admission(self):
         output = self.out/'dds_probe.json'
         command = [sys.executable, str(Path(__file__).with_name('probe_dds.py')),
-                   '--mode', self.args.mode, '--output', str(output), '--timeout', '20']
+                   '--mode', self.args.mode, '--actor-count', str(self.actor_count), '--output', str(output), '--timeout', '20']
         self.dds_probe = {'status': 'RUNNING'}
         print('Stack ready: testing a NEW DDS participant and /clock, /map, /people, controller_manager...', flush=True)
         with (self.out/'dds_probe.log').open('w') as log:
@@ -602,7 +665,7 @@ class Recorder(Node):
         self.event('dds_admission', **self.dds_probe)
 
     def run(self):
-        print('ONE-ACTOR PROOF OF CONCEPT — visual walking and final crowd are NOT yet accepted.', flush=True)
+        print('VIDEO 1 - ANIMATED SOCIAL NAVIGATION' if self.yield_enabled else 'ONE-ACTOR PROOF OF CONCEPT', flush=True)
         print('ProxemicForce: scale=32.0 comfort_distance=1.0 sigma=0.4 anisotropic_enabled=true (runtime checked)', flush=True)
         print('Goal: north_gallery (0,16,1.5708), exactly once after readiness. No robot waypoints.', flush=True)
         deadline = time.monotonic()+600.0
@@ -690,15 +753,28 @@ class Recorder(Node):
             checks['human_disc_separation'] = self.min_distance is not None and self.min_distance > 0.63
             checks['critic_observed_scoring'] = self.critic_nonzero > 0 and self.critic_varied > 0
         if self.args.mode == 'actor':
+            all_speeds = [speeds.get(name) or {} for name in self.actor_ids]
             s = speeds.get('walker_1') or {}
             checks.update({
-                'actor_pose_observed': len(self.pose_errors) >= 10 and max(self.pose_errors) <= 0.05,
-                'heading_speed_sustained': s.get('above_0_10_percent', 0) >= 95 and s.get('zero_samples', 1) == 0,
-                'no_velocity_spikes': (s.get('max_mps') or 999) < 0.5 and s.get('max_acceleration_mps2') is not None and s['max_acceleration_mps2'] < 0.5,
-                'people_fresh_and_frequent': (s.get('sim_hz') or 0) >= 10 and (s.get('max_gap_sim_s') or 999) < 0.3,
+                'actor_pose_observed': all(len(self.actor_pose_samples[n]) >= 10 and max(e for _, e in self.actor_pose_samples[n]) <= .05 for n in self.actor_ids),
+                'heading_speed_sustained': all(a.get('above_0_10_percent', 0) >= 95 and a.get('zero_samples', 1) == 0 for a in all_speeds),
+                'no_velocity_spikes': all((a.get('max_mps') or 999) < .5 and a.get('max_acceleration_mps2') is not None and a['max_acceleration_mps2'] < .5 for a in all_speeds),
+                'people_fresh_and_frequent': all((a.get('sim_hz') or 0) >= 10 and (a.get('max_gap_sim_s') or 999) < .3 for a in all_speeds),
                 'laser_association_observed': self.laser_associations > 0,
                 'costmap_association_observed': self.costmap_associations > 0,
             })
+        yield_proof = dict(moving_before=False, slowed=False, stopped=False, resumed=False)
+        for sample in self.yield_samples:
+            if (sample.get('robot_vx') or 0) > .05:
+                if yield_proof['stopped'] and sample['state'] in ('CLEAR', 'SLOW'):
+                    yield_proof['resumed'] = True
+                elif not yield_proof['stopped']:
+                    yield_proof['moving_before'] = True
+            if yield_proof['moving_before'] and (sample.get('input_vx') or 0) > .05:
+                yield_proof['slowed'] |= sample['output_vx'] < .8*sample['input_vx']
+                yield_proof['stopped'] |= sample['state'] == 'YIELDING' and abs(sample.get('robot_vx') or 0) < .02
+        if self.yield_enabled and self.actor_count >= 3:
+            checks['social_slow_stop_resume'] = all(yield_proof.values())
         # Missing optional evidence is inconclusive, never a measured failure.
         if not self.goal_count:
             checks = {name: None for name in checks}
@@ -731,6 +807,8 @@ class Recorder(Node):
             self.diagnostic_error('topic_inventory', exc)
         runtime_pass = runtime_pass and not self.fatal_error
         summary = {'navigation': status, 'error': error,
+                   'actor_count': self.actor_count, 'social_yield_evidence': yield_proof,
+                   'actor_pose_samples_by_id': {k: len(v) for k,v in self.actor_pose_samples.items()},
                    'nav2_configuration': self.nav2_manifest,
                    'bt_timeout_actual_ms': self.bt_timeout_actual,
                    'navigation_wall_time_s': (time.monotonic()-self.goal_started_wall) if self.goal_started_wall else None,
@@ -781,7 +859,7 @@ class Recorder(Node):
                    'accepted_parameters_match': self.actual == self.expected}
         (self.out/'summary.json').write_text(json.dumps(summary, indent=2, allow_nan=False)+'\n')
         self.events.close()
-        print(json.dumps(summary, indent=2), flush=True)
+        print(f'Navigation: {status} | runtime checks: {runtime_pass} | evidence: {self.out}/summary.json' if self.yield_enabled else json.dumps(summary, indent=2), flush=True)
         return runtime_pass
 
 
@@ -790,6 +868,8 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--mode', choices=['baseline', 'static', 'actor'], default='actor')
     parser.add_argument('--observe-only', action='store_true')
+    parser.add_argument('--actor-count', type=int, choices=range(1,9), default=1)
+    parser.add_argument('--social-yield', action='store_true')
     parser.add_argument('--runtime-audit', action='store_true', help='Record TF, scan and plan geometry at 1 Hz wall time')
     parser.add_argument('--goal-time', type=float, default=60.0)
     args, ros_args = parser.parse_known_args()

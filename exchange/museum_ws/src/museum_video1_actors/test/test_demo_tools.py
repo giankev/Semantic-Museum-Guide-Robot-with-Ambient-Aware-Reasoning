@@ -79,12 +79,32 @@ class DemoTests(unittest.TestCase):
                 x, y, *_ = map(float, model.find('pose').text.split())
                 sx, sy, _ = map(float, model.find('./link/collision/geometry/box/size').text.split())
                 boxes.append((x, y, sx/2, sy/2, model.get('name')))
-        for i in range(1000):
-            a=2*math.pi*i/1000
-            x, y = c['cx']+c['rx']*math.cos(a), c['cy']+c['ry']*math.sin(a)
-            for bx, by, hx, hy, name in boxes:
-                distance=math.hypot(max(0, abs(x-bx)-hx), max(0, abs(y-by)-hy))
-                self.assertGreater(distance, 0.35, name)
+        for c in json.loads((PACKAGE/'config/eight_actors.json').read_text())['actors']:
+            for i in range(1000):
+                a=2*math.pi*i/1000
+                x, y = c['cx']+c['rx']*math.cos(a), c['cy']+c['ry']*math.sin(a)
+                for bx, by, hx, hy, name in boxes:
+                    distance=math.hypot(max(0, abs(x-bx)-hx), max(0, abs(y-by)-hy))
+                    self.assertGreater(distance, 0.35, name)
+
+    def test_eight_actors_have_unique_plugins_and_preserve_world(self):
+        assets = sorted(Path('/usr/share').glob('gazebo-11*/media/models/walk.dae'))
+        if not assets:
+            self.skipTest('Gazebo asset verification runs inside Docker')
+        config = json.loads((PACKAGE/'config/eight_actors.json').read_text())
+        source = REPO/'exchange/museum_ws/src/museum_assistant/worlds/supplied_museum/museum_nav.world'
+        before = source.read_bytes()
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)/'eight.world'
+            manifest = prepare(source, target, 'actor', config, assets[0], 8)
+            actors = ET.parse(target).findall('./world/actor')
+            self.assertEqual(manifest['actor_count'], 8)
+            self.assertEqual(len({a.get('name') for a in actors}), 8)
+            self.assertEqual(len({a.find('plugin').get('name') for a in actors}), 8)
+            self.assertEqual(source.read_bytes(), before)
+        for actor in config['actors']:
+            self.assertGreater(min(actor['rx'], actor['ry'])*abs(actor['omega']), .10)
+            self.assertLess(max(actor['rx'], actor['ry'])*abs(actor['omega']), .5)
 
     def test_only_one_navigation_send_and_no_robot_teleport(self):
         import ast

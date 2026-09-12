@@ -27,6 +27,7 @@
   <exec_depend>dwb_msgs</exec_depend>
   <exec_depend>visualization_msgs</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>rviz2</exec_depend>
   <exec_depend>launch_ros</exec_depend>

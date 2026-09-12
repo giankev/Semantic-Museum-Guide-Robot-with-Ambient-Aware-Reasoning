@@ -1,0 +1,92 @@
+{
+  "actors": [
+    {
+      "name": "video1_walker_1",
+      "identifier": "walker_1",
+      "cx": 1.8,
+      "cy": 8.7,
+      "rx": 0.45,
+      "ry": 1.3,
+      "omega": 0.28,
+      "phase": 0.0,
+      "role": "parallel"
+    },
+    {
+      "name": "video1_walker_2",
+      "identifier": "walker_2",
+      "cx": -5.0,
+      "cy": 5.0,
+      "rx": 0.7,
+      "ry": 1.0,
+      "omega": 0.22,
+      "phase": 0.0,
+      "role": "peripheral"
+    },
+    {
+      "name": "video1_walker_3",
+      "identifier": "walker_3",
+      "cx": 0.0,
+      "cy": 6.0,
+      "rx": 1.8,
+      "ry": 0.65,
+      "omega": 0.2,
+      "phase": 5.9867228626928295,
+      "role": "crossing"
+    },
+    {
+      "name": "video1_walker_4",
+      "identifier": "walker_4",
+      "cx": -2.7,
+      "cy": 7.0,
+      "rx": 0.45,
+      "ry": 1.5,
+      "omega": 0.28,
+      "phase": 1.0,
+      "role": "parallel"
+    },
+    {
+      "name": "video1_walker_5",
+      "identifier": "walker_5",
+      "cx": 5.0,
+      "cy": 5.0,
+      "rx": 0.7,
+      "ry": 1.0,
+      "omega": 0.22,
+      "phase": 2.0,
+      "role": "peripheral"
+    },
+    {
+      "name": "video1_walker_6",
+      "identifier": "walker_6",
+      "cx": 3.5,
+      "cy": 14.0,
+      "rx": 1.2,
+      "ry": 0.6,
+      "omega": 0.22,
+      "phase": 0.5,
+      "role": "lateral"
+    },
+    {
+      "name": "video1_walker_7",
+      "identifier": "walker_7",
+      "cx": -4.5,
+      "cy": 15.5,
+      "rx": 0.7,
+      "ry": 1.2,
+      "omega": 0.22,
+      "phase": 1.5,
+      "role": "north patrol"
+    },
+    {
+      "name": "video1_walker_8",
+      "identifier": "walker_8",
+      "cx": 5.0,
+      "cy": 8.0,
+      "rx": 0.7,
+      "ry": 1.0,
+      "omega": 0.2,
+      "phase": 3.0,
+      "role": "museum patrol"
+    }
+  ]
+}

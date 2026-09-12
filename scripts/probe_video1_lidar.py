@@ -34,7 +34,7 @@ def main():
         lambda m: scans.append((m, state.get('actor'), state.get('odom'))), qos_profile_sensor_data)
     node.create_subscription(OccupancyGrid, '/local_costmap/costmap',
                              lambda m: state.update(costmap=m), qos_profile_sensor_data)
-    node.create_subscription(Pedestrians, '/museum/video1/actor_states',
+    node.create_subscription(Pedestrians, '/museum/video1/actor_samples',
                              lambda m: state.update(actor=m), qos_profile_sensor_data)
     spawn = node.create_client(SpawnEntity, '/spawn_entity')
     delete = node.create_client(DeleteEntity, '/delete_entity')

@@ -18,9 +18,9 @@ target_link_libraries(video1_actor ${GAZEBO_LIBRARIES})
 ament_target_dependencies(video1_actor gazebo_ros rclcpp social_nav_msgs)
 install(TARGETS video1_actor LIBRARY DESTINATION lib)
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
-install(PROGRAMS scripts/people_bridge.py scripts/record_demo.py scripts/social_markers.py scripts/probe_dds.py
+install(PROGRAMS scripts/people_bridge.py scripts/record_demo.py scripts/social_markers.py scripts/probe_dds.py scripts/social_yield.py
   DESTINATION lib/${PROJECT_NAME})
-install(FILES scripts/demo_math.py scripts/runtime_audit.py DESTINATION lib/${PROJECT_NAME})
+install(FILES scripts/demo_math.py scripts/runtime_audit.py scripts/social_yield_math.py DESTINATION lib/${PROJECT_NAME})
 if(BUILD_TESTING)
   enable_testing()
   find_package(nav2_behavior_tree REQUIRED)
@@ -42,11 +42,13 @@ if(BUILD_TESTING)
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_dds_probe.py)
   add_test(NAME video1_runtime_audit COMMAND ${Python3_EXECUTABLE}
     ${CMAKE_CURRENT_SOURCE_DIR}/test/test_runtime_audit.py)
+  add_test(NAME video1_social_yield COMMAND ${Python3_EXECUTABLE}
+    ${CMAKE_CURRENT_SOURCE_DIR}/test/test_social_yield.py)
   set_tests_properties(video1_dds_probe PROPERTIES TIMEOUT 45)
   # Fixtures publish synthetic /clock and /people. Never inherit the live
   # simulation's domain, including when tests are run during an audit.
   set_tests_properties(video1_bt_ack_timeout video1_recorder_runtime video1_dds_probe
-    video1_runtime_audit PROPERTIES ENVIRONMENT "ROS_DOMAIN_ID=180;ROS_LOCALHOST_ONLY=1"
+    video1_runtime_audit video1_social_yield PROPERTIES ENVIRONMENT "ROS_DOMAIN_ID=180;ROS_LOCALHOST_ONLY=1"
     RUN_SERIAL TRUE)
 endif()
 ament_package()
