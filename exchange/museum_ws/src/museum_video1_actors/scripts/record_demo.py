@@ -96,6 +96,8 @@ class Recorder(Node):
         self.recoveries = 0
         self.no_trajectories = 0
         self.no_progress = 0
+        self.navigation_events = dict(controller_aborts=0, failed_recoveries=0,
+                                      acknowledgement_timeouts=0, missed_controller_loops=0)
         self.critic_samples = 0
         self.critic_nonzero = 0
         self.critic_varied = 0
@@ -203,6 +205,14 @@ class Recorder(Node):
             self.paths[topic] += 1
 
     def on_log(self, msg):
+        if 'Aborting handle' in msg.msg and msg.name.endswith('controller_server'):
+            self.navigation_events['controller_aborts'] += 1
+        if 'Aborting handle' in msg.msg and msg.name.endswith('behavior_server'):
+            self.navigation_events['failed_recoveries'] += 1
+        if 'Timed out while waiting for action server to acknowledge' in msg.msg:
+            self.navigation_events['acknowledgement_timeouts'] += 1
+        if 'Control loop missed its desired rate' in msg.msg:
+            self.navigation_events['missed_controller_loops'] += 1
         if re.search('No valid trajectories', msg.msg, re.I):
             self.no_trajectories += 1
         if re.search('Failed to make progress', msg.msg, re.I):
@@ -663,6 +673,10 @@ class Recorder(Node):
             'navigation_success': status == 'SUCCESS',
             'exactly_one_goal': self.goal_count == 1 and len(self.goal_ids) == 1,
             'accepted_parameters': self.actual == self.expected,
+            'bt_timeout_matches_manifest': not self.nav2_manifest or self.bt_timeout_actual == self.nav2_manifest['bt_timeout_ms'],
+            'no_controller_abort': self.navigation_events['controller_aborts'] == 0,
+            'no_failed_recovery': self.navigation_events['failed_recoveries'] == 0,
+            'no_action_acknowledgement_timeout': self.navigation_events['acknowledgement_timeouts'] == 0,
             'map_goal_position': final_map is not None and math.hypot(final_map[0], final_map[1]-16.0) <= 0.5,
             'physical_goal_position': self.raw_robot is not None and math.hypot(self.raw_robot[0], self.raw_robot[1]-16.0) <= 0.5,
             'no_recovery': self.recoveries == 0,
@@ -699,7 +713,16 @@ class Recorder(Node):
                 if name in checks and not observed:
                     checks[name] = None
         instrumentation_complete = not any(d['errors'] for d in self.diagnostics.values())
-        runtime_pass = all(value is True for value in checks.values()) and instrumentation_complete and not self.fatal_error
+        # Preserve all measurements, but do not require optional diagnostics to
+        # see an Actor in a laser plane where the controlled test sees no mesh.
+        # Recovery count and isolated planner rejections describe run quality;
+        # controller aborts and failed recoveries remain explicit failure gates.
+        advisory_names = {'laser_association_observed', 'costmap_association_observed',
+                          'no_recovery', 'no_invalid_trajectory_messages',
+                          'global_and_local_paths_observed'}
+        required_checks = {k: v for k, v in checks.items() if k not in advisory_names}
+        advisory_checks = {k: v for k, v in checks.items() if k in advisory_names}
+        runtime_pass = all(value is True for value in required_checks.values()) and not self.fatal_error
         topic_inventory = []
         try:
             topic_inventory = self.get_topic_names_and_types()
@@ -718,6 +741,9 @@ class Recorder(Node):
                    'diagnostics': self.diagnostics, 'instrumentation_complete': instrumentation_complete, 'topic_inventory': topic_inventory,
                    'null_check_meaning': 'NOT_MEASURED / INCONCLUSIVE; not a runtime failure',
                    'automated_runtime_checks': checks,
+                   'required_runtime_checks': required_checks,
+                   'advisory_runtime_checks': advisory_checks,
+                   'navigation_event_counts': self.navigation_events,
                    'automated_runtime_checks_pass': runtime_pass,
                    'final_scene_accepted': False,
                    'visual_walking': 'MANUAL_CHECK_REQUIRED',

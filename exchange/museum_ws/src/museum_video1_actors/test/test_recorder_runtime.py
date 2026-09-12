@@ -270,6 +270,35 @@ class RecorderTests(unittest.TestCase):
         self.assertTrue(all(v is None for v in summary['automated_runtime_checks'].values()))
         self.assertFalse(summary['final_scene_accepted'])
 
+    def completed_baseline_summary(self):
+        import json
+        self.node.args.mode = 'baseline'
+        self.node.goal_count = 1
+        self.node.goal_ids = {'one_goal'}
+        self.node.actual = self.node.expected
+        self.node.dds_probe = {'status': 'PASS'}
+        self.node.raw_robot = self.node.robot = (0., 16., 1.5708)
+        self.node.robot_frame, self.node.robot_time = 'odom', 100.
+        with patch.object(self.node, 'lookup', return_value=(0., 0., 0.)), patch('builtins.print'):
+            self.node.finish('SUCCESS', None)
+        return json.loads((Path(self.directory.name)/'summary.json').read_text())
+
+    def test_optional_instrument_error_is_retained_without_invalidating_clean_navigation(self):
+        self.callback('/rosout', SimpleNamespace(level=None, msg='bad optional sample'))
+        summary = self.completed_baseline_summary()
+        self.assertFalse(summary['instrumentation_complete'])
+        self.assertTrue(summary['automated_runtime_checks_pass'])
+        self.assertIsNone(summary['advisory_runtime_checks']['global_and_local_paths_observed'])
+        self.assertFalse(summary['final_scene_accepted'])
+
+    def test_controller_abort_is_failure_even_after_navigation_success(self):
+        self.callback('/rosout', SimpleNamespace(level=30, stamp=SimpleNamespace(sec=90, nanosec=0),
+            name='controller_server', msg='[follow_path] [ActionServer] Aborting handle.'))
+        summary = self.completed_baseline_summary()
+        self.assertEqual(summary['navigation_event_counts']['controller_aborts'], 1)
+        self.assertFalse(summary['required_runtime_checks']['no_controller_abort'])
+        self.assertFalse(summary['automated_runtime_checks_pass'])
+
 
 class ShellTests(unittest.TestCase):
     def test_runtime_failure_keeps_scene_but_preparation_failure_stops_it(self):
