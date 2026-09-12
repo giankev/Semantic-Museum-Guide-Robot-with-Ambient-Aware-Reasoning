@@ -28,7 +28,7 @@ Each plugin is restricted to its Actor name; none controls TIAGo.
 | walker_1 | Parallel, accepted original | (1.8, 8.7) | (0.45, 1.3) | 0.28 |
 | walker_2 | Peripheral west | (-5, 5) | (0.7, 1) | 0.22 |
 | walker_3 | Crossing | (0, 6) | (1.8, 0.65) | 0.20 |
-| walker_4 | Parallel west | (-2.7, 7) | (0.45, 1.5) | 0.28 |
+| walker_4 | Parallel west | (-3.1, 7) | (0.45, 1.5) | 0.28 |
 | walker_5 | Peripheral east | (5, 5) | (0.7, 1) | 0.22 |
 | walker_6 | Lateral north | (3.5, 14) | (1.2, 0.6) | 0.22 |
 | walker_7 | North patrol | (-4.5, 15.5) | (0.7, 1.2) | 0.22 |

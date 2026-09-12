@@ -106,6 +106,17 @@ class DemoTests(unittest.TestCase):
             self.assertGreater(min(actor['rx'], actor['ry'])*abs(actor['omega']), .10)
             self.assertLess(max(actor['rx'], actor['ry'])*abs(actor['omega']), .5)
 
+    def test_actor_paths_do_not_overlap_during_full_joint_period(self):
+        actors = json.loads((PACKAGE/'config/eight_actors.json').read_text())['actors']
+        # All angular rates are integer multiples of .02 rad/s.
+        for index in range(6285):
+            t = index*.05
+            positions = [(p['cx']+p['rx']*math.cos(p['omega']*t+p['phase']),
+                          p['cy']+p['ry']*math.sin(p['omega']*t+p['phase'])) for p in actors]
+            for i, position in enumerate(positions):
+                for j in range(i):
+                    self.assertGreater(math.dist(position, positions[j]), .8, (i+1, j+1, t))
+
     def test_only_one_navigation_send_and_no_robot_teleport(self):
         import ast
         tree = ast.parse((PACKAGE/'scripts/record_demo.py').read_text())
