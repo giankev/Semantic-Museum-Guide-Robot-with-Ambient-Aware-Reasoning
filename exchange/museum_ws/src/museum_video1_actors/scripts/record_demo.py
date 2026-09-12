@@ -506,6 +506,24 @@ class Recorder(Node):
         return all(self.states.get(n) == 3 and
                    time.monotonic()-self.state_times.get(n, 0) < 5.0 for n in LIFECYCLES)
 
+    def check_navigation_lifecycle(self):
+        # GetState is a diagnostic RPC, not a lifecycle heartbeat. Allow its
+        # five-second timeout and a retry before declaring monitoring lost.
+        wall = time.monotonic()
+        for name in LIFECYCLES:
+            state = self.states.get(name)
+            age = wall - self.state_times.get(name, 0)
+            if state != 3:
+                raise RuntimeError(f'Nav2 lifecycle {name} is not ACTIVE: state={state}')
+            if age >= 15.0:
+                raise RuntimeError(f'Nav2 lifecycle monitoring unavailable: {name}, '
+                                   f'last ACTIVE response {age:.1f} wall seconds ago')
+            if age >= 5.0:
+                self.diagnostics.setdefault('lifecycle_freshness', {'samples': 0, 'errors': 0}).update(
+                    status='DELAYED', node=name, response_age_wall_s=age)
+        if all(wall - self.state_times.get(n, 0) < 5.0 for n in LIFECYCLES):
+            self.diagnostics.setdefault('lifecycle_freshness', {'samples': 0, 'errors': 0}).update(status='OBSERVED')
+
     def ready(self):
         if self.fatal_error:
             raise RuntimeError(self.fatal_error)
@@ -588,8 +606,8 @@ class Recorder(Node):
         self.poll()
         if len(self.goal_ids) > 1:
             raise RuntimeError('More than one navigation goal observed')
-        if self.goal_count and not self.nav_active():
-            raise RuntimeError('Nav2 lifecycle readiness lost during navigation')
+        if self.goal_count:
+            self.check_navigation_lifecycle()
         if self.goal_count and self.args.mode == 'actor':
             if not self.people or self.now()-stamp_seconds(self.people[-1].header.stamp) > 0.8:
                 raise RuntimeError('Actor /people stream lost during navigation')

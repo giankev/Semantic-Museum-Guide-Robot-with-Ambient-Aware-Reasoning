@@ -264,6 +264,25 @@ class RecorderTests(unittest.TestCase):
         self.assertTrue(future.cancelled())
         self.assertNotIn('test', self.node.pending)
 
+    def test_lifecycle_rpc_delay_is_distinct_from_inactive_and_unavailable(self):
+        self.node.states = {n: 3 for n in record_demo.LIFECYCLES}
+        with patch.object(record_demo.time, 'monotonic', return_value=100):
+            self.node.state_times = {n: 94 for n in record_demo.LIFECYCLES}
+            self.assertFalse(self.node.nav_active())  # startup gate stays strict
+            self.node.check_navigation_lifecycle()
+            self.assertEqual(self.node.diagnostics['lifecycle_freshness']['status'], 'DELAYED')
+            self.node.state_times = {n: 99 for n in record_demo.LIFECYCLES}
+            self.node.check_navigation_lifecycle()
+            self.assertEqual(self.node.diagnostics['lifecycle_freshness']['status'], 'OBSERVED')
+            name = record_demo.LIFECYCLES[0]
+            self.node.states[name] = 2
+            with self.assertRaisesRegex(RuntimeError, 'not ACTIVE'):
+                self.node.check_navigation_lifecycle()
+            self.node.states[name] = 3
+            self.node.state_times[name] = 85
+            with self.assertRaisesRegex(RuntimeError, 'monitoring unavailable'):
+                self.node.check_navigation_lifecycle()
+
     def test_no_readiness_at_zero_clock_or_stale_lifecycle(self):
         self.node.states = {n: 3 for n in record_demo.LIFECYCLES}
         self.node.state_times = {n: 0 for n in record_demo.LIFECYCLES}
