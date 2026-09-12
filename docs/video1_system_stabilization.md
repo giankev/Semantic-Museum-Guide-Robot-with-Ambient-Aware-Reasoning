@@ -94,6 +94,19 @@ scan/map endpoint comparison confirms differences), but this baseline has
 consistent localization and no DWB failures. No map change is justified by
 this result alone.
 
+One-Actor GUI run `20260912T091313Z_actor`, using the 200 ms BT timeout,
+completed SUCCESS with exactly one goal. Navigation took 138.485 simulation
+seconds / 293.616 wall seconds; RTF over the recorder run was 0.435.
+Final world pose was (0.05136, 15.92735, 1.91505), map pose
+(0.09894, 15.83355, 1.91578): world position error 0.089 m and map/world
+difference 0.105 m. Recoveries, invalid-trajectory messages, controller
+aborts, acknowledgement timeouts and angular reversals were all zero.
+Minimum person center distance was 0.994 m. One startup lifecycle-service
+timeout recovered; all critical streams remained usable. This run used
+llvmpipe for both server and GUI. Its window was minimized during part of
+the run, so the stale hidden-window capture is not animation evidence.
+Repeated runs and the final graphics configuration are still pending.
+
 Native TF attribution confirms one observed authority for each main edge:
 AMCL for map→odom, simulation_ground_truth_odom for odom→base_footprint, and
 robot_state_publisher for the robot links. mobile_base_controller advertises

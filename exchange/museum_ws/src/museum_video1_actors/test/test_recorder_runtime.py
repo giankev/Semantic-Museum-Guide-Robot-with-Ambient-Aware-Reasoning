@@ -358,18 +358,19 @@ if args[0] == 'exec':
         generator = command[command.index('-c')+1]
         with tempfile.TemporaryDirectory() as directory:
             fake_client = Path(directory)/'real-client'
-            fake_client.write_text('#!/bin/sh\nprintf "%s\\n" "$@" "$GAZEBO_MODEL_PATH" "$LIBGL_ALWAYS_SOFTWARE"\n')
+            fake_client.write_text('#!/bin/sh\nprintf "%s\\n" "$@" "$GAZEBO_MODEL_PATH" "$LIBGL_ALWAYS_SOFTWARE" "$__GLX_VENDOR_LIBRARY_NAME" "$__NV_PRIME_RENDER_OFFLOAD"\n')
             fake_client.chmod(0o755)
             wrapper_dir = Path(directory)/'bin'
             with patch('shutil.which', return_value=str(fake_client)), \
                  patch.object(sys, 'argv', ['-c', directory, 'software']):
                 exec(compile(generator, 'wrapper_generator', 'exec'), {})
-            for program, renderer in [('gzclient', '0'), ('gzserver', '1')]:
+            for program, renderer, vendor, offload in [('gzclient', '0', 'nvidia', '1'), ('gzserver', '1', 'mesa', '0')]:
                 result = subprocess.run([str(wrapper_dir/program), '--test-argument'],
-                    env=dict(os.environ, GAZEBO_MODEL_PATH='scoped-PAL-models', LIBGL_ALWAYS_SOFTWARE='0'),
+                    env=dict(os.environ, GAZEBO_MODEL_PATH='scoped-PAL-models', LIBGL_ALWAYS_SOFTWARE='0',
+                             __GLX_VENDOR_LIBRARY_NAME='nvidia', __NV_PRIME_RENDER_OFFLOAD='1'),
                     capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(result.stdout.splitlines(), ['--verbose', '--test-argument', 'scoped-PAL-models', renderer])
+                self.assertEqual(result.stdout.splitlines(), ['--verbose', '--test-argument', 'scoped-PAL-models', renderer, vendor, offload])
 
     def test_version_probe_ignores_gazebo_cli_exit_255_but_checks_pkg_config(self):
         source = (REPO/'scripts/start_video1_animated_demo.sh').read_text()

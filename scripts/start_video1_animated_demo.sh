@@ -52,7 +52,9 @@ GPU_ARGS=()
 if [[ "${VIDEO1_SOFTWARE_RENDERING:-0}" == 1 ]]; then
   GPU_ARGS=(-e LIBGL_ALWAYS_SOFTWARE=1 -e GALLIUM_DRIVER=llvmpipe)
 elif command -v nvidia-smi >/dev/null && nvidia-smi >/dev/null 2>&1; then
-  GPU_ARGS=(--gpus all)
+  # On Optimus, making the device visible does not select its GLX renderer.
+  GPU_ARGS=(--gpus all -e NVIDIA_DRIVER_CAPABILITIES=graphics,utility,compute,display
+    -e __NV_PRIME_RENDER_OFFLOAD=1 -e __GLX_VENDOR_LIBRARY_NAME=nvidia)
 elif [[ -d /dev/dri ]]; then
   GPU_ARGS=(--device=/dev/dri:/dev/dri -e LIBGL_ALWAYS_SOFTWARE=0)
 else
@@ -184,7 +186,7 @@ for program in ("gzclient", "gzserver"):
     logs.mkdir(exist_ok=True)
     environment="export GAZEBO_LOG_PATH="+shlex.quote(str(logs))+"\n"
     if program=="gzserver" and sys.argv[2]=="software":
-        environment+="export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe\n"
+        environment+="export LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe __GLX_VENDOR_LIBRARY_NAME=mesa __NV_PRIME_RENDER_OFFLOAD=0\n"
     wrapper.write_text("#!/bin/sh\n"+environment+"exec "+shlex.quote(executable)+" --verbose \"$@\"\n")
     wrapper.chmod(0o755)' "${REMOTE_RUN}" "${SERVER_RENDERER}"
 
