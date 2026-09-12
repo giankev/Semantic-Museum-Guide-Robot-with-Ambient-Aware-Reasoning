@@ -67,8 +67,8 @@ both translation and rotation together to preserve commanded curvature.
 Current configuration in `config/social_yield.yaml`:
 
 - Forward corridor half-width: 0.65 m; slowing distance: 2.5 m.
-- Stop distance along the corridor: 1.3 m, with entry predicted within 1.2 s.
-- Release distance: 1.65 m; release half-width: 0.85 m.
+- Stop distance along the corridor: 1.6 m, with entry predicted within 1.2 s.
+- Release distance: 1.95 m; release half-width: 0.85 m.
 - Clear-time hysteresis: 0.8 simulation seconds before leaving YIELDING.
 - Input freshness bound: 0.4 simulation seconds; missing/invalid inputs output zero.
 
@@ -121,3 +121,15 @@ The DDS fairness regression now exercises 20 busy subscriptions, exceeding one
 batch; all 26 recorder tests pass. Startup still requires fresh ACTIVE replies;
 an observed inactive state fails immediately and missing monitoring remains
 bounded. These negative runs are retained and do not validate the final scene.
+
+Run `20260912T205918Z_actor` reached SUCCESS with one goal, zero recoveries,
+controller aborts, failed recoveries or acknowledgement timeouts, and all four
+slow/stop/resume evidence flags true. RTF was 0.581. Its minimum center distance
+0.607 m failed the 0.63 m disk-separation requirement, so it was not promoted.
+The social stop/release distances were increased to 1.6/1.95 m for retesting;
+Nav2 parameters, the robot goal and Actor paths remain unchanged.
+
+The recorder now drains with a constant 1 ms spin timeout for at most 40 ms
+between checks and uses latest-sample state/measurement queues. Full historical
+queues had caused false freshness failures after navigation began. Observed
+sample frequency and maximum gaps remain checked, rather than assuming 20 Hz.

@@ -56,6 +56,9 @@ class RecorderTests(unittest.TestCase):
         self.assertEqual(self.node.now(), 0.0)
         self.assertEqual(set(self.node.lifecycle_clients), set(record_demo.LIFECYCLES))
         self.assertGreater(len(list(self.node.subscriptions)), 0)
+        for topic in ('/people', '/museum/video1/actor_states', '/scan_raw', '/evaluation'):
+            sub = next(s for s in self.node.subscriptions if s.topic_name == topic)
+            self.assertEqual(sub.qos_profile.depth, 1)
 
     def test_dynamic_tf_uses_short_sensor_queue_and_static_tf_stays_latched(self):
         from rclpy.qos import DurabilityPolicy

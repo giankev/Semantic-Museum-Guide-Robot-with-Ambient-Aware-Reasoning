@@ -33,7 +33,7 @@ class PolicyTests(unittest.TestCase):
         self.assertEqual(policy.update(3., [('p', 2., 0., 0., 0.)], .2)['state'], 'SLOW')
         self.assertEqual(policy.update(4., [('p', 1.2, 0., 0., 0.)], .2)['state'], 'YIELDING')
         # Merely crossing the entry threshold must not release the stop.
-        self.assertEqual(policy.update(4.1, [('p', 1.4, 0., 0., 0.)], .0)['state'], 'YIELDING')
+        self.assertEqual(policy.update(4.1, [('p', 1.75, 0., 0., 0.)], .0)['state'], 'YIELDING')
         self.assertEqual(policy.update(5., [], .0)['state'], 'YIELDING')
         self.assertEqual(policy.update(5.7, [], .0)['state'], 'YIELDING')
         self.assertEqual(policy.update(5.9, [], .0)['state'], 'CLEAR')

@@ -131,7 +131,7 @@ class Recorder(Node):
         self.runtime_audit = RuntimeAudit(self, self.out) if getattr(args, 'runtime_audit', False) else None
         if self.yield_enabled:
             self.create_subscription(String, '/museum/social_yield/status',
-                self.guard('social_yield', self.on_yield, True), QoSProfile(depth=20))
+                self.guard('social_yield', self.on_yield, True), QoSProfile(depth=1))
         # Best-effort readers match both reliable and sensor-data publishers.
         # Critical streams still have explicit freshness/readiness gates.
         for kind, topic, callback, critical in (
@@ -146,7 +146,7 @@ class Recorder(Node):
         ):
             self.diagnostics[topic] = {'status': 'WAITING_FOR_MESSAGE', 'samples': 0, 'errors': 0}
             self.create_subscription(kind, topic, self.guard(topic, callback, critical),
-                QoSProfile(depth=20, reliability=qos_profile_sensor_data.reliability) if topic in ('/people', '/museum/video1/actor_states') else qos_profile_sensor_data)
+                QoSProfile(depth=1, reliability=qos_profile_sensor_data.reliability) if topic != '/rosout' else qos_profile_sensor_data)
         self.create_subscription(GoalStatusArray, '/navigate_to_pose/_action/status',
                                  self.guard('action_status', self.on_status, True),
                                  QoSProfile(depth=10, durability=DurabilityPolicy.TRANSIENT_LOCAL))
@@ -577,9 +577,13 @@ class Recorder(Node):
     def step(self):
         # Humble recreates its ready-callback iterator when timeout arguments
         # change. Keep one timeout across batches so later services cannot starve
-        # behind busy subscriptions. Eight idle waits total at most 40 ms.
-        for _ in range(8):
-            self.spin_executor.spin_once(timeout_sec=0.005)
+        # behind busy subscriptions. Drain for at most 40 ms before health checks;
+        # latest-only yield status avoids treating queued history as current state.
+        drain_deadline = time.monotonic() + 0.04
+        for _ in range(128):
+            self.spin_executor.spin_once(timeout_sec=0.001)
+            if time.monotonic() >= drain_deadline:
+                break
         if self.runtime_audit is not None:
             self.runtime_audit.tick()
         if self.fatal_error:

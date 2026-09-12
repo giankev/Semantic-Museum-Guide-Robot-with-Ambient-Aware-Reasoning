@@ -16,8 +16,8 @@ from social_yield_math import YieldPolicy
 class SocialYield(Node):
     def __init__(self):
         super().__init__('social_yield')
-        defaults = dict(corridor_half_width=.65, slow_distance=2.5, stop_distance=1.3,
-                        release_distance=1.65, release_half_width=.85, prediction_horizon=2.,
+        defaults = dict(corridor_half_width=.65, slow_distance=2.5, stop_distance=1.6,
+                        release_distance=1.95, release_half_width=.85, prediction_horizon=2.,
                         stop_horizon=1.2, clear_time=.8, input_timeout=.4)
         config = {k: float(self.declare_parameter(k, v).value) for k, v in defaults.items()}
         if not all(math.isfinite(v) and v > 0 for v in config.values()) or not (
