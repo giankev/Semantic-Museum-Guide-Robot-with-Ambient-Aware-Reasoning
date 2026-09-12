@@ -4,6 +4,40 @@ Branch: `codex/video1-system-stabilization`, based on `4c1341b`.
 No multi-Actor or final-video acceptance is claimed. Historical benchmark
 outputs and accepted navigation parameters remain unchanged.
 
+Latest checkpoint: one clean Actor navigation at 200 ms is complete; repeated
+Actor and static-ten comparisons remain outstanding. Run
+`20260912T092633Z_baseline` is the next no-people comparison, with NVIDIA GUI
+and llvmpipe server. Inspect its `summary.json` after completion before drawing
+a conclusion. No multi-Actor configuration or final-video launcher is accepted.
+
+The NVIDIA driver became available on September 12. Merely passing `--gpus all`
+still selected llvmpipe; explicit PRIME/GLX offload selects MX130 for the GUI.
+The baseline's separate Ogre logs confirm NVIDIA client / llvmpipe server,
+and a visible-window capture showed approximately 45.6 GUI FPS. This is a
+single display sample, not an average or the simulation RTF.
+
+`scripts/probe_video1_gpu_sensor.py` retains an additional independent rig.
+Its CPU rays passed, but GPU coverage was partial with both NVIDIA and Mesa
+in the empty-world setup (`sensor_nvidia`, `sensor_software_repeat`,
+`sensor_nvidia_wide`). These are negative controls requiring investigation;
+they do not validate NVIDIA LiDAR. The real TIAGo positive control under
+llvmpipe did pass. Therefore the recommended command explicitly keeps the
+server on software rendering while using hardware for the GUI.
+
+Checkpoint command (one Actor, diagnostic launcher):
+
+```bash
+git fetch origin
+git switch codex/video1-system-stabilization
+git pull --ff-only origin codex/video1-system-stabilization
+./scripts/stop_video1_animated_demo.sh
+VIDEO1_SERVER_RENDERER=software ./scripts/start_video1_animated_demo.sh --runtime-audit
+```
+
+Remaining work: finish the matched baseline, repeat the clean Actor run,
+compare the existing static-ten scene, verify visible walking with a live
+window, then decide whether progressive crowd expansion is justified.
+
 ## Reproduced findings
 
 * The controller gate matched `inactive` as `active`. Matching the complete
