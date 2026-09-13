@@ -1,54 +1,73 @@
-# Final demo terminal monitor
+# Demo Commands
 
-Run the monitor in a separate terminal attached to the existing
-`museum_tiago` container, after the demo launch is running and before sending
-the visitor request:
+Run these commands from the repository root on the Ubuntu host.
 
-```bash
-docker exec -it museum_tiago bash
-source /opt/ros/humble/setup.bash
-source /root/tiago_public_ws/install/setup.bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-python3 /root/exchange/scripts/demo_monitor.py
-```
-
-Add `--show-graph` to include the compact active-session scene graph:
+## Build the Docker image
 
 ```bash
-python3 /root/exchange/scripts/demo_monitor.py --show-graph
+docker build -f dockerfiles/Dockerfile.tiago_museum -t museum-tiago:humble .
 ```
 
-The monitor is read-only: it only subscribes to the existing demo topics.
-Unavailable topics remain blank (`—`). Press `Ctrl-C` to exit and restore the
-terminal cursor.
+## Final social-navigation demo
 
-## Sketch 1: one-command social-navigation demo
+The submitted social-navigation demo uses eight animated Gazebo Actors, Nav2, the custom anisotropic `ProxemicForceCritic`, the social-yield layer, Gazebo, RViz, and the runtime monitor.
 
-From the repository root on the host, start the complete Sketch 1 setup with:
+Start:
 
 ```bash
-./scripts/start_video1_demo.sh
+./scripts/stop_video1_animated_demo.sh 2>/dev/null || true
+./scripts/start_video1_final_animated_demo.sh --actors 8 --runtime-audit
 ```
 
-The starter opens Gazebo in a bird's-eye view, the dedicated Video 1 RViz view,
-the social monitor, and the video-control prompt. It places ten visible NPCs:
-nine remain static while only `guide_1` moves slowly along a bounded lateral
-lane. The control prompt waits for active Nav2 and ten `/people` entries, then
-sends exactly one normal `NavigateToPose` goal to north gallery
-`(0.0, 16.0, 1.5708)`.
-
-Use the validated all-static fallback without changing the navigation setup:
+Stop:
 
 ```bash
-./scripts/start_video1_demo.sh --static-guide
+./scripts/stop_video1_animated_demo.sh
 ```
 
-The RViz view subscribes to `/map`, `/plan`, `/local_plan`, the local footprint,
-and the read-only `/museum/social_markers` visualization. RViz readiness is
-reported but never gates or commands navigation.
+The launcher sends one navigation goal automatically. No manual ROS publication is required for the recorded demo.
 
-Stop only the recorded Video 1 helper processes with:
+## Scene-graph reasoning demo
+
+Start:
 
 ```bash
-./scripts/stop_video1_demo.sh
+./scripts/start_video2_reasoning_demo.sh
 ```
+
+Stop:
+
+```bash
+./scripts/stop_video2_reasoning_demo.sh
+```
+
+This demo uses one Actor and executes the existing semantic graph/reasoning chain for the request `I want to see classical art.` It displays the prepared navigation action but intentionally does not start robot navigation.
+
+## File-based speech-to-text acceptance
+
+Provide a real WAV file and expose `GROQ_API_KEY` in the shell environment:
+
+```bash
+PHASE8_SKIP_DOCKER_BUILD=1 \
+./scripts/phase8_live_acceptance.sh /path/to/request.wav
+```
+
+The accepted test file format is PCM signed 16-bit, mono, 16 kHz WAV. The API key is never stored in this repository.
+
+## Interactive development container
+
+Start:
+
+```bash
+./start_museum_tiago.sh
+```
+
+Inside the container:
+
+```bash
+cd /root/exchange/exchange/museum_ws
+colcon build --symlink-install --packages-select museum_assistant museum_social_critic museum_video1_actors
+source install/setup.bash
+```
+
+For detailed manual workflows, see `docs/user_manual.md`.
