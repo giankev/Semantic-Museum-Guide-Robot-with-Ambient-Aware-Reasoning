@@ -1,223 +1,89 @@
 # Semantic Museum Guide Robot with Ambient-Aware Reasoning
 
-This university HRAI project develops a TIAGo museum assistant in ROS 2 Humble and Gazebo. The robot is intended to combine a known geometric map with semantic museum knowledge, ambient context, visitor interaction state, and explainable deterministic decisions.
+Human-centered museum guide robot developed in ROS 2 Humble and Gazebo around a TIAGo platform. The system combines semantic reasoning, speech/language interfaces, visitor-session supervision, Nav2 navigation, animated human actors, and human-aware local motion.
 
-The repository contains a validated semantic-navigation chain, a minimal
-simulation-ground-truth escort prototype, and an opt-in first social-costmap
-experiment plus a separate runtime-validated bounded proxemic DWB critic. It
-is not a real-perception system or a broad social-navigation evaluation.
+## Project Overview
 
-## Status At A Glance
+The robot receives a visitor request, converts it into a structured semantic query, reasons over a dynamic museum scene graph, resolves the selected semantic destination to a verified navigation target, and moves using Nav2. Human-aware motion is handled locally through DWB with a custom anisotropic `museum_social_critic::ProxemicForceCritic` and an explicit social-yield layer.
 
-### Implemented
+The architecture keeps language and reasoning separated from robot control: natural-language or LLM output is never allowed to directly generate ROS commands, arbitrary coordinates, shell commands, or executable code. Robot actions come from a fixed skill set and semantic destinations are resolved inside the robot-control boundary.
 
-- Docker image and launcher for the public TIAGo ROS 2 Humble simulation.
-- Gazebo launch with TIAGo in a lightweight custom museum world.
-- Separate opt-in launch for the packaged supplied museum assets, with a
-  runtime-validated minimal collision repair. Its occupancy-map/Nav2 gate is
-  still incomplete, so it is not the default environment.
-- Manual keyboard teleoperation.
-- ROS 2 topic and sensor inventory for the TIAGo simulation baseline.
-- YAML semantic map with rooms, artworks, roles, sensors, relations, and room navigation poses.
-- NetworkX semantic graph loading, validation, queries, and deterministic recommendations.
-- Scripted ambient room-state updates for crowd, noise, and open/closed status.
-- Structured JSON request validation and deterministic reasoning.
-- Reasoning responses containing a selected room, explanation, abstract skill, and `nav_pose`.
-- Minimal ROS-independent Phase 1 data models for person tracks, session state,
-  structured requests, reasoning decisions, and the reasoner's current skills.
-- Minimal Phase 2 simulation identity and in-memory visitor session published
-  on `/museum/session_state`.
-- Focused Phase 3 semantic-navigation path that sends explicitly prepared
-  successful decisions to Nav2 and publishes correlated navigation results.
-- Minimal Phase 4 visitor observation and escort supervision with
-  `ESCORTING`, `WAITING`, `LOST`, and `ARRIVED` states.
-- Intentional Nav2 cancel/resume when the static simulated visitor lags and
-  joint robot-plus-visitor arrival as escort success.
-- Opt-in bounded scripted visitor motion for a repeatable Phase 4 lag-recovery
-  demo; manual marker control remains available.
-- Opt-in Phase 5 `/people` stream using standard
-  `social_nav_msgs/msg/Pedestrians` for the three Gazebo human markers, with
-  finite-difference planar velocities.
-- Opt-in Phase 6 compatibility bridge from `/people` to the third-party-only
-  `people_msgs/msg/People` boundary.
-- Separate Nav2 + DWB + UPO social local-costmap launch; the original Nav2 +
-  DWB launch and configuration remain unchanged.
-- SLAM Toolbox configuration and a saved museum occupancy map.
-- Known-map Nav2/AMCL bringup with DWB as the baseline local controller.
-- Manual helpers to capture AMCL poses and send coordinate-based `NavigateToPose` goals.
-- Opt-in pretrained RGB person detection plus deterministic camera/LiDAR/dwell
-  engagement estimation, with engagement-gated session activation.
+## Current System Status
 
-The validated runtime baseline is documented in [the user manual](docs/user_manual.md).
-The Phase 4 automatic and manual procedures are in
-[Social Escort](docs/social_escort.md).
-The simulation people boundary is in
-[Simulated People](docs/simulated_people.md).
-The Phase 6 experiments and accepted bounded custom-critic result are in
-[Human-Aware Navigation](docs/human_aware_navigation.md).
-The bounded Phase 8 file interface and its cloud-audio privacy boundary are in
-[Speech Interface](docs/speech_interface.md).
-The supplied-world asset, Gazebo, collision, and rejected-map evidence is in
-[Supplied Museum Integration](docs/supplied_museum_integration.md).
-The final sensor-based interaction-start feature is documented in
-[Engagement Detection](docs/engagement_detection.md).
+The submission includes the following implemented and tested components:
 
-### Partially Implemented
+- TIAGo simulation in ROS 2 Humble and Gazebo;
+- supplied museum scene plus a deterministic navigation proxy and occupancy map;
+- AMCL and Nav2 known-map navigation;
+- dynamic semantic graph for rooms, artworks, ambient state, sessions, and requests;
+- deterministic scene-graph reasoning with bounded language/LLM fallback;
+- file-based speech-to-text through Groq Whisper;
+- visitor-session and escort supervision;
+- animated Gazebo Actors published through `/people`;
+- custom anisotropic `ProxemicForceCritic` integrated into DWB;
+- explicit social slow/yield/resume behavior;
+- runtime monitors and reproducible demo launchers;
+- benchmark and acceptance scripts for navigation, reasoning, language, social navigation, and end-to-end behavior.
 
-- **Supplied museum environment:** the original DAE and textures are packaged
-  without host-specific paths, TIAGo and its sensors run in the dedicated
-  world, and physical north/east routes were exercised. Repeated SLAM attempts
-  did not yield a map with sufficient aligned clearance, so supplied-world
-  AMCL, Nav2, semantic, escort, people, social, and Phase 7 regressions remain
-  unaccepted. The previous world remains the default.
-- **Natural-language interaction:** Phase 7 is a runtime-validated bounded
-  text-language prototype with deterministic Italian/English parsing, strict
-  Groq Structured Outputs, and unchanged local validation. Phase 8 now adds a
-  bounded file-based Groq transcription input with offline tests passing; its
-  operator-supplied live audio acceptance and dialogue remain pending.
-- **Semantic-to-navigation bridge:** `semantic_navigation_node` consumes only
-  successful `recommend_and_prepare_navigation` decisions and sends their
-  deterministic `nav_pose` to Nav2. The complete chain has passed runtime
-  acceptance for `impressionism_hall`; other semantic poses still require
-  individual calibration.
-- **Ambient world state:** updates are scripted and in memory. There is no shared persistent world-model service or task-time re-reasoning policy.
-- **Navigation poses:** poses exist in the semantic YAML, but they must be calibrated and verified against free space in the saved occupancy map.
-- **Roles and people:** roles are represented semantically. Interaction can
-  start from opt-in RGB person detection and deterministic LiDAR/dwell fusion.
-  Escort monitoring and the `/people` stream remain simulation-assisted, and
-  there is no identity or role recognition.
-- **Sessions and downstream modules:** one minimal in-memory session and one
-  escort task are supported for the static simulated visitor. There are no
-  preferences, history, persistence, Interaction Manager, Behavior Executive,
-  or general task framework.
+The final eight-Actor social-navigation demonstration completed successfully with one navigation goal, visible slow/yield/resume behavior, and no navigation recoveries, controller aborts, failed recoveries, or acknowledgement timeouts. The demonstrated configuration uses the existing LiDAR for museum geometry and the `/people` stream for social reasoning; the tested `walk.dae` Actor asset does not produce reliable returns at the robot laser plane.
 
-### Current Milestone
+The file-based speech-to-text pipeline has also been runtime validated with a real 6-second, 16 kHz mono WAV file through `whisper-large-v3-turbo`. The validated request was transcribed as `portami a vedere qualcosa di impressionista`, parsed deterministically, and resolved by the semantic reasoner to `monet_water_lilies` in `impressionism_hall`.
 
-Phase 6 is a runtime-validated bounded prototype through the separate
-`museum_social_critic::ProxemicForceCritic` at scale 32. The accepted run
-increased controlled minimum guide clearance from `0.603 m` to `0.665 m` while
-preserving navigation and escort completion. Phase 7 is now a
-runtime-validated bounded text-language prototype. Phase 8 file-based
-speech-to-text is implemented and passes the selected automated suite; it is
-not marked runtime-validated until the live audio acceptance succeeds.
-The supplied museum is separately integrated through the Gazebo/sensor gate,
-but remains PARTIAL at the occupancy-map gate and has not replaced the
-validated lightweight-world baseline.
+## Architecture
 
-### Future Work
-
-1. Calibrate the remaining semantic navigation poses used by final demos.
-2. Introduce Interaction Manager and Behavior Executive only when their
-   runtime policies are required.
-3. Replace simulation ground truth with real or generic people tracking only
-   after the standard `/people` boundary is validated.
-4. Complete the Phase 8 operator-supplied live audio acceptance.
-5. Add grounded response generation and text-to-speech.
-6. Re-reason when relevant ambient state changes during an active task.
-7. Optionally add lightweight role/context perception without identifying people.
-8. Evaluate baseline, semantic/ambient-aware, and social variants.
-
-See [Architecture](docs/architecture.md) for module boundaries and [Repository Audit](docs/repository_audit.md) for the evidence behind these classifications.
-
-## Current Runtime Shape
-
-The simulated session is correlated through reasoning and the focused semantic
-navigation adapter:
+Main runtime flow:
 
 ```text
-visitor_marker -> /gazebo/model_states -> visitor_session_node
-                                      -> /museum/session_state
-                                      -> /museum/visitor_observation
-                                      -> scripted structured request
-                                      -> deterministic reasoning
-                                      -> /museum/assistant_response
-                                      -> semantic_navigation_node
-                                           |               |
-                                           v               v
-                              /museum/escort_state    NavigateToPose
-                                                           |
-                                                           v
-                                               Nav2 + AMCL + saved map
-                                                           |
-                                                           v
-                                                    DWB -> TIAGo
-                                                           |
-                                                           v
-                                          /museum/navigation_result
-
-Optional simulation-only demo path:
-/museum/escort_state + /gazebo/model_states
-                 -> scripted_visitor_node
-                 -> /gazebo/set_entity_state -> visitor_marker
-
-Optional Phase 6 social-navigation sidecar:
-/gazebo/model_states -> simulated_people_node -> /people
-                 -> social_people_bridge_node -> /people_nav2
-                 -> UPO social local-costmap layer -> DWB
+RGB / LiDAR / simulated human state
+              |
+              v
+        Engagement / Session
+              |
+              v
+      Speech-to-Text (optional)
+              |
+              v
+   Deterministic parser + bounded LLM fallback
+              |
+              v
+        StructuredRequest
+              |
+              v
+       Dynamic Scene Graph
+              |
+              v
+     Deterministic Reasoner
+              |
+              v
+      Semantic Route / Skill
+              |
+              v
+             Nav2
+              |
+              v
+   DWB + ProxemicForceCritic
+              |
+              v
+     Social yield / robot motion
 ```
 
-The target architecture adds real perception, language, interaction
-management, and behavior execution. Social escort and social navigation remain
-deliberately separate:
+The LLM is constrained to structured language interpretation and does not control robot coordinates or actions directly.
 
-- **Social escort** decides whether the guidance task is succeeding socially.
-- **Social navigation** controls how the robot moves around people.
+For module boundaries and message contracts, see [Architecture](docs/architecture.md).
 
-## Repository Layout
+## Quick Start
 
-```text
-dockerfiles/
-  Dockerfile.tiago_museum
-
-start_museum_tiago.sh
-
-exchange/museum_ws/src/museum_assistant/
-  config/                 # Semantic map, Nav2, and SLAM configuration
-  launch/                 # Museum, reasoning, SLAM, and Nav2 launches
-  maps/                   # Saved occupancy map
-  museum_assistant/       # Python nodes and deterministic logic
-    contracts.py          # Minimal ROS-independent Phase 1 data models
-    escort.py             # Minimal Phase 4 escort state machine
-    scripted_visitor.py   # Bounded lag-recovery marker motion
-    scripted_visitor_node.py
-    simulated_people.py   # Stable IDs and finite-difference velocities
-    simulated_people_node.py
-    social_people_bridge.py
-    social_people_bridge_node.py
-    semantic_navigation.py
-    semantic_navigation_node.py
-    visitor_session.py    # Minimal in-memory Phase 2 session logic
-    visitor_session_node.py
-  test/                   # Contract, session, escort, and reasoning tests
-  worlds/                 # Lightweight baseline and packaged supplied museum
-    supplied_museum/      # Original visual assets plus bounded collision DAE
-  package.xml
-  setup.py
-
-docs/
-  architecture.md         # Current and target module architecture
-  repository_audit.md     # Implemented/prototype/planned/obsolete audit
-  user_manual.md          # Build, launch, demo, and troubleshooting commands
-  raw/                    # Captured ROS 2 baseline evidence
-```
-
-Booster, Circus, SimBridge, Webots, MuJoCo, Pixi, and Booster SDK are out of scope.
-
-## Host Requirements
-
-- Ubuntu 22.04 or a compatible Linux host
-- Git and Docker Engine
-- X11 display access for Gazebo and RViz
-- Optional NVIDIA driver and NVIDIA Container Toolkit
-
-ROS 2, Gazebo, Nav2, SLAM Toolbox, TIAGo, and Python reasoning dependencies stay inside Docker.
-
-## Build And Start
+### 1. Build the Docker image
 
 From the repository root:
 
 ```bash
 docker build -f dockerfiles/Dockerfile.tiago_museum -t museum-tiago:humble .
+```
+
+### 2. Start the interactive TIAGo container
+
+```bash
 ./start_museum_tiago.sh
 ```
 
@@ -225,198 +91,177 @@ Inside the container:
 
 ```bash
 cd /root/exchange/exchange/museum_ws
-colcon build --symlink-install --packages-select museum_assistant
+colcon build --symlink-install --packages-select museum_assistant museum_social_critic museum_video1_actors
 source install/setup.bash
 ```
 
-Launch TIAGo in the museum:
+## Final Demonstrations
+
+The two commands below are the recommended entry points for the submitted project.
+
+### Demo 1 — Eight-Actor social navigation
+
+From a desktop terminal in the repository root:
 
 ```bash
-ros2 launch museum_assistant tiago_museum_world.launch.py
+./scripts/stop_video1_animated_demo.sh 2>/dev/null || true
+./scripts/start_video1_final_animated_demo.sh --actors 8 --runtime-audit
 ```
 
-Launch the separate supplied-museum Gazebo variant (currently asset and
-physical-motion validation only):
+This launches Gazebo, RViz, the eight animated Actors, `/people`, Nav2, the anisotropic social critic, the social-yield filter, the runtime monitor, and one navigation goal.
+
+Stop the demo with:
 
 ```bash
-ros2 launch museum_assistant tiago_supplied_museum_world.launch.py gzclient:=false
+./scripts/stop_video1_animated_demo.sh
 ```
 
-Do not pair this variant with the legacy saved map. Its mapping/Nav2 gate is
-documented as PARTIAL in
-[Supplied Museum Integration](docs/supplied_museum_integration.md).
-
-Launch the deterministic reasoning demo in another sourced terminal:
+### Demo 2 — Scene graph and semantic reasoning
 
 ```bash
-ros2 launch museum_assistant reasoning_demo.launch.py
-ros2 topic echo /museum/assistant_response
+./scripts/start_video2_reasoning_demo.sh
 ```
 
-## Phase 2 Visitor Session Demo
+This launches the supplied museum scene with one Actor and shows a real structured semantic request being resolved through the existing scene graph and reasoner. The prepared action is displayed but robot navigation is intentionally not started in this demo.
 
-Build the package once, then use separate sourced container terminals.
-
-Terminal 1 — launch TIAGo and the museum world:
+Stop it with:
 
 ```bash
-cd /root/exchange/exchange/museum_ws
-source install/setup.bash
-ros2 launch museum_assistant tiago_museum_world.launch.py
+./scripts/stop_video2_reasoning_demo.sh
 ```
 
-Terminal 2 — launch the one-node session adapter:
+More details are available in [Video 1 final demo](docs/video1_final_animated_demo.md) and [Video 2 reasoning demo](docs/video2_reasoning_demo.md).
+
+## Speech-to-Text Validation
+
+The Phase 8 file-based STT acceptance script can be run with an operator-provided WAV file:
 
 ```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 launch museum_assistant visitor_session.launch.py
+PHASE8_SKIP_DOCKER_BUILD=1 \
+./scripts/phase8_live_acceptance.sh /path/to/request.wav
 ```
 
-Terminal 3 — observe the periodically published active session:
+`GROQ_API_KEY` must be available in the shell environment. The key is never stored in this repository.
 
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 topic echo /museum/session_state
+The accepted interface validates the WAV, performs real transcription, publishes `/museum/user_text`, runs the existing parser, creates a `StructuredRequest`, and invokes the semantic reasoner.
+
+## Core ROS Interfaces
+
+Important topics include:
+
+- `/museum/session_state`
+- `/museum/engagement_state`
+- `/museum/user_text`
+- `/museum/user_request`
+- `/museum/assistant_response`
+- `/museum/navigation_result`
+- `/museum/escort_state`
+- `/museum/ambient_state`
+- `/people`
+- `/scan_raw`
+- `/amcl_pose`
+
+The social-navigation demo additionally exposes runtime diagnostic streams for Actor states, social state, and navigation measurements.
+
+## Main Packages
+
+### `museum_assistant`
+
+Contains the semantic graph, reasoning, language parsing, speech-to-text interface, engagement/session logic, escort supervision, semantic navigation adapters, simulated people support, museum worlds, maps, and launch files.
+
+### `museum_social_critic`
+
+Custom DWB critic implementing the anisotropic proxemic cost used by the final social-navigation configuration.
+
+### `museum_video1_actors`
+
+Gazebo Actor support, `/people` bridging, social-yield logic, runtime auditing, and the final animated social-navigation demo.
+
+## Social Navigation
+
+The accepted anisotropic configuration uses directional human comfort geometry. A trajectory sample is scored from person-relative distance through a logistic cost; directional front/side/back scaling expands the effective comfort region in front of a moving person. The critic aggregates the maximum social cost over people and trajectory samples.
+
+The final demo also uses an explicit social-yield layer for clear crossing behavior. DWB and `ProxemicForceCritic` remain active while the yield layer can slow or temporarily stop the commanded motion when a relevant human is predicted to enter the forward corridor. Once the corridor remains clear for the configured hysteresis interval, the same navigation action resumes.
+
+For formulas, parameters, and validation evidence, see [Human-Aware Navigation](docs/human_aware_navigation.md) and [Video 1 final demo](docs/video1_final_animated_demo.md).
+
+## Semantic Reasoning
+
+The semantic graph represents rooms, artworks, ambient properties, sessions, and current requests. Natural-language interpretation is converted into validated structured constraints before reasoning. The reasoner then selects valid semantic entities and returns a fixed robot skill such as `navigate_to` together with a semantic destination resolved to a configured pose.
+
+Example validated chain:
+
+```text
+"portami a vedere qualcosa di impressionista"
+        -> style = impressionism
+        -> monet_water_lilies
+        -> impressionism_hall
+        -> navigate_to
 ```
 
-The public JSON contains `session_1`, `visitor_1`, and `active`; it does not
-contain the Gazebo model name.
+The separate Video 2 demo uses the request `I want to see classical art.` and resolves the existing graph fact:
 
-Terminal 4 — start the deterministic reasoner:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 run museum_assistant reasoning_node
+```text
+roman_statue : style = classical
+roman_statue -> located_in -> ancient_art_hall
+ancient_art_hall -> south_west_gallery
 ```
 
-Terminal 5 — observe assistant responses:
+## Benchmarks
 
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 topic echo /museum/assistant_response
-```
+Benchmark data and plots are stored under `benchmarks/`.
 
-Terminal 6 — send a correlated structured request:
+The repository contains comparisons for:
 
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 topic pub --once /museum/user_request std_msgs/msg/String \
-  "{data: '{\"request_id\":\"session_demo_001\",\"session_id\":\"session_1\",\"intent\":\"recommend\",\"constraints\":{\"style\":\"impressionism\",\"avoid_crowd\":true}}'}"
-```
+- navigation accuracy and duration;
+- semantic reasoning and language parsing;
+- session memory;
+- engagement and escort behavior;
+- social-navigation clearance and path/time effects;
+- end-to-end speech/language/reasoning episodes.
 
-The response contains the same `"session_id": "session_1"`. Alternatively,
-`reasoning_demo.launch.py` starts the existing request simulator, which now
-uses the active session ID received from `/museum/session_state`.
+The accepted social benchmark increased controlled minimum guide clearance from approximately `0.603 m` to `0.665 m` while preserving task completion. Later animated-Actor runs validate the final social-navigation demonstration separately from those historical benchmark inputs.
 
-## Phase 3 Semantic Navigation Demo
+See [Benchmarks](benchmarks/README.md) for methodology and raw/summary files.
 
-Do not use `reasoning_demo.launch.py` for this workflow because it starts the
-periodic request simulator. Run one explicit navigation request instead.
+## Documentation
 
-Build the package, then use separate sourced container terminals.
+Useful project documentation:
 
-Terminal 1 — launch TIAGo in the museum:
+- [Architecture](docs/architecture.md)
+- [User Manual](docs/user_manual.md)
+- [Semantic Map](docs/semantic_map.md)
+- [Museum Navigation](docs/museum_navigation.md)
+- [Human-Aware Navigation](docs/human_aware_navigation.md)
+- [Social Escort](docs/social_escort.md)
+- [Speech Interface](docs/speech_interface.md)
+- [Language Interface](docs/language_interface.md)
+- [Video 1 Final Animated Demo](docs/video1_final_animated_demo.md)
+- [Video 2 Reasoning Demo](docs/video2_reasoning_demo.md)
 
-```bash
-cd /root/exchange/exchange/museum_ws
-source install/setup.bash
-ros2 launch museum_assistant tiago_museum_world.launch.py
-```
-
-Terminal 2 — launch known-map Nav2:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 launch museum_assistant museum_navigation.launch.py
-```
-
-Terminal 3 — verify Nav2 lifecycle nodes:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-for node in map_server amcl planner_server controller_server bt_navigator behavior_server; do
-  ros2 lifecycle get "/$node"
-done
-```
-
-All listed nodes must report `active [3]`. Set or confirm TIAGo's initial pose
-in RViz before sending the navigation request. For the documented entrance
-estimate:
-
-```bash
-ros2 topic pub --once /initialpose \
-  geometry_msgs/msg/PoseWithCovarianceStamped \
-  "{header: {frame_id: map}, pose: {pose: {position: {x: 0.0, y: 0.0, z: 0.0}, orientation: {z: 0.0, w: 1.0}}, covariance: [0.25, 0, 0, 0, 0, 0, 0, 0.25, 0, 0, 0, 0, 0, 0, 0.0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.068]}}"
-```
-
-Terminal 4 — launch only the reasoner:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 run museum_assistant reasoning_node
-```
-
-Terminal 5 — launch the Phase 2 visitor session:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 launch museum_assistant visitor_session.launch.py
-```
-
-Terminal 6 — launch only the semantic navigation adapter:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 launch museum_assistant semantic_navigation.launch.py
-```
-
-Terminal 7 — observe reasoning decisions:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 topic echo /museum/assistant_response
-```
-
-Terminal 8 — observe navigation acceptance and completion:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 topic echo /museum/navigation_result
-```
-
-Terminal 9 — send one correlated request for the Impressionism Hall:
-
-```bash
-source /root/exchange/exchange/museum_ws/install/setup.bash
-ros2 topic pub --once /museum/user_request std_msgs/msg/String \
-  "{data: '{\"request_id\":\"nav_demo_001\",\"session_id\":\"session_1\",\"intent\":\"recommend_and_prepare_navigation\",\"constraints\":{\"style\":\"impressionism\"}}'}"
-```
-
-The assistant response should select `impressionism_hall`. The navigation
-result first reports `accepted`, followed by `succeeded`, `aborted`, or
-`canceled`.
-
-Plain `recommend` requests never move the robot. Before the final demo, verify
-the selected room pose against free space in the saved occupancy map. Use:
-
-```bash
-ros2 run museum_assistant capture_nav_pose --name impressionism_hall
-```
-
-Launch known-map Nav2 separately:
-
-```bash
-ros2 launch museum_assistant museum_navigation.launch.py
-```
-
-The complete workflows, terminal setup, lifecycle checks, and goal commands are in [the user manual](docs/user_manual.md).
-
-## Safety And Architectural Constraints
+## Safety and Architectural Constraints
 
 - Natural-language or LLM output may only become validated structured data.
-- An LLM must never emit arbitrary ROS commands, coordinates, shell commands, or code for execution.
-- Robot actions must come from a fixed skill set.
-- Semantic location IDs must be resolved to verified poses inside the robot-control boundary.
-- Gazebo actor/model IDs must not leak into reasoning or interaction logic.
-- Social escort must remain above Nav2; human-aware motion belongs in the navigation layer.
-- Role perception may infer transient role/context cues, never personal identity.
+- An LLM must never emit arbitrary ROS commands, coordinates, shell commands, or executable code for robot control.
+- Robot actions come from a fixed skill set.
+- Semantic location IDs are resolved to verified poses inside the robot-control boundary.
+- Gazebo Actor/model identifiers do not define semantic robot actions.
+- Escort supervision remains above Nav2; human-aware local motion belongs in the navigation layer.
+- Simulation-specific bridges are kept explicit and separate from claims about real-world perception.
+
+## Current Limitations
+
+- Human state used by the final animated social-navigation demo comes from simulation `/people` data rather than a generic real-world people tracker.
+- The tested `walk.dae` Actor configuration is not reliably visible in the TIAGo LiDAR plane; LiDAR is still used for museum geometry.
+- Not every configured semantic room pose has the same level of runtime acceptance as the main demonstrated routes.
+- The current speech interface is file based; microphone streaming and text-to-speech are not part of the submitted runtime.
+- The project is a simulation research prototype, not a certified safety system.
+
+## Future Work
+
+1. Replace simulation-assisted people state with a generic perception/tracking pipeline.
+2. Improve multimodal engagement across RGB, LiDAR, speech activity, and gaze.
+3. Add grounded spoken responses through text-to-speech.
+4. Extend scene-graph user memory and persistent interaction sessions.
+5. Re-reason dynamically when crowd, noise, or room availability changes during a task.
+6. Evaluate the system with a larger set of users and social scenarios.
