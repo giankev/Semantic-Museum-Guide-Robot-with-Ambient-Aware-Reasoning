@@ -122,7 +122,7 @@ Stop the demo with:
 ./scripts/start_video2_reasoning_demo.sh
 ```
 
-This launches the supplied museum scene with one Actor and shows a real structured semantic request being resolved through the existing scene graph and reasoner. The prepared action is displayed but robot navigation is intentionally not started in this demo.
+This launches the supplied museum scene with one Actor and shows a structured semantic request being resolved through the existing scene graph and reasoner. The prepared action is displayed but robot navigation is intentionally not started in this demo.
 
 Stop it with:
 
