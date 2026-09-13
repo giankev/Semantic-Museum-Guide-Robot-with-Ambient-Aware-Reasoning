@@ -1,172 +1,178 @@
-# Eight-Actor social-navigation demo — validation in progress
+# Final Eight-Actor Social-Navigation Demo
 
-Branch: `codex/video1-system-stabilization`. The final launcher defaults to eight
-Actors; the 3/6/8 runtime stages are not yet accepted. The previous one-Actor
-and no-people runs succeeded with one goal and no recoveries/controller aborts.
-Historical benchmark files are unchanged.
+This document describes the submitted animated social-navigation demonstration.
 
-```bash
-./scripts/start_video1_final_animated_demo.sh
-```
+## Launch
 
-Internal stages: `--actors 3`, `--actors 6`, `--actors 8`; `--headless` is available
-for navigation measurements, and `--runtime-audit` adds detailed geometry logs.
-The existing `start_video1_animated_demo.sh` remains the one-Actor diagnostic
-entry point, without the social filter unless explicitly enabled by the final
-wrapper. Both retain Gazebo after recording and save every run separately.
-
-## Actor geometry
-
-Every Actor follows `x=cx+rx*cos(omega*t+phase)`,
-`y=cy+ry*sin(omega*t+phase)`. Heading and velocity come from the analytic
-trajectory derivative; the published pose is read back from the actual Actor.
-Animation time follows distance traveled using the shipped walk.dae gait.
-Each plugin is restricted to its Actor name; none controls TIAGo.
-
-| Actor | Role | Center (m) | Radii (m) | omega (rad/s) |
-|---|---|---|---|---|
-| walker_1 | Parallel, accepted original | (1.8, 8.7) | (0.45, 1.3) | 0.28 |
-| walker_2 | Peripheral west | (-5, 5) | (0.7, 1) | 0.22 |
-| walker_3 | Crossing | (0, 6) | (1.8, 0.65) | 0.20 |
-| walker_4 | Parallel west | (-3.1, 7) | (0.45, 1.5) | 0.28 |
-| walker_5 | Peripheral east | (5, 5) | (0.7, 1) | 0.22 |
-| walker_6 | Lateral north | (3.5, 14) | (1.2, 0.6) | 0.22 |
-| walker_7 | North patrol | (-4.5, 15.5) | (0.7, 1.2) | 0.22 |
-| walker_8 | East patrol | (5, 8) | (0.7, 1) | 0.20 |
-
-Phases are fixed in `config/eight_actors.json`. The crossing phase initially
-places walker_3 on the centerline at simulation time 135 s. No robot waypoint
-or path is prescribed. Proxy-wall clearance is tested throughout every ellipse.
-
-## Data and command paths
-
-Individual physics-stamped `/museum/video1/actor_samples` are combined only
-when all configured IDs have the **same timestamp**. One bridge publishes the
-complete world-frame `/museum/video1/actor_states` and aligned odom-frame
-`/people`, at 20 Hz. Incomplete frames are withheld; no missing Actor is invented.
-
-`/people` still feeds the corrected anisotropic ProxemicForce critic with the
-accepted scale 32, comfort distance 1.0, sigma 0.4 and front/side/back scales
-1.4/1.0/0.8. The existing LiDAR detects museum geometry. The controlled walk.dae
-experiment found no Actor returns at its laser plane, so social yielding uses
-`/people` rather than assuming Actor obstacle-layer detections. Blue rays stay
-visible. NVIDIA GUI offload is independent of the software-rendered sensor.
-
-DWB and recovery velocities go through `/cmd_vel_nav` → Nav2 velocity smoother
-→ `/museum/nav_cmd_vel` → `social_yield` → `/cmd_vel` → TIAGo's twist mux.
-A readiness gate checks the actual ROS endpoints and refuses the goal if any
-publisher bypasses the filter. No action is cancelled or reissued to yield.
-Exactly one NavigateToPose target remains `(0,16,1.5708)`.
-
-## Social yielding
-
-The filter uses robot-relative position and person velocity. It ignores people
-behind TIAGo, predicts entry into a forward corridor over 2 seconds, and scales
-both translation and rotation together to preserve commanded curvature.
-
-Current configuration in `config/social_yield.yaml`:
-
-- Forward corridor half-width: 0.65 m; slowing distance: 2.5 m.
-- Stop distance along the corridor: 1.6 m, with entry predicted within 1.2 s.
-- Release distance: 1.95 m; release half-width: 0.85 m.
-- Clear-time hysteresis: 0.8 simulation seconds before leaving YIELDING.
-- Input freshness bound: 0.4 simulation seconds; missing/invalid inputs output zero.
-
-This is explicit social interaction behavior in simulation, not a certified
-collision-safety system. Normal DWB/ProxemicForce avoidance remains active.
-The terminal reports CLEAR/SLOW/YIELDING, nearest relevant person, stream rate,
-Actor count and goal count. JSON observations retain input command, output
-command and physical robot speed. The final acceptance check requires a measured
-moving → slowed/stopped → resumed sequence and navigation SUCCESS.
-
-## Current validation status
-
-Seven test groups pass, covering the original Humble failures, delayed action
-acknowledgements, Actor motion, complete-frame aggregation, frame/velocity
-rotation, forward crossing relevance, hysteresis, stale inputs and invalid
-commands. A first startup exposed a missing executable permission. The next
-pre-goal check exposed recovery publishers bypassing the filter; both were
-corrected and their negative runs retained. Progressive navigation and visible
-walking validation are still in progress; no final video success is claimed.
-
-The first three-Actor crossing at phase 120 s produced a measured slowdown
-but cleared about 2 m ahead of TIAGo, so a stop was correctly unnecessary.
-The crossing phase was shifted to 135 s for a closer controlled interaction;
-the robot goal and navigation configuration were not changed.
-
-Three-Actor run `20260912T154035Z_actor` completed SUCCESS with one goal,
-zero recoveries, zero invalid-trajectory/controller-abort/acknowledgement
-failures, minimum center distance 1.009 m and RTF 0.499. It demonstrated
-slowdown but no required stop; therefore its social stop/resume acceptance
-check correctly failed. Independent subscribers measured every Actor and
-aggregated /people at 20 Hz, with a maximum 0.05 s gap. Recorder batching and
-a larger bounded best-effort queue address its lower observed sample rate.
-
-Run `20260912T154908Z_actor` was cancelled at 61.27 s by the recorder's LiDAR
-freshness gate. The sensor was still publishing: the audit subscription had a
-60.696 s scan while the main subscription remained at 60.243 s. Humble's
-convenience `rclpy.spin_once(node)` adds/removes the node on each call. A persistent
-SingleThreadedExecutor now owns the recorder, with bounded callback batches and
-unchanged sensor freshness limits. A real DDS test exercises busy and later
-subscriptions and verifies persistent executor membership; all 25 recorder
-tests pass. Runtime confirmation of this scheduling correction follows.
-
-Runs `20260912T155716Z_actor` and `20260912T204626Z_actor` exposed recorder
-service starvation after navigation started. The latter distinguished delayed
-GetState RPCs from a reported inactive node, but its 15 s monitoring deadline
-correctly stopped the experiment. Installed Humble executor inspection found
-that alternating spin timeouts resets the ready-callback iterator. The recorder
-now uses the same 5 ms timeout throughout each bounded eight-callback batch.
-The DDS fairness regression now exercises 20 busy subscriptions, exceeding one
-batch; all 26 recorder tests pass. Startup still requires fresh ACTIVE replies;
-an observed inactive state fails immediately and missing monitoring remains
-bounded. These negative runs are retained and do not validate the final scene.
-
-Run `20260912T205918Z_actor` reached SUCCESS with one goal, zero recoveries,
-controller aborts, failed recoveries or acknowledgement timeouts, and all four
-slow/stop/resume evidence flags true. RTF was 0.581. Its minimum center distance
-0.607 m failed the 0.63 m disk-separation requirement, so it was not promoted.
-The social stop/release distances were increased to 1.6/1.95 m for retesting;
-Nav2 parameters, the robot goal and Actor paths remain unchanged.
-
-The recorder now drains with a constant 1 ms spin timeout for at most 40 ms
-between checks and uses latest-sample state/measurement queues. Full historical
-queues had caused false freshness failures after navigation began. Observed
-sample frequency and maximum gaps remain checked, rather than assuming 20 Hz.
-
-Three-Actor run `20260912T210754Z_actor` passes every required runtime check:
-SUCCESS, exactly one goal, all slow/stop/resume flags true, minimum center
-distance 0.770 m (estimated disk clearance 0.140 m), zero recoveries, invalid
-trajectories, controller aborts, failed recoveries and acknowledgement timeouts.
-Observed /people averaged 17.89 Hz with maximum gap 0.20 s; RTF was 0.644.
-This validates the three-Actor runtime stage, not eight-Actor visible animation.
-
-## Final observed scene — development frozen on 2026-09-13
-
-Six-Actor run `20260912T211451Z_actor` passed all required checks with SUCCESS,
-one goal, all social sequence flags true, zero recoveries/invalid trajectories/
-controller aborts, minimum center distance 0.782 m and RTF 0.620.
-
-Eight-Actor GUI run `20260912T212233Z_actor` reached SUCCESS with exactly one
-goal and measured moving/slow/stop/resume evidence. Minimum center distance was
-0.782 m; recoveries, invalid trajectories, controller aborts, failed recoveries
-and acknowledgement timeouts were all zero. Observed RTF was 0.396; GUI FPS
-was not recorded for this run. Two missed controller loops were recorded.
-The user confirmed seeing the eight-Actor scene and TIAGo stop to let people
-pass, and requested no further development or experiments on 2026-09-13.
-
-The automatic aggregate remains false because `people_fresh_and_frequent`
-failed for the recorder's observed samples. This limitation is retained; the
-original summary is not rewritten and an all-checks-pass claim is not made.
-The demonstrated scene is frozen at the user's request.
-
-From a desktop terminal in the repository, restart the same GUI scene with:
+From a desktop terminal in the repository root:
 
 ```bash
-./scripts/stop_video1_animated_demo.sh && ./scripts/start_video1_final_animated_demo.sh --actors 8 --runtime-audit
+./scripts/stop_video1_animated_demo.sh 2>/dev/null || true
+./scripts/start_video1_final_animated_demo.sh --actors 8 --runtime-audit
 ```
 
-This starts both Gazebo and RViz, the monitor and the single navigation goal.
-The stop helper waits for Docker's asynchronous `--rm` removal before returning,
-so immediate restart can reuse the owned container name. Gazebo and RViz remain
-open after navigation completes; the same stop helper closes the owned demo.
+Stop with:
+
+```bash
+./scripts/stop_video1_animated_demo.sh
+```
+
+The launcher starts Gazebo, RViz, the runtime monitor, eight animated Actors, the `/people` bridge, Nav2, the custom social critic, the social-yield filter, and one navigation goal. Gazebo and RViz remain open after navigation completes until the stop helper is called.
+
+## Final Demonstrated Configuration
+
+The final scene contains eight walking Gazebo Actors. Their trajectories are deterministic and parameterized from fixed ellipses stored in `exchange/museum_ws/src/museum_video1_actors/config/eight_actors.json`.
+
+Each Actor plugin controls only its own Actor model. TIAGo is never teleported and Actor code does not publish direct robot velocity commands.
+
+The main robot target is:
+
+```text
+x = 0.0
+y = 16.0
+yaw = 1.5708
+```
+
+The launcher sends exactly one `NavigateToPose` action for this final social-navigation scene.
+
+## Human-State Pipeline
+
+Actor motion samples are aggregated and published as world-frame Actor state and as odom-frame `/people` messages. These messages provide the human positions and velocities used by the social-navigation layer.
+
+The final navigation stack is:
+
+```text
+/people
+   |
+   +--> anisotropic ProxemicForceCritic
+   |
+Nav2 / DWB
+   |
+/cmd_vel_nav
+   |
+velocity smoother
+   |
+/museum/nav_cmd_vel
+   |
+social_yield
+   |
+/cmd_vel
+   |
+TIAGo base
+```
+
+The escorted visitor identifier remains excluded from the social critic where configured, while surrounding Actor identifiers are used for social avoidance/yielding.
+
+## LiDAR and Actor Visibility
+
+The museum LiDAR remains active and is used for museum geometry and Nav2 obstacle perception.
+
+A controlled experiment with the exact `walk.dae` Actor asset, plugin, and GPU-LiDAR configuration showed no reliable Actor returns at TIAGo's approximately 0.195 m laser plane. Positive box controls were visible to the LiDAR, while the Actor was not.
+
+Therefore the final animated demo intentionally uses `/people` for human-aware navigation rather than claiming that the Actor mesh is observed by the obstacle layer. This result applies only to this tested simulation configuration and should not be generalized to all human meshes, sensors, or heights.
+
+## Anisotropic Proxemic Critic
+
+The custom plugin is:
+
+```text
+museum_social_critic::ProxemicForceCritic
+```
+
+The accepted final configuration preserves the project social-navigation parameters, including:
+
+```text
+scale:                32
+comfort distance:     1.0 m
+sigma:                 0.4
+front scale:           1.4
+side scale:            1.0
+back scale:            0.8
+```
+
+The critic predicts human position over the candidate trajectory horizon and evaluates directional proxemic distance. The social cost uses a logistic function of effective human-relative distance and aggregates the maximum cost over people and sampled trajectory points.
+
+The directional geometry increases the effective comfort region in front of a moving person compared with the side/back region.
+
+## Social Yield Layer
+
+For visually clear crossing behavior, the demo also uses an explicit social-yield filter above the base velocity command.
+
+It considers people in front of TIAGo and predicts entry into a forward corridor. Depending on geometry and time-to-crossing, the monitor may show:
+
+```text
+CLEAR
+SLOW
+YIELDING
+RESUMING
+```
+
+The current configuration uses approximately:
+
+```text
+forward corridor half-width: 0.65 m
+slowing distance:             2.5 m
+stop distance:                1.6 m
+prediction horizon:           2.0 s
+release distance:             1.95 m
+release half-width:           0.85 m
+clear-time hysteresis:        0.8 s
+input freshness bound:        0.4 s
+```
+
+The yield filter scales commanded translation and rotation together so commanded curvature is preserved. It does not cancel or reissue the final social-navigation goal.
+
+## Runtime Monitor
+
+The terminal monitor exposes compact evidence for the recording, including:
+
+- navigation goal count;
+- Actor count;
+- `/people` stream status;
+- CLEAR/SLOW/YIELDING/RESUMING social state;
+- nearest relevant human;
+- navigation status;
+- recovery/controller error counters;
+- robot motion evidence.
+
+This makes it possible to show both the visible Gazebo behavior and the corresponding internal navigation state in the same video.
+
+## Final Runtime Evidence
+
+The progressive animated-Actor validation reached successful three-Actor and six-Actor stages before the final eight-Actor run.
+
+The final eight-Actor GUI run completed with:
+
+```text
+Navigation:                    SUCCESS
+NavigateToPose goals:          1
+Slow/stop/resume evidence:     observed
+Minimum human center distance: 0.782 m
+Recoveries:                    0
+Invalid trajectories:          0
+Controller aborts:             0
+Failed recoveries:             0
+Acknowledgement timeouts:      0
+Observed RTF:                  0.396
+```
+
+Two missed controller-loop warnings were recorded under load. The recorder's aggregate `people_fresh_and_frequent` flag was not satisfied for every observed sample in the eight-Actor run, so the documentation does not claim a perfect all-checks-pass aggregate. The visible run nevertheless reached the destination successfully and demonstrated the intended social slowdown/yield/resume behavior.
+
+## Navigation Stability Notes
+
+During system stabilization, a Humble Nav2 action acknowledgement deadline of 20 ms was reproduced as too short for this simulation load. The final launcher generates an effective per-run Nav2 YAML that changes only `default_server_timeout` to 200 ms while retaining the accepted controller and social-critic parameters.
+
+The final configuration also keeps software rendering available for `gzserver` where required for valid GPU-LiDAR scans while allowing the GUI/RViz rendering path to use the desktop GPU.
+
+These changes are runtime integration/stability measures; they do not change the social-critic cost function or semantic navigation target.
+
+## Reproducibility
+
+The final run is intended to be reproduced with:
+
+```bash
+./scripts/stop_video1_animated_demo.sh 2>/dev/null || true
+./scripts/start_video1_final_animated_demo.sh --actors 8 --runtime-audit
+```
+
+No manual goal publication is required. All run-specific output is stored under the demo log directory generated by the launcher.
