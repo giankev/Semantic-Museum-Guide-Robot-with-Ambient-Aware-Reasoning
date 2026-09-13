@@ -133,3 +133,40 @@ The recorder now drains with a constant 1 ms spin timeout for at most 40 ms
 between checks and uses latest-sample state/measurement queues. Full historical
 queues had caused false freshness failures after navigation began. Observed
 sample frequency and maximum gaps remain checked, rather than assuming 20 Hz.
+
+Three-Actor run `20260912T210754Z_actor` passes every required runtime check:
+SUCCESS, exactly one goal, all slow/stop/resume flags true, minimum center
+distance 0.770 m (estimated disk clearance 0.140 m), zero recoveries, invalid
+trajectories, controller aborts, failed recoveries and acknowledgement timeouts.
+Observed /people averaged 17.89 Hz with maximum gap 0.20 s; RTF was 0.644.
+This validates the three-Actor runtime stage, not eight-Actor visible animation.
+
+## Final observed scene — development frozen on 2026-09-13
+
+Six-Actor run `20260912T211451Z_actor` passed all required checks with SUCCESS,
+one goal, all social sequence flags true, zero recoveries/invalid trajectories/
+controller aborts, minimum center distance 0.782 m and RTF 0.620.
+
+Eight-Actor GUI run `20260912T212233Z_actor` reached SUCCESS with exactly one
+goal and measured moving/slow/stop/resume evidence. Minimum center distance was
+0.782 m; recoveries, invalid trajectories, controller aborts, failed recoveries
+and acknowledgement timeouts were all zero. Observed RTF was 0.396; GUI FPS
+was not recorded for this run. Two missed controller loops were recorded.
+The user confirmed seeing the eight-Actor scene and TIAGo stop to let people
+pass, and requested no further development or experiments on 2026-09-13.
+
+The automatic aggregate remains false because `people_fresh_and_frequent`
+failed for the recorder's observed samples. This limitation is retained; the
+original summary is not rewritten and an all-checks-pass claim is not made.
+The demonstrated scene is frozen at the user's request.
+
+From a desktop terminal in the repository, restart the same GUI scene with:
+
+```bash
+./scripts/stop_video1_animated_demo.sh && ./scripts/start_video1_final_animated_demo.sh --actors 8 --runtime-audit
+```
+
+This starts both Gazebo and RViz, the monitor and the single navigation goal.
+The stop helper waits for Docker's asynchronous `--rm` removal before returning,
+so immediate restart can reuse the owned container name. Gazebo and RViz remain
+open after navigation completes; the same stop helper closes the owned demo.
